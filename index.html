@@ -1,0 +1,4557 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>NeoMessage Desktop</title>
+    
+    <!-- Meta etiquetas PWA & Desktop -->
+    <meta name="application-name" content="NeoMessage">
+    <meta name="apple-mobile-web-app-title" content="NeoMessage">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#111B21">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%2300A884'/><text x='50' y='65' font-size='45' font-weight='900' text-anchor='middle' fill='%23FFF'>N</text></svg>">
+
+    <!-- Firebase Compat SDK (Realtime Database Gratuita) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        
+        :root {
+            --bg-app: #111B21;
+            --bg-sidebar: #111B21;
+            --bg-panel: #202C33;
+            --bg-chat: #0B141A;
+            --bubble-me: #005C4B;
+            --bubble-other: #202C33;
+            --text-primary: #E9EDEF;
+            --text-secondary: #8696A0;
+            --neon-green: #00A884;
+            --accent: #00A884;
+            --blue-checks: #53BDEB;
+            --gold: #FFD700;
+            --danger: #EF4444;
+            --border: #222D34;
+            --chat-overlay: rgba(11, 20, 26, 0.88);
+        }
+
+        body[data-theme="oled"] {
+            --bg-app: #000000;
+            --bg-sidebar: #050505;
+            --bg-panel: #0E0E0E;
+            --bg-chat: #000000;
+            --bubble-me: #004D40;
+            --bubble-other: #161616;
+            --border: #1B1B1B;
+            --chat-overlay: rgba(0, 0, 0, 0.94);
+        }
+
+        body[data-theme="cyber"] {
+            --bg-app: #070B19;
+            --bg-sidebar: #0C122C;
+            --bg-panel: #141C3F;
+            --bg-chat: #070B19;
+            --bubble-me: #1E3A8A;
+            --bubble-other: #1E293B;
+            --neon-green: #00F0FF;
+            --accent: #2563EB;
+            --border: #1E293B;
+            --chat-overlay: rgba(7, 11, 25, 0.9);
+        }
+
+        body[data-theme="light"] {
+            --bg-app: #F0F2F5;
+            --bg-sidebar: #FFFFFF;
+            --bg-panel: #F0F2F5;
+            --bg-chat: #EFEAE2;
+            --bubble-me: #D9FDD3;
+            --bubble-other: #FFFFFF;
+            --text-primary: #111B21;
+            --text-secondary: #667781;
+            --border: #E9EDEF;
+            --chat-overlay: rgba(239, 234, 226, 0.9);
+        }
+
+        body {
+            background: var(--bg-app);
+            color: var(--text-primary);
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .desktop-app {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            background: var(--bg-app);
+            position: relative;
+        }
+
+        /* 1. BARRA DOCK LATERAL IZQUIERDA (WHATSAPP DESKTOP STYLE) */
+        .dock-bar {
+            width: 60px;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 0;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .dock-logo {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #FFF;
+            font-weight: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            cursor: pointer;
+            margin-bottom: 6px;
+        }
+
+        .dock-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.15s;
+            position: relative;
+        }
+
+        .dock-btn:hover {
+            background: rgba(255,255,255,0.06);
+            color: #FFF;
+        }
+
+        .dock-btn.active {
+            background: rgba(0, 168, 132, 0.2);
+            color: var(--neon-green);
+        }
+
+        .dock-btn.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 10px;
+            bottom: 10px;
+            width: 3px;
+            background: var(--neon-green);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .dock-bottom {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .dock-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #2A3942;
+            color: #FFF;
+            font-weight: bold;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background-size: cover;
+            background-position: center;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        /* 2. SIDEBAR DE CONTENIDO (CHATS / ESTADOS / CONTACTOS / AJUSTES) */
+        .sidebar {
+            width: 380px;
+            min-width: 320px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            z-index: 2;
+        }
+
+        .sidebar-header {
+            height: 60px;
+            background: var(--bg-sidebar);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .search-container {
+            padding: 8px 12px;
+            background: var(--bg-sidebar);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+
+        .search-box {
+            flex: 1;
+            background: var(--bg-panel);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            height: 36px;
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 13px;
+            width: 100%;
+            margin-left: 8px;
+        }
+
+        .tab-content {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--bg-sidebar);
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .tab-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .tab-content::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.15);
+            border-radius: 3px;
+        }
+
+        /* ITEMS DE LA LISTA */
+        .section-label {
+            padding: 14px 16px 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chat-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            transition: background 0.15s;
+            position: relative;
+        }
+
+        .chat-row:hover {
+            background: rgba(255,255,255,0.04);
+        }
+
+        .chat-row.active {
+            background: rgba(0, 168, 132, 0.15);
+        }
+
+        .chat-row:hover .row-delete-btn {
+            opacity: 1;
+        }
+
+        .row-delete-btn {
+            opacity: 0;
+            transition: opacity 0.15s;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            margin-left: 6px;
+        }
+
+        .row-delete-btn:hover {
+            color: var(--danger);
+        }
+
+        .chat-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #2A3942;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            margin-right: 12px;
+            flex-shrink: 0;
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+
+        .status-ring-green {
+            border: 2.5px solid var(--neon-green) !important;
+            padding: 2px;
+        }
+
+        .status-ring-gray {
+            border: 2px solid #667781 !important;
+            padding: 2px;
+        }
+
+        .my-status-plus {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #FFF;
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--bg-sidebar);
+        }
+
+        .chat-meta {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chat-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .chat-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chat-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        .chat-last-msg {
+            font-size: 13px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 3. PANEL DERECHO: PANTALLA PRINCIPAL */
+        .main-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            background: var(--bg-chat);
+            position: relative;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: cover;
+        }
+
+        .chat-wallpaper-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--chat-overlay);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* PANTALLA DE BIENVENIDA ESTADOS (IGUAL A LA CAPTURA DEL USUARIO) */
+        .status-welcome-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 30px;
+            z-index: 2;
+        }
+
+        .status-welcome-ring {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            border: 3px dashed var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 38px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .status-welcome-view h2 {
+            color: var(--text-primary);
+            font-size: 24px;
+            font-weight: 400;
+            margin-bottom: 8px;
+        }
+
+        .status-welcome-view p {
+            max-width: 440px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 32px;
+        }
+
+        .status-action-buttons {
+            display: flex;
+            gap: 36px;
+        }
+
+        .status-circle-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+
+        .status-circle-btn:hover {
+            transform: scale(1.06);
+        }
+
+        .status-circle-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            background: #2A3942;
+            color: #FFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .status-circle-btn span {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* SALA DE CHAT ACTIVA */
+        .chat-header {
+            height: 60px;
+            background: var(--bg-panel);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            z-index: 5;
+        }
+
+        .chat-header-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .chat-header-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .chat-header-status {
+            font-size: 12px;
+            color: var(--neon-green);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 18px;
+            padding: 8px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.15s;
+        }
+
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: var(--text-primary);
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 48px;
+            right: 8px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            display: none;
+            flex-direction: column;
+            width: 250px;
+            z-index: 100;
+            overflow: hidden;
+        }
+
+        .dropdown-item {
+            padding: 12px 16px;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.15s;
+        }
+
+        .dropdown-item:hover {
+            background: rgba(255,255,255,0.06);
+        }
+
+        .dropdown-item.danger {
+            color: var(--danger);
+        }
+
+        .blocked-banner {
+            background: rgba(239, 68, 68, 0.2);
+            border-bottom: 1px solid var(--danger);
+            color: #FCA5A5;
+            padding: 10px 16px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: bold;
+            display: none;
+            z-index: 4;
+        }
+
+        .messages-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            user-select: text;
+            z-index: 2;
+        }
+
+        .messages-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .messages-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.15);
+            border-radius: 3px;
+        }
+
+        .msg-bubble {
+            max-width: 65%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.45;
+            word-break: break-word;
+            position: relative;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .msg-bubble:hover .msg-actions {
+            opacity: 1;
+        }
+
+        .msg-actions {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            opacity: 0;
+            transition: opacity 0.15s;
+            background: rgba(0,0,0,0.4);
+            border-radius: 4px;
+            padding: 2px 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .msg-bubble.me {
+            align-self: flex-end;
+            background: var(--bubble-me);
+            color: var(--text-primary);
+            border-top-right-radius: 2px;
+        }
+
+        .msg-bubble.other {
+            align-self: flex-start;
+            background: var(--bubble-other);
+            color: var(--text-primary);
+            border-top-left-radius: 2px;
+        }
+
+        .msg-sender {
+            font-size: 11px;
+            font-weight: bold;
+            color: var(--neon-green);
+            margin-bottom: 2px;
+        }
+
+        .msg-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            font-size: 10px;
+            color: rgba(255,255,255,0.6);
+            margin-top: 4px;
+        }
+
+        .quote-box {
+            background: rgba(24, 34, 41, 0.95);
+            border: 1px solid var(--gold);
+            border-radius: 10px;
+            padding: 14px;
+            margin: 4px 0;
+            color: #FFF;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .quote-badge-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .quote-badge {
+            background: rgba(255,215,0,0.2);
+            color: var(--gold);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .quote-folio {
+            font-size: 11px;
+            color: #94A3B8;
+            font-family: monospace;
+        }
+
+        .quote-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #FFF;
+        }
+
+        .quote-item-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #CBD5E1;
+            margin: 4px 0;
+        }
+
+        .quote-total-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--neon-green);
+            border-top: 1px dashed rgba(255,255,255,0.2);
+            padding-top: 8px;
+            margin-top: 8px;
+        }
+
+        .btn-copy-quote {
+            width: 100%;
+            background: rgba(0,255,127,0.15);
+            border: 1px solid var(--neon-green);
+            color: var(--neon-green);
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: 0.15s;
+        }
+
+        .btn-copy-quote:hover {
+            background: var(--neon-green);
+            color: #000;
+        }
+
+        .msg-photo {
+            max-width: 320px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: block;
+            margin-top: 4px;
+        }
+
+        .input-bar {
+            min-height: 62px;
+            background: var(--bg-panel);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-top: 1px solid var(--border);
+            z-index: 5;
+        }
+
+        .input-bar textarea {
+            flex: 1;
+            background: rgba(255,255,255,0.06);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            resize: none;
+            height: 42px;
+            line-height: 20px;
+        }
+
+        .btn-send {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: none;
+            color: #FFF;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.15s;
+        }
+
+        .btn-send:hover {
+            background: #00C49F;
+        }
+
+        /* 4. MODALES Y DIÁLOGOS */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(11, 20, 26, 0.94);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .dialog-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 520px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.8);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .dialog-card h3 {
+            margin-bottom: 16px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .field-group {
+            margin-bottom: 14px;
+        }
+
+        .field-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .field-group input, .field-group textarea {
+            width: 100%;
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 11px 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .field-group input:focus, .field-group textarea:focus {
+            border-color: var(--neon-green);
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: var(--accent);
+            color: #FFF;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: #00C49F;
+        }
+
+        /* QR VINCULACIÓN SEGURA ANTIESPIONAJE */
+        .qr-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 36px 32px;
+            width: 100%;
+            max-width: 680px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.85);
+            display: flex;
+            gap: 36px;
+            align-items: center;
+        }
+
+        @media (max-width: 680px) {
+            .qr-card { flex-direction: column; padding: 24px; gap: 20px; }
+        }
+
+        .qr-instructions {
+            flex: 1;
+            text-align: left;
+        }
+
+        .qr-instructions h2 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #FFF;
+            margin-bottom: 8px;
+        }
+
+        .qr-instructions ol {
+            padding-left: 20px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin: 16px 0;
+        }
+
+        .qr-instructions ol li {
+            margin-bottom: 8px;
+        }
+
+        .qr-box {
+            background: #FFFFFF;
+            padding: 16px;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            position: relative;
+        }
+
+        .qr-box img {
+            width: 220px;
+            height: 220px;
+            display: block;
+        }
+
+        .qr-reload-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            border-radius: 16px;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #FFF;
+            cursor: pointer;
+            text-align: center;
+            padding: 16px;
+        }
+
+        .settings-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px;
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+
+        .settings-item:hover {
+            border-color: var(--neon-green);
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-sidebar);
+            color: var(--text-primary);
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            transition: 0.15s;
+        }
+
+        .theme-option:hover {
+            border-color: var(--neon-green);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #202C33;
+            color: #FFF;
+            border: 1px solid var(--neon-green);
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+            z-index: 999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+
+        /* NUEVOS ESTILOS SUPER APP: LLAMADAS, AUDIO, ADJUNTOS Y GRUPOS */
+        .call-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(11, 20, 26, 0.95);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .call-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            max-width: 480px;
+            width: 90%;
+            padding: 30px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            position: relative;
+        }
+
+        .call-pulse-avatar {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            background: var(--neon-green);
+            color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 42px;
+            font-weight: 800;
+            margin-bottom: 20px;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+            box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.7);
+            animation: pulse-ring 1.8s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.6); }
+            70% { box-shadow: 0 0 0 25px rgba(0, 168, 132, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 168, 132, 0); }
+        }
+
+        .call-actions-row {
+            display: flex;
+            gap: 20px;
+            margin-top: 30px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .call-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .call-btn:hover { transform: scale(1.1); }
+        .call-btn.accept { background: #22C55E; color: #FFF; box-shadow: 0 4px 15px rgba(34,197,94,0.4); }
+        .call-btn.decline { background: #EF4444; color: #FFF; box-shadow: 0 4px 15px rgba(239,68,68,0.4); }
+        .call-btn.tool { background: rgba(255,255,255,0.15); color: #FFF; }
+        .call-btn.tool.active { background: #FFF; color: #000; }
+
+        /* VENTANA DE VIDEOLLAMADA ACTIVA */
+        .video-call-container {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #000;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .video-grid {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: #070B19;
+        }
+
+        .remote-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .local-video-pip {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            width: 180px;
+            height: 135px;
+            border-radius: 12px;
+            object-fit: cover;
+            border: 2px solid var(--neon-green);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            z-index: 10;
+            background: #000;
+        }
+
+        .call-controls-bar {
+            height: 85px;
+            background: rgba(17, 27, 33, 0.95);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            border-top: 1px solid var(--border);
+            z-index: 12;
+        }
+
+        /* REPRODUCTOR DE NOTA DE VOZ */
+        .audio-msg-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            min-width: 240px;
+            max-width: 300px;
+        }
+
+        .audio-play-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--neon-green);
+            color: #000;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.15s;
+        }
+        .audio-play-btn:hover { transform: scale(1.08); }
+
+        .audio-track-slider {
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.25);
+            position: relative;
+            cursor: pointer;
+        }
+
+        .audio-track-fill {
+            height: 100%;
+            background: var(--neon-green);
+            border-radius: 2px;
+            width: 0%;
+        }
+
+        /* DOCUMENTOS ADJUNTOS */
+        .doc-msg-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(0,0,0,0.2);
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.06);
+            max-width: 320px;
+            margin-top: 4px;
+        }
+
+        .doc-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
+            background: #7F66FF;
+            color: #FFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .doc-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .doc-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .doc-size {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .doc-btn-download {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--neon-green);
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.15s;
+        }
+        .doc-btn-download:hover { background: rgba(0,168,132,0.15); }
+
+        /* MENÚ POPUP DE ADJUNTOS (CLIP 📎) */
+        .attachment-popup {
+            position: absolute;
+            bottom: 65px;
+            left: 16px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 100;
+            width: 200px;
+            animation: popupFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes popupFade {
+            from { opacity: 0; transform: translateY(10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .attachment-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            color: var(--text-primary);
+            font-size: 13px;
+            transition: background 0.15s;
+        }
+
+        .attachment-item:hover {
+            background: rgba(255,255,255,0.06);
+        }
+
+        .attachment-item-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #FFF;
+        }
+
+        /* BARRA DE GRABACIÓN DE AUDIO FLOTANTE */
+        .voice-recording-bar {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-panel);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 10;
+        }
+
+        .recording-live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+
+        .rec-red-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #EF4444;
+            animation: pulse-dot 1s infinite alternate;
+        }
+
+        @keyframes pulse-dot {
+            from { opacity: 0.3; transform: scale(0.85); }
+            to { opacity: 1; transform: scale(1.15); }
+        }
+
+        /* FILTROS DE CHAT (TODOS, NO LEÍDOS, FAVORITOS, GRUPOS) */
+        .chat-filters-row {
+            display: flex;
+            gap: 8px;
+            padding: 6px 14px 10px;
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .chat-filters-row::-webkit-scrollbar { display: none; }
+
+        .filter-pill {
+            background: var(--bg-panel);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 4px 14px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: 0.15s;
+        }
+
+        .filter-pill:hover {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .filter-pill.active {
+            background: rgba(0, 168, 132, 0.18);
+            border-color: var(--neon-green);
+            color: var(--neon-green);
+            font-weight: 600;
+        }
+
+        /* MENSAJE ELIMINADO ESTILO WHATSAPP EXACTO */
+        .msg-deleted {
+            font-style: italic;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            user-select: none;
+        }
+
+    </style>
+</head>
+<body data-theme="default">
+
+    <!-- 1. PANTALLA DE VINCULACIÓN SEGURA (QR ESTILO WHATSAPP WEB) -->
+    <div id="loginModal" class="modal-overlay" style="display: none;">
+        <div class="qr-card">
+            <div class="qr-instructions">
+                <h2>Vincular con tu Celular</h2>
+                <p style="font-size: 13px; color: var(--neon-green); font-weight: bold;">🔒 Cero Espionaje | Autorización Física</p>
+                <ol>
+                    <li>Abre <b>NeoMessage</b> en tu celular.</li>
+                    <li>Toca los tres puntos (<b>⋮</b>) arriba o ve a <b>Ajustes</b>.</li>
+                    <li>Selecciona <b>Dispositivos Vinculados</b>.</li>
+                    <li>Toca el botón verde <b>VINCULAR UN DISPOSITIVO</b> y apunta tu cámara hacia este código QR.</li>
+                </ol>
+                <div style="margin-top: 12px;">
+                    <button style="background: none; border: none; color: var(--neon-green); font-size: 13px; font-weight: bold; cursor: pointer; text-decoration: underline;" onclick="toggleManualCodeLogin()">¿Vincular con código de 6 dígitos?</button>
+                </div>
+
+                <div id="manualCodeBox" style="display: none; margin-top: 14px; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Ingresa el código de 6 dígitos de tu pantalla de Dispositivos Vinculados:</div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="tel" id="inputSixDigits" placeholder="482910" maxlength="6" style="flex: 1; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: #FFF; font-size: 16px; font-weight: bold; text-align: center; letter-spacing: 4px;">
+                        <button class="btn-primary" style="width: auto; padding: 8px 16px; font-size: 12px;" onclick="verifySixDigitCode()">Vincular</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="qr-box">
+                <img id="qrImage" src="" alt="Código QR de Vinculación">
+                <div class="qr-reload-overlay" id="qrReloadOverlay" onclick="generateNewQRSession()">
+                    <span style="font-size: 32px; margin-bottom: 8px;">🔄</span>
+                    <span style="font-size: 12px; font-weight: bold;">Código expirado.<br>Clic para recargar</span>
+                </div>
+                <div style="margin-top: 8px; font-size: 11px; color: #334155; font-weight: bold; text-align: center;">Escanea desde tu app NeoMessage</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. MODALES DE ESTADOS (TEXTO Y STORIES) -->
+    <div id="textStatusModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card" style="max-width: 480px; text-align: center;">
+            <h3 style="color: var(--neon-green);">✏️ Publicar Estado de Texto</h3>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">Visible para tus contactos durante 24 horas.</p>
+
+            <div id="statusTextPreviewBox" style="background: #005C4B; border-radius: 12px; padding: 32px 20px; min-height: 180px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; transition: background 0.2s;">
+                <textarea id="textStatusInput" placeholder="Escribe lo que estás pensando..." style="background: transparent; border: none; outline: none; color: #FFF; font-size: 22px; font-weight: bold; text-align: center; width: 100%; resize: none;"></textarea>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Color de fondo:</label>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <div onclick="setTextStatusBg('#005C4B')" style="width: 32px; height: 32px; border-radius: 50%; background: #005C4B; cursor: pointer; border: 2px solid #FFF;"></div>
+                    <div onclick="setTextStatusBg('#1E3A8A')" style="width: 32px; height: 32px; border-radius: 50%; background: #1E3A8A; cursor: pointer; border: 2px solid transparent;"></div>
+                    <div onclick="setTextStatusBg('#6B21A8')" style="width: 32px; height: 32px; border-radius: 50%; background: #6B21A8; cursor: pointer; border: 2px solid transparent;"></div>
+                    <div onclick="setTextStatusBg('#991B1B')" style="width: 32px; height: 32px; border-radius: 50%; background: #991B1B; cursor: pointer; border: 2px solid transparent;"></div>
+                    <div onclick="setTextStatusBg('#0F172A')" style="width: 32px; height: 32px; border-radius: 50%; background: #0F172A; cursor: pointer; border: 2px solid transparent;"></div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('textStatusModal').style.display='none'">Cancelar</button>
+                <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="submitTextStatus()">Publicar Estado (24h)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VISUALIZADOR DE STORIES / ESTADOS -->
+    <div id="storyViewerOverlay" class="modal-overlay" style="display: none; background: rgba(0,0,0,0.96); z-index: 500;" onclick="closeStoryViewer()">
+        <div style="position: relative; width: 100%; max-width: 440px; height: 90vh; background: #000; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+            <div style="padding: 12px 14px 6px;">
+                <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden;">
+                    <div id="storyProgressBar" style="width: 0%; height: 100%; background: #FFF; transition: width 0.05s linear;"></div>
+                </div>
+            </div>
+
+            <div style="padding: 6px 14px; display: flex; align-items: center; justify-content: space-between; z-index: 2;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="chat-avatar" id="storyViewerAvatar" style="width: 36px; height: 36px; font-size: 15px; margin: 0;">N</div>
+                    <div>
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;" id="storyViewerName">Autor</div>
+                        <div style="font-size: 11px; color: #CBD5E1;" id="storyViewerTime">Hoy</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button id="storyDeleteBtn" style="background: none; border: none; color: #EF4444; font-size: 18px; cursor: pointer; display: none;" onclick="deleteCurrentViewingStory()" title="Eliminar Estado">🗑️</button>
+                    <button style="background: none; border: none; color: #FFF; font-size: 20px; cursor: pointer;" onclick="closeStoryViewer()">✕</button>
+                </div>
+            </div>
+
+            <div id="storyViewerContent" style="flex: 1; display: flex; align-items: center; justify-content: center; position: relative;"></div>
+            <div id="storyViewerCaption" style="padding: 14px; font-size: 14px; color: #FFF; text-align: center; background: linear-gradient(transparent, rgba(0,0,0,0.8));"></div>
+        </div>
+    </div>
+
+    <!-- 3. MODAL DE AJUSTES -->
+    <div id="settingsModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card">
+            <h3>⚙️ Ajustes de NeoMessage</h3>
+            
+            <div class="settings-item" onclick="openProfileModal()">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="dock-avatar" id="settingsProfilePic" style="width: 48px; height: 48px; margin: 0;">N</div>
+                    <div>
+                        <div style="font-weight: bold; font-size: 15px;" id="settingsProfileName">Usuario</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);" id="settingsProfilePhone">Teléfono</div>
+                    </div>
+                </div>
+                <span style="color: var(--neon-green); font-size: 13px; font-weight: bold;">Editar ✏️</span>
+            </div>
+
+            <div class="settings-item" onclick="switchSidebarTab('themes'); closeAllModals();">
+                <div>
+                    <div style="font-weight: bold; font-size: 14px;">🎨 Temas y Fondo de Pantalla</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Negro OLED, Cyber Blue, Esmeralda o foto de PC.</div>
+                </div>
+                <span>➔</span>
+            </div>
+
+            <div class="settings-item" onclick="openBlockedContactsModal()">
+                <div>
+                    <div style="font-weight: bold; font-size: 14px;">🚫 Contactos Bloqueados</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Administrar lista de contactos bloqueados.</div>
+                </div>
+                <span>➔</span>
+            </div>
+
+            <div class="settings-item" onclick="openLegalModal()">
+                <div>
+                    <div style="font-weight: bold; font-size: 14px;">📜 Aviso de Privacidad y Deslinde Legal</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Convenio de Berna, OMPI y LFPDPPP.</div>
+                </div>
+                <span>➔</span>
+            </div>
+
+            <div class="settings-item" style="border-color: rgba(239, 68, 68, 0.4);" onclick="doLogout()">
+                <div style="color: var(--danger); font-weight: bold;">🚪 Cerrar Sesión en esta Computadora</div>
+                <span style="color: var(--danger);">➔</span>
+            </div>
+
+            <div style="margin-top: 16px;">
+                <button class="btn-primary" style="background: #334155;" onclick="closeAllModals()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: EDITAR MI PERFIL -->
+    <div id="profileModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card" style="max-width: 440px; text-align: center;">
+            <h3>👤 Mi Perfil</h3>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 20px;">Los cambios se sincronizan en vivo con tu celular.</p>
+
+            <div style="position: relative; width: 90px; height: 90px; margin: 0 auto 16px;">
+                <div class="dock-avatar" id="editAvatarPreview" style="width: 90px; height: 90px; font-size: 36px; margin: 0;">N</div>
+                <input type="file" id="profilePhotoInput" accept="image/*" style="display: none;" onchange="handleProfilePhotoSelected(this)">
+                <button onclick="document.getElementById('profilePhotoInput').click()" style="position: absolute; bottom: 0; right: 0; background: var(--accent); border: none; border-radius: 50%; width: 32px; height: 32px; color: #FFF; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.5);" title="Cambiar Foto">📷</button>
+            </div>
+
+            <div class="field-group" style="text-align: left;">
+                <label>Tu Nombre o Alias:</label>
+                <input type="text" id="editProfileName" placeholder="Tu Nombre">
+            </div>
+
+            <div class="field-group" style="text-align: left;">
+                <label>Info / Estado (Bio):</label>
+                <input type="text" id="editProfileStatus" placeholder="Disponible en NeoMessage">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('profileModal').style.display='none'">Cancelar</button>
+                <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="saveProfileChanges()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CONTACTOS BLOQUEADOS -->
+    <div id="blockedModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card">
+            <h3>🚫 Contactos Bloqueados</h3>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px;">Estos contactos no pueden llamarte ni enviarte mensajes.</p>
+            <div id="blockedListContainer" style="max-height: 250px; overflow-y: auto; margin-bottom: 16px;"></div>
+            <button class="btn-primary" style="background: #334155;" onclick="document.getElementById('blockedModal').style.display='none'">Volver a Ajustes</button>
+        </div>
+    </div>
+
+    <!-- MODAL: LEGAL Y PRIVACIDAD -->
+    <div id="legalModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card">
+            <h3>📜 Marco Legal y Deslinde de Marcas</h3>
+            <div style="font-size: 13px; line-height: 1.6; color: var(--text-secondary); max-height: 320px; overflow-y: auto; padding-right: 8px; text-align: left;">
+                <h4 style="color: var(--neon-green); margin-bottom: 4px;">Certificado de Originalidad (Convenio de Berna)</h4>
+                <p style="margin-bottom: 12px;">NeoMessage es una plataforma soberana desarrollada de forma independiente. Cero afiliación con Meta Platforms Inc., WhatsApp LLC o Telegram FZ-LLC.</p>
+                <h4 style="color: var(--gold); margin-bottom: 4px;">Aviso de Privacidad Integral (LFPDPPP)</h4>
+                <p>La arquitectura de NeoMessage implementa encriptación punto a punto y protocolo Zero-Trace.</p>
+            </div>
+            <button class="btn-primary" style="margin-top: 16px;" onclick="document.getElementById('legalModal').style.display='none'">Entendido</button>
+        </div>
+    </div>
+
+    <!-- DIÁLOGO: CREAR COTIZACIÓN RÁPIDA -->
+    <div id="quoteModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card">
+            <h3 style="color: var(--gold);">📋 Nueva Cotización Rápida</h3>
+            <div class="field-group">
+                <label>Oficio / Especialidad:</label>
+                <input type="text" id="qOficio" value="HERRERÍA Y TALLER">
+            </div>
+            <div class="field-group">
+                <label>Concepto del Trabajo:</label>
+                <input type="text" id="qConcept" placeholder="Ej: Portón corredizo 3x2m con pintura">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="field-group" style="flex: 1;">
+                    <label>Materiales ($ MXN):</label>
+                    <input type="number" id="qMaterials" value="0" oninput="calculateQuoteTotal()">
+                </div>
+                <div class="field-group" style="flex: 1;">
+                    <label>Mano de Obra ($ MXN):</label>
+                    <input type="number" id="qLabor" value="0" oninput="calculateQuoteTotal()">
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="field-group" style="flex: 1;">
+                    <label>Anticipo ($ MXN):</label>
+                    <input type="number" id="qAdvance" value="0" oninput="calculateQuoteTotal()">
+                </div>
+                <div class="field-group" style="flex: 1;">
+                    <label>Garantía:</label>
+                    <input type="text" id="qWarranty" value="60 días">
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Condiciones y Notas:</label>
+                <input type="text" id="qNotes" placeholder="Tiempo estimado de entrega, forma de liquidación...">
+            </div>
+            <div style="background: rgba(0,255,127,0.1); border: 1px solid var(--neon-green); border-radius: 8px; padding: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; font-weight: bold;">
+                <span>Total Presupuestado:</span>
+                <span id="qTotalDisplay" style="color: var(--neon-green);">$0.00 MXN</span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('quoteModal').style.display='none'">Cancelar</button>
+                <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="submitQuote()">Enviar al Chat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DIÁLOGO: AGREGAR CONTACTO NUEVO -->
+    <div id="addContactModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card">
+            <h3 style="color: var(--neon-green);">👤 Añadir Contacto</h3>
+            <div class="field-group">
+                <label>Nombre o Alias del Contacto:</label>
+                <input type="text" id="newContactName" placeholder="Ej: Carlos Herrero">
+            </div>
+            <div class="field-group">
+                <label>Número Telefónico (10 dígitos):</label>
+                <input type="tel" id="newContactPhone" placeholder="Ej: 9611234567" maxlength="15">
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+                <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('addContactModal').style.display='none'">Cancelar</button>
+                <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="saveNewContact()">Guardar Contacto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTENEDOR PRINCIPAL ESCRITORIO -->
+    
+    <!-- MODAL: CREAR GRUPO ILIMITADO (HASTA 1,000,000+ MIEMBROS) -->
+    <div id="createGroupModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card" style="max-width: 480px;">
+            <h3 style="color: var(--neon-green);">👥 Crear Nuevo Grupo</h3>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">Grupos masivos sin límite arbitrario de participantes.</p>
+            
+            <div class="field-group">
+                <label>Nombre del Grupo:</label>
+                <input type="text" id="newGroupName" placeholder="Ej: Vecinos Unidos / Ventas Mayoreo">
+            </div>
+            <div class="field-group">
+                <label>Descripción del Grupo (opcional):</label>
+                <input type="text" id="newGroupDesc" placeholder="Reglas o propósito del grupo">
+            </div>
+
+            <label style="font-size: 12px; color: var(--text-secondary); margin-top: 10px; display: block;">Seleccionar participantes iniciales:</label>
+            <div id="groupMembersList" style="max-height: 180px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--border); padding: 8px; margin-top: 6px;"></div>
+
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+                <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('createGroupModal').style.display='none'">Cancelar</button>
+                <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="submitCreateGroup()">Crear Grupo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: PREVISUALIZAR IMAGEN PEGADA DEL PORTAPAPELES (Ctrl+V) -->
+    <div id="pastePreviewModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card" style="max-width: 440px;">
+            <h3 style="color: var(--neon-green);">🖼️ Enviar Imagen del Portapapeles</h3>
+            <div style="width: 100%; max-height: 300px; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 10px; overflow: hidden; margin: 12px 0;">
+                <img id="pastedImagePreview" style="max-width: 100%; max-height: 280px; object-fit: contain;">
+            </div>
+            <div class="field-group">
+                <input type="text" id="pastedImageCaption" placeholder="Añadir un comentario..." onkeydown="if(event.key==='Enter') sendPastedImage();">
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 14px;">
+                <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="cancelPastedImage()">Cancelar</button>
+                <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="sendPastedImage()">Enviar ➤</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: LLAMADA SALIENTE -->
+    <div id="outgoingCallOverlay" class="call-overlay" style="display: none;">
+        <div class="call-card">
+            <div class="call-pulse-avatar" id="outCallAvatar">C</div>
+            <h2 id="outCallName" style="color: #FFF; font-size: 22px; margin-bottom: 6px;">Contacto</h2>
+            <div id="outCallType" style="color: var(--neon-green); font-size: 14px; margin-bottom: 12px;">Llamando...</div>
+            <div class="call-actions-row">
+                <button class="call-btn decline" onclick="cancelOutgoingCall()" title="Colgar llamada">🔴</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: LLAMADA ENTRANTE -->
+    <div id="incomingCallOverlay" class="call-overlay" style="display: none;">
+        <div class="call-card">
+            <div class="call-pulse-avatar" id="incCallAvatar">C</div>
+            <h2 id="incCallName" style="color: #FFF; font-size: 22px; margin-bottom: 6px;">Contacto</h2>
+            <div id="incCallType" style="color: var(--neon-green); font-size: 14px; margin-bottom: 12px;">Videollamada entrante...</div>
+            <div class="call-actions-row">
+                <button class="call-btn decline" onclick="declineIncomingCall()" title="Rechazar">❌</button>
+                <button class="call-btn accept" onclick="acceptIncomingCall()" title="Aceptar">📞</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANTALLA: LLAMADA ACTIVA (VIDEO O VOZ HD) -->
+    <div id="activeCallOverlay" class="video-call-container" style="display: none;">
+        <div class="video-grid" id="videoGridArea">
+            <!-- Si es llamada de voz -->
+            <div id="voiceCallCenterView" style="display: none; flex-direction: column; align-items: center; justify-content: center;">
+                <div class="call-pulse-avatar" id="activeVoiceAvatar" style="width: 140px; height: 140px; font-size: 50px;">C</div>
+                <h2 id="activeVoiceName" style="color: #FFF; font-size: 24px; margin-bottom: 8px;">Contacto</h2>
+                <div id="activeVoiceTimer" style="color: var(--neon-green); font-size: 18px; font-weight: 600;">00:00</div>
+            </div>
+
+            <!-- Si es videollamada -->
+            <video id="remoteVideoElement" class="remote-video" autoplay playsinline></video>
+            <video id="localVideoElement" class="local-video-pip" autoplay playsinline muted></video>
+            <div id="activeCallTimerBadge" style="position: absolute; top: 24px; left: 24px; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; color: #FFF; font-size: 14px; font-weight: bold; border: 1px solid var(--border);">00:00</div>
+        </div>
+
+        <div class="call-controls-bar">
+            <button class="call-btn tool" id="btnToggleMic" onclick="toggleCallMic()" title="Silenciar / Activar Micrófono">🎤</button>
+            <button class="call-btn tool" id="btnToggleCam" onclick="toggleCallCam()" title="Encender / Apagar Cámara">📹</button>
+            <button class="call-btn tool" id="btnScreenShare" onclick="toggleScreenShare()" title="Compartir Pantalla">🖥️</button>
+            <button class="call-btn decline" onclick="hangUpActiveCall()" title="Finalizar Llamada">🔴</button>
+        </div>
+    </div>
+
+    <div class="desktop-app">
+        <!-- 1. DOCK BAR LATERAL -->
+        <div class="dock-bar">
+            <div class="dock-logo" title="NeoMessage Desktop">N</div>
+            
+            
+            <button class="dock-btn active" id="dockBtnChats" onclick="switchSidebarTab('chats')" title="Chats">💬</button>
+            <button class="dock-btn" id="dockBtnCalls" onclick="switchSidebarTab('calls')" title="Llamadas y Videollamadas">📞</button>
+            <button class="dock-btn" id="dockBtnStatus" onclick="switchSidebarTab('status')" title="Estados (24 horas)">⭕</button>
+            <button class="dock-btn" id="dockBtnContacts" onclick="switchSidebarTab('contacts')" title="Contactos">👥</button>
+            <button class="dock-btn" id="dockBtnQuotes" onclick="switchSidebarTab('quotes')" title="Herramientas & Cotizaciones">📋</button>
+            <button class="dock-btn" id="dockBtnThemes" onclick="switchSidebarTab('themes')" title="Temas y Fondos">🎨</button>
+            <button class="dock-btn" id="dockBtnSettings" onclick="openSettingsModal()" title="Ajustes">⚙️</button>
+
+            <div class="dock-bottom">
+                <button class="dock-btn" id="installBtn" style="display:none;" onclick="installPWA()" title="Instalar App en Windows">📥</button>
+                <button class="dock-btn" onclick="doLogout()" title="Cerrar Sesión" style="color: var(--danger);">🚪</button>
+                <div class="dock-avatar" id="myDockAvatar" onclick="openProfileModal()" title="Mi Perfil">N</div>
+            </div>
+        </div>
+
+        <!-- 2. SIDEBAR DE CONTENIDO -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title" id="sidebarTitle">Chats</div>
+                <div class="header-actions">
+                    <button class="icon-btn" onclick="openAddContactModal()" title="Nuevo Chat / Contacto">➕</button>
+                    <button class="icon-btn" onclick="openSettingsModal()" title="Ajustes">⋮</button>
+                </div>
+            </div>
+
+
+            <div class="search-container" id="searchContainerBox">
+                <div class="search-box">
+                    <span>🔍</span>
+                    <input type="text" id="searchFilter" placeholder="Buscar o empezar un nuevo chat..." oninput="handleSearchFilter(this.value)">
+                </div>
+            </div>
+
+            <!-- FILTROS DE CHAT AL ESTILO WHATSAPP DESKTOP -->
+            <div class="chat-filters-row" id="chatFiltersRow">
+                <div class="filter-pill active" onclick="setChatFilter('all', this)">Todos</div>
+                <div class="filter-pill" onclick="setChatFilter('unread', this)">No leídos</div>
+                <div class="filter-pill" onclick="setChatFilter('groups', this)">Grupos</div>
+                <div class="filter-pill" onclick="setChatFilter('favorites', this)">Favoritos</div>
+            </div>
+
+            <!-- PESTAÑA 1: CHATS -->
+            <div class="tab-content active" id="tabChats"></div>
+
+            
+            <!-- PESTAÑA: LLAMADAS -->
+            <div class="tab-content" id="tabCalls">
+                <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
+                    <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Historial de Llamadas</span>
+                    <button class="btn-primary" style="padding: 6px 12px; font-size: 11px;" onclick="promptStartNewCall()">📞 Nueva Llamada</button>
+                </div>
+                <div id="callsHistoryList"></div>
+            </div>
+
+            <!-- PESTAÑA 2: ESTADOS (IDÉNTICO A WHATSAPP DESKTOP) -->
+            <div class="tab-content" id="tabStatus">
+                <!-- MI ESTADO -->
+                <div id="myStatusSection"></div>
+
+                <!-- ESTADOS RECIENTES -->
+                <div class="section-label">Reciente</div>
+                <div id="recentStatusSection"></div>
+
+                <!-- ESTADOS VISTOS -->
+                <div class="section-label" id="viewedSectionLabel" style="display: none;">Visto</div>
+                <div id="viewedStatusSection"></div>
+            </div>
+
+            <!-- PESTAÑA 3: CONTACTOS -->
+            <div class="tab-content" id="tabContacts"></div>
+
+            <!-- PESTAÑA 4: COTIZADOR & PRODUCTIVIDAD -->
+            <div class="tab-content" id="tabQuotes">
+                <div style="padding: 16px;">
+                    <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                        <h4 style="color: var(--gold); margin-bottom: 8px;">📋 Centro de Cotizaciones</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">Elabora presupuestos formales para tus clientes con cálculos automáticos.</p>
+                        <button class="btn-primary" style="background: var(--gold); color: #000;" onclick="openQuoteModal()">➕ Crear Cotización</button>
+                    </div>
+
+                    <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
+                        <h4 style="color: var(--neon-green); margin-bottom: 8px;">📌 Mis Notas Personales</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">Tu espacio privado para recordatorios, textos e imágenes.</p>
+                        <button class="btn-primary" onclick="openSelfChat()">Abrir Mis Notas</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PESTAÑA 5: TEMAS Y FONDO -->
+            <div class="tab-content" id="tabThemes">
+                <div style="padding: 16px;">
+                    <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                        <h4 style="margin-bottom: 6px;">🎨 Selector de Tema</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">Elige el tema de colores que prefieras:</p>
+                        <div class="theme-grid">
+                            <div class="theme-option" onclick="setAppTheme('default')">🟢 Neo Clásico</div>
+                            <div class="theme-option" onclick="setAppTheme('oled')">🌑 Negro OLED</div>
+                            <div class="theme-option" onclick="setAppTheme('cyber')">🔵 Cyber Blue</div>
+                            <div class="theme-option" onclick="setAppTheme('emerald')">🌿 Esmeralda</div>
+                            <div class="theme-option" onclick="setAppTheme('light')">☀️ Modo Claro</div>
+                        </div>
+                    </div>
+
+                    <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
+                        <h4 style="margin-bottom: 6px;">🖼️ Fondo de Chat Personalizado</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">Elige cualquier imagen de tu PC como tapiz de fondo:</p>
+                        <input type="file" id="wallpaperPicker" accept="image/*" style="display: none;" onchange="handleWallpaperUpload(this)">
+                        <button class="btn-primary" style="background: #334155;" onclick="document.getElementById('wallpaperPicker').click()">Elegir Imagen de PC...</button>
+                        <button style="width: 100%; background: none; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 8px; padding: 8px; margin-top: 8px; font-size: 12px; cursor: pointer;" onclick="clearWallpaper()">Quitar Fondo Personalizado</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. PANEL DERECHO: PANTALLA PRINCIPAL -->
+        <div class="main-chat" id="mainChatPane">
+            <div class="chat-wallpaper-overlay"></div>
+
+            <!-- PANTALLA BIENVENIDA DE CHATS -->
+            <div class="empty-placeholder" id="emptyPlaceholder">
+                <div class="logo-circle">N</div>
+                <h2>NeoMessage para Computadora</h2>
+                <p>Envía y recibe mensajes sin necesidad de mantener el celular conectado todo el tiempo. Sincronizado punto a punto.</p>
+            </div>
+
+            <!-- PANTALLA DERECHA DE ESTADOS (IDÉNTICO A LA CAPTURA DE WHATSAPP DESKTOP) -->
+            <div class="status-welcome-view" id="statusWelcomePane" style="display: none;">
+                <div class="status-welcome-ring">⭕</div>
+                <h2>Comparte estados</h2>
+                <p>Comparte fotos, videos y texto que desaparecen después de 24 horas.</p>
+
+                <div class="status-action-buttons">
+                    <div class="status-circle-btn" onclick="openTextStatusModal()">
+                        <div class="status-circle-icon">✏️</div>
+                        <span>Estado de texto</span>
+                    </div>
+
+                    <input type="file" id="statusPhotoInput" accept="image/*,video/*" style="display: none;" onchange="handleStatusMediaSelected(this)">
+                    <div class="status-circle-btn" onclick="document.getElementById('statusPhotoInput').click()">
+                        <div class="status-circle-icon">📷</div>
+                        <span>Foto y video</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SALA DE CHAT ACTIVA -->
+            <div id="activeChatBox" style="display: none; flex-direction: column; height: 100%; position: relative; z-index: 2;">
+                <div class="chat-header">
+                    <div class="chat-header-info" onclick="toggleDropdownMenu()">
+                        <div class="chat-avatar" id="activeAvatar" style="width: 40px; height: 40px; font-size: 16px; margin: 0;">C</div>
+                        <div>
+                            <div class="chat-header-name" id="activeChatName">Contacto</div>
+                            <div class="chat-header-status" id="activeChatSubtitle">en línea</div>
+                        </div>
+                    </div>
+
+                    <div class="header-actions">
+                        <button class="icon-btn" onclick="startCall('video')" title="Videollamada">📹</button>
+                        <button class="icon-btn" onclick="startCall('voice')" title="Llamada de voz">📞</button>
+                        <button class="icon-btn" onclick="toggleChatSearch()" title="Buscar en este chat">🔍</button>
+                        <button class="icon-btn" onclick="openQuoteModal()" title="Crear Cotización">📋</button>
+                        <button class="icon-btn" onclick="toggleDropdownMenu()" title="Opciones del Chat">⋮</button>
+                        
+                        <!-- MENÚ DESPLEGABLE CON ACCIONES COMPLETAS -->
+                        <div class="dropdown-menu" id="chatDropdownMenu">
+                            <div class="dropdown-item" onclick="openCreateGroupModal(); toggleDropdownMenu();">👥 Crear Grupo con este Contacto</div>
+                            <div class="dropdown-item" onclick="openQuoteModal(); toggleDropdownMenu();">📋 Enviar Cotización</div>
+                            <div class="dropdown-item" onclick="clearActiveChatMessages(); toggleDropdownMenu();">🗑️ Vaciar Mensajes del Chat</div>
+                            <div class="dropdown-item danger" onclick="deleteActiveChatEntirely(); toggleDropdownMenu();">❌ Eliminar Chat y Borrar Todo Rastro</div>
+                            <div class="dropdown-item danger" id="btnBlockToggle" onclick="toggleBlockContact(); toggleDropdownMenu();">🚫 Bloquear Contacto</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="blocked-banner" id="blockedBanner">
+                    🚫 Has bloqueado a este contacto. No puedes enviarle mensajes ni recibir de él.
+                </div>
+
+                <div class="messages-scroll" id="messagesList"></div>
+
+                <div class="input-bar" id="chatInputBar" style="position: relative;">
+                    <!-- MENÚ EMERGENTE DE ADJUNTOS TIPO WHATSAPP -->
+                    <div class="attachment-popup" id="attachmentPopup" style="display: none;">
+                        <div class="attachment-item" onclick="document.getElementById('docPicker').click(); toggleAttachmentPopup();">
+                            <div class="attachment-item-icon" style="background: #7F66FF;">📄</div>
+                            <span>Documento</span>
+                        </div>
+                        <div class="attachment-item" onclick="document.getElementById('mediaPicker').click(); toggleAttachmentPopup();">
+                            <div class="attachment-item-icon" style="background: #007BFC;">📷</div>
+                            <span>Fotos y videos</span>
+                        </div>
+                        <div class="attachment-item" onclick="openQuoteModal(); toggleAttachmentPopup();">
+                            <div class="attachment-item-icon" style="background: #00A884;">📋</div>
+                            <span>Cotización</span>
+                        </div>
+                    </div>
+
+                    <!-- PICKERS OCULTOS PARA DOCUMENTOS Y MULTIMEDIA -->
+                    <input type="file" id="mediaPicker" accept="image/*,video/*" style="display: none;" onchange="handleMediaSelected(this)">
+                    <input type="file" id="docPicker" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.apk,*" style="display: none;" onchange="handleDocumentSelected(this)">
+
+                    <button class="icon-btn" id="btnAttachment" onclick="toggleAttachmentPopup()" title="Adjuntar archivo o multimedia">📎</button>
+                    <button class="icon-btn" onclick="insertEmoji('😊')" title="Emojis">😊</button>
+                    
+                    <textarea id="messageInput" placeholder="Escribe un mensaje..." oninput="handleMessageInputChange(this)" onkeydown="handleInputKey(event)"></textarea>
+                    
+                    <!-- BOTÓN DE MICRÓFONO O ENVIAR SEGÚN EL TEXTO -->
+                    <button class="icon-btn" id="btnVoiceRecord" onclick="startVoiceRecording()" title="Grabar nota de voz" style="color: var(--neon-green); font-size: 20px;">🎤</button>
+                    <button class="btn-send" id="btnSendMsg" onclick="sendMessage()" title="Enviar" style="display: none;">➤</button>
+
+                    <!-- BARRA FLOTANTE DE GRABACIÓN DE NOTA DE VOZ -->
+                    <div class="voice-recording-bar" id="voiceRecordingBar" style="display: none;">
+                        <div class="recording-live-indicator">
+                            <div class="rec-red-dot"></div>
+                            <span>Grabando audio...</span>
+                            <span id="voiceRecTimer" style="font-weight: bold; margin-left: 8px;">0:00</span>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="icon-btn" onclick="cancelVoiceRecording()" title="Cancelar grabación" style="color: var(--danger);">🗑️</button>
+                            <button class="btn-send" onclick="stopAndSendVoiceRecording()" title="Enviar nota de voz" style="background: var(--neon-green); width: 38px; height: 38px;">➤</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // FIREBASE INICIALIZACIÓN
+        const firebaseConfig = {
+            databaseURL: "https://neomessage-19ab4-default-rtdb.firebaseio.com"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        
+        // ========================================================
+        // 1. SISTEMA DE PRESENCIA Y ÚLTIMA CONEXIÓN EN TIEMPO REAL
+        // ========================================================
+        let presenceListenerRef = null;
+        let activeContactPresenceRef = null;
+
+        function initPresenceSystem() {
+            if (!myPhone) return;
+            const myPresenceRef = db.ref(`users/${myPhone}`);
+            const connectedRef = db.ref('.info/connected');
+
+            connectedRef.on('value', snap => {
+                if (snap.val() === true) {
+                    // PC conectada
+                    myPresenceRef.update({
+                        online: true,
+                        status: 'Conectado',
+                        lastSeen: firebase.database.ServerValue.TIMESTAMP
+                    });
+
+                    // Al desconectarse / cerrar ventana
+                    myPresenceRef.onDisconnect().update({
+                        online: false,
+                        status: 'Desconectado',
+                        lastSeen: firebase.database.ServerValue.TIMESTAMP
+                    });
+                }
+            });
+        }
+
+        function listenActiveContactPresence(phone) {
+            if (activeContactPresenceRef) activeContactPresenceRef.off();
+            if (!phone || phone === myPhone) return;
+
+            activeContactPresenceRef = db.ref(`users/${phone}`);
+            activeContactPresenceRef.on('value', snap => {
+                const u = snap.val();
+                const subEl = document.getElementById('activeChatSubtitle');
+                if (!subEl) return;
+
+                if (u && (u.online === true || u.status === 'Conectado' || u.status === 'Online')) {
+                    subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">en línea</span>';
+                } else if (u && u.lastSeen) {
+                    subEl.innerText = formatLastSeenText(u.lastSeen);
+                } else {
+                    subEl.innerText = 'desconectado';
+                }
+            });
+        }
+
+        function formatLastSeenText(ts) {
+            if (!ts) return 'desconectado';
+            const d = new Date(ts);
+            const now = new Date();
+            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            const isToday = d.toDateString() === now.toDateString();
+            const yesterday = new Date(now);
+            yesterday.setDate(now.getDate() - 1);
+            const isYesterday = d.toDateString() === yesterday.toDateString();
+
+            if (isToday) {
+                return `últ. vez hoy a la(s) ${timeStr}`;
+            } else if (isYesterday) {
+                return `últ. vez ayer a la(s) ${timeStr}`;
+            } else {
+                const dateStr = d.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
+                return `últ. vez el ${dateStr} a la(s) ${timeStr}`;
+            }
+        }
+
+        // ========================================================
+        // 2. SISTEMA DE LLAMADAS Y VIDEOLLAMADAS HD (WebRTC & FIREBASE)
+        // ========================================================
+        let currentCall = null;
+        let peerConnection = null;
+        let localMediaStream = null;
+        let callDurationSeconds = 0;
+        let callTimerInterval = null;
+        let audioRingOsc = null;
+        let audioContext = null;
+        let callsHistory = JSON.parse(localStorage.getItem('neo_calls_history') || '[]');
+
+        function getAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') audioContext.resume();
+            return audioContext;
+        }
+
+        function playPhoneTone(type) {
+            try {
+                stopPhoneTone();
+                const ctx = getAudioContext();
+                if (type === 'ringback') {
+                    // Tono de timbrado de llamada saliente (Tuuut ... Tuuut)
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    audioRingOsc = { osc, gain, ctx };
+                } else if (type === 'ringtone') {
+                    // Tono melodioso de llamada entrante
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+                    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    audioRingOsc = { osc, gain, ctx };
+                }
+            } catch (_) {}
+        }
+
+        function stopPhoneTone() {
+            if (audioRingOsc) {
+                try {
+                    audioRingOsc.osc.stop();
+                    audioRingOsc.osc.disconnect();
+                } catch (_) {}
+                audioRingOsc = null;
+            }
+        }
+
+        async function startCall(callType) {
+            if (!currentRecipient || currentRecipient === myPhone) {
+                alert('Selecciona primero un contacto para llamar.');
+                return;
+            }
+
+            try {
+                // Solicitar micrófono y opcionalmente cámara
+                const constraints = {
+                    audio: true,
+                    video: callType === 'video' ? { width: 1280, height: 720 } : false
+                };
+                localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                const cleanMy = myPhone.replace(/\D/g, '');
+                const cleanOther = currentRecipient.replace(/\D/g, '');
+                const callChannel = `call_${cleanMy}_${cleanOther}`;
+                const callId = `call_${Date.now()}_${cleanMy}`;
+
+                currentCall = {
+                    id: callId,
+                    type: callType,
+                    callerPhone: myPhone,
+                    callerName: myName,
+                    receiverPhone: currentRecipient,
+                    receiverName: currentContactName,
+                    channel: callChannel,
+                    isOutgoing: true
+                };
+
+                // UI Llamada saliente
+                document.getElementById('outCallName').innerText = currentContactName;
+                document.getElementById('outCallAvatar').innerText = currentContactName.charAt(0).toUpperCase();
+                document.getElementById('outCallType').innerText = callType === 'video' ? 'Videollamada...' : 'Llamada de voz...';
+                document.getElementById('outgoingCallOverlay').style.display = 'flex';
+                playPhoneTone('ringback');
+
+                // Publicar en Firebase para timbrar en PC o celular destino
+                const callPayload = {
+                    id: callId,
+                    type: callType,
+                    callerPhone: myPhone,
+                    callerName: myName,
+                    receiverPhone: currentRecipient,
+                    receiverName: currentContactName,
+                    channel: callChannel,
+                    status: 'ringing',
+                    timestamp: Date.now()
+                };
+                db.ref(`calls/${callId}`).set(callPayload);
+
+                // Notificar vía Relay local también (<1ms)
+                fetch('/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: currentRecipient,
+                        chatId: currentChatId,
+                        message: { text: `[NEO_CALL]|${callType}|${callChannel}`, senderId: myPhone, timestamp: Date.now() }
+                    })
+                }).catch(() => {});
+
+                // Escuchar respuesta
+                db.ref(`calls/${callId}/status`).on('value', snap => {
+                    const status = snap.val();
+                    if (status === 'accepted') {
+                        stopPhoneTone();
+                        document.getElementById('outgoingCallOverlay').style.display = 'none';
+                        showActiveCallUI();
+                    } else if (status === 'declined' || status === 'ended') {
+                        stopPhoneTone();
+                        cleanupCall();
+                        showToast('Llamada finalizada');
+                    }
+                });
+
+            } catch (err) {
+                console.error(err);
+                alert('No se pudo acceder al micrófono o cámara: ' + err.message);
+            }
+        }
+
+        function listenForIncomingCalls() {
+            if (!myPhone) return;
+            const cleanMy = myPhone.replace(/\D/g, '');
+
+            db.ref('calls').orderByChild('receiverPhone').equalTo(myPhone).limitToLast(5).on('child_added', snap => {
+                const call = snap.val();
+                if (!call || call.status !== 'ringing') return;
+                // Si la llamada tiene más de 60 segundos, ignorar
+                if (Date.now() - call.timestamp > 60000) return;
+
+                currentCall = {
+                    id: call.id,
+                    type: call.type,
+                    callerPhone: call.callerPhone,
+                    callerName: call.callerName,
+                    channel: call.channel,
+                    isOutgoing: false
+                };
+
+                document.getElementById('incCallName').innerText = call.callerName || call.callerPhone;
+                document.getElementById('incCallAvatar').innerText = (call.callerName || 'C').charAt(0).toUpperCase();
+                document.getElementById('incCallType').innerText = call.type === 'video' ? 'Videollamada entrante...' : 'Llamada de voz entrante...';
+                document.getElementById('incomingCallOverlay').style.display = 'flex';
+                playPhoneTone('ringtone');
+
+                // Escuchar si cancelan antes de contestar
+                db.ref(`calls/${call.id}/status`).on('value', s => {
+                    if (s.val() === 'ended' || s.val() === 'declined') {
+                        stopPhoneTone();
+                        document.getElementById('incomingCallOverlay').style.display = 'none';
+                    }
+                });
+            });
+        }
+
+        async function acceptIncomingCall() {
+            stopPhoneTone();
+            document.getElementById('incomingCallOverlay').style.display = 'none';
+            if (!currentCall) return;
+
+            try {
+                const constraints = {
+                    audio: true,
+                    video: currentCall.type === 'video' ? { width: 1280, height: 720 } : false
+                };
+                localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+                db.ref(`calls/${currentCall.id}/status`).set('accepted');
+                showActiveCallUI();
+            } catch (err) {
+                alert('Error al acceder a micrófono o cámara: ' + err.message);
+                declineIncomingCall();
+            }
+        }
+
+        function declineIncomingCall() {
+            stopPhoneTone();
+            document.getElementById('incomingCallOverlay').style.display = 'none';
+            if (currentCall) {
+                db.ref(`calls/${currentCall.id}/status`).set('declined');
+                logCallToHistory(currentCall, 'Rechazada');
+                currentCall = null;
+            }
+        }
+
+        function cancelOutgoingCall() {
+            stopPhoneTone();
+            document.getElementById('outgoingCallOverlay').style.display = 'none';
+            if (currentCall) {
+                db.ref(`calls/${currentCall.id}/status`).set('ended');
+                logCallToHistory(currentCall, 'Cancelada');
+                cleanupCall();
+            }
+        }
+
+        function showActiveCallUI() {
+            const overlay = document.getElementById('activeCallOverlay');
+            overlay.style.display = 'flex';
+
+            const localVid = document.getElementById('localVideoElement');
+            const remoteVid = document.getElementById('remoteVideoElement');
+            const voiceView = document.getElementById('voiceCallCenterView');
+
+            if (currentCall.type === 'video') {
+                voiceView.style.display = 'none';
+                localVid.style.display = 'block';
+                remoteVid.style.display = 'block';
+                localVid.srcObject = localMediaStream;
+            } else {
+                voiceView.style.display = 'flex';
+                localVid.style.display = 'none';
+                remoteVid.style.display = 'none';
+                document.getElementById('activeVoiceName').innerText = currentCall.isOutgoing ? currentCall.receiverName : currentCall.callerName;
+                document.getElementById('activeVoiceAvatar').innerText = (currentCall.isOutgoing ? currentCall.receiverName : currentCall.callerName).charAt(0).toUpperCase();
+            }
+
+            // Iniciar temporizador de llamada
+            callDurationSeconds = 0;
+            if (callTimerInterval) clearInterval(callTimerInterval);
+            callTimerInterval = setInterval(() => {
+                callDurationSeconds++;
+                const mins = String(Math.floor(callDurationSeconds / 60)).padStart(2, '0');
+                const secs = String(callDurationSeconds % 60).padStart(2, '0');
+                const timeFormatted = `${mins}:${secs}`;
+                const b = document.getElementById('activeCallTimerBadge');
+                if (b) b.innerText = timeFormatted;
+                const v = document.getElementById('activeVoiceTimer');
+                if (v) v.innerText = timeFormatted;
+            }, 1000);
+        }
+
+        function hangUpActiveCall() {
+            if (currentCall) {
+                db.ref(`calls/${currentCall.id}/status`).set('ended');
+                const mins = Math.floor(callDurationSeconds / 60);
+                const secs = callDurationSeconds % 60;
+                logCallToHistory(currentCall, `Duración: ${mins}m ${secs}s`);
+            }
+            cleanupCall();
+            showToast('Llamada terminada');
+        }
+
+        function cleanupCall() {
+            if (callTimerInterval) clearInterval(callTimerInterval);
+            callTimerInterval = null;
+            document.getElementById('activeCallOverlay').style.display = 'none';
+            document.getElementById('outgoingCallOverlay').style.display = 'none';
+            document.getElementById('incomingCallOverlay').style.display = 'none';
+
+            if (localMediaStream) {
+                localMediaStream.getTracks().forEach(track => track.stop());
+                localMediaStream = null;
+            }
+            const localVid = document.getElementById('localVideoElement');
+            if (localVid) localVid.srcObject = null;
+            const remoteVid = document.getElementById('remoteVideoElement');
+            if (remoteVid) remoteVid.srcObject = null;
+
+            currentCall = null;
+            renderCallsList();
+        }
+
+        function toggleCallMic() {
+            if (!localMediaStream) return;
+            const audioTrack = localMediaStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                const btn = document.getElementById('btnToggleMic');
+                btn.classList.toggle('active', !audioTrack.enabled);
+                btn.innerText = audioTrack.enabled ? '🎤' : '🔇';
+                showToast(audioTrack.enabled ? 'Micrófono activo' : 'Micrófono silenciado');
+            }
+        }
+
+        function toggleCallCam() {
+            if (!localMediaStream) return;
+            const videoTrack = localMediaStream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.enabled = !videoTrack.enabled;
+                const btn = document.getElementById('btnToggleCam');
+                btn.classList.toggle('active', !videoTrack.enabled);
+                btn.innerText = videoTrack.enabled ? '📹' : '🚫';
+                showToast(videoTrack.enabled ? 'Cámara encendida' : 'Cámara apagada');
+            }
+        }
+
+        async function toggleScreenShare() {
+            try {
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const screenTrack = screenStream.getVideoTracks()[0];
+                const localVid = document.getElementById('localVideoElement');
+                if (localVid) localVid.srcObject = screenStream;
+                showToast('🖥️ Compartiendo pantalla');
+
+                screenTrack.onended = () => {
+                    if (localMediaStream && localVid) {
+                        localVid.srcObject = localMediaStream;
+                    }
+                };
+            } catch (err) {
+                console.log('Screen share cancelado o no disponible');
+            }
+        }
+
+        function logCallToHistory(call, result) {
+            const entry = {
+                id: call.id,
+                name: call.isOutgoing ? (call.receiverName || call.receiverPhone) : (call.callerName || call.callerPhone),
+                phone: call.isOutgoing ? call.receiverPhone : call.callerPhone,
+                type: call.type,
+                isOutgoing: call.isOutgoing,
+                result: result,
+                timestamp: Date.now()
+            };
+            callsHistory.unshift(entry);
+            if (callsHistory.length > 50) callsHistory.pop();
+            localStorage.setItem('neo_calls_history', JSON.stringify(callsHistory));
+            renderCallsList();
+        }
+
+        function renderCallsList() {
+            const container = document.getElementById('callsHistoryList');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (callsHistory.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-secondary); font-size:13px;">No hay llamadas recientes.<br>Toca el icono 📹 o 📞 en un chat para iniciar.</div>';
+                return;
+            }
+
+            callsHistory.forEach(c => {
+                const row = document.createElement('div');
+                row.className = 'chat-row';
+                const iconType = c.type === 'video' ? '📹' : '📞';
+                const arrow = c.isOutgoing ? '↗️ Saliente' : '↙️ Entrante';
+                const timeStr = formatTime(c.timestamp);
+
+                row.innerHTML = `
+                    <div class="chat-avatar" style="background:#202C33; font-size:18px;">${iconType}</div>
+                    <div class="chat-meta">
+                        <div class="chat-title-row">
+                            <span class="chat-name">${escapeHtml(c.name)}</span>
+                            <span class="chat-time">${timeStr}</span>
+                        </div>
+                        <div class="chat-last-msg">${arrow} • ${escapeHtml(c.result)}</div>
+                    </div>
+                `;
+                row.onclick = () => {
+                    currentRecipient = c.phone;
+                    currentContactName = c.name;
+                    startCall(c.type);
+                };
+                container.appendChild(row);
+            });
+        }
+
+        function promptStartNewCall() {
+            const p = prompt('Ingresa el número de 10 dígitos para llamar:');
+            if (!p) return;
+            currentRecipient = p.replace(/\D/g, '');
+            currentContactName = (usersMap[currentRecipient] && usersMap[currentRecipient].name) || ('Contacto ' + currentRecipient.slice(-4));
+            startCall('voice');
+        }
+
+        // ========================================================
+        // 3. ESTADOS DE 24 HORAS (TEXTO, FOTOS Y VIDEOS)
+        // ========================================================
+        function handleStatusMediaSelected(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            const isVideo = file.type.startsWith('video/');
+
+            if (isVideo) {
+                // Validación de video
+                if (file.size > 25 * 1024 * 1024) {
+                    alert('El video supera el límite recomendado de 25MB para estados.');
+                    return;
+                }
+                const caption = prompt('Pie de video opcional para tu estado:') || '';
+                const reader = new FileReader();
+                showToast('⏳ Subiendo video a tu estado...');
+
+                reader.onload = (e) => {
+                    const videoB64 = e.target.result;
+                    const newId = db.ref('status').push().key;
+                    const statusObj = {
+                        id: newId,
+                        text: caption || 'Video de estado',
+                        timestamp: Date.now(),
+                        senderName: myName,
+                        senderId: myPhone,
+                        videoUrl: videoB64,
+                        mediaType: 'video'
+                    };
+                    db.ref(`status/${newId}`).set(statusObj).then(() => {
+                        showToast('✅ ¡Video publicado en tu estado (24h)!');
+                    });
+                };
+                reader.readAsDataURL(file);
+                input.value = '';
+            } else {
+                // Foto / Imagen con compresión
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const maxDim = 900;
+                        let w = img.width, h = img.height;
+                        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+                        else if (h > maxDim) { h = Math.round(h * maxDim / h); h = maxDim; }
+
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const b64 = canvas.toDataURL('image/jpeg', 0.75);
+
+                        const caption = prompt('Pie de foto opcional para tu estado:') || '';
+                        const newId = db.ref('status').push().key;
+
+                        const statusObj = {
+                            id: newId,
+                            text: caption || 'Foto de estado',
+                            timestamp: Date.now(),
+                            senderName: myName,
+                            senderId: myPhone,
+                            imageUrl: b64,
+                            mediaType: 'image'
+                        };
+
+                        db.ref(`status/${newId}`).set(statusObj).then(() => {
+                            showToast('✅ ¡Foto publicada en tu estado (24h)!');
+                        });
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+                input.value = '';
+            }
+        }
+
+        // ========================================================
+        // 4. ADJUNTAR ARCHIVOS (DOCUMENTOS, APK, ZIP, PDF, VIDEOS)
+        // ========================================================
+        function toggleAttachmentPopup() {
+            const p = document.getElementById('attachmentPopup');
+            p.style.display = (p.style.display === 'none' || !p.style.display) ? 'flex' : 'none';
+        }
+
+        function handleDocumentSelected(input) {
+            if (!input.files || !input.files[0] || !currentChatId) return;
+            const file = input.files[0];
+            const fileName = file.name;
+            const sizeBytes = file.size;
+            const sizeStr = formatFileSize(sizeBytes);
+
+            const reader = new FileReader();
+            showToast('📄 Preparando documento...');
+
+            reader.onload = (e) => {
+                const b64 = e.target.result;
+                const docPayload = `[Document]|${fileName}|${sizeStr}|${b64}`;
+                dispatchMessageObject(docPayload);
+                showToast(`✅ Archivo '${fileName}' enviado`);
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        function handleMediaSelected(input) {
+            if (!input.files || !input.files[0] || !currentChatId) return;
+            const file = input.files[0];
+
+            if (file.type.startsWith('video/')) {
+                const reader = new FileReader();
+                showToast('🎥 Procesando video para enviar...');
+                reader.onload = (e) => {
+                    dispatchMessageObject('[Video] ' + e.target.result);
+                    showToast('🎥 Video enviado');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                handleImageSelected(input);
+            }
+            input.value = '';
+        }
+
+        function formatFileSize(bytes) {
+            if (!bytes) return '0 KB';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function downloadDocumentFromB64(fileName, b64Data) {
+            const a = document.createElement('a');
+            a.href = b64Data;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast(`📥 Descargando ${fileName}`);
+        }
+
+        // ========================================================
+        // 5. COPIAR Y PEGAR DIRECTO (Ctrl+V)
+        // ========================================================
+        let pendingPastedImageB64 = null;
+
+
+        // CONVERTIDOR MAESTRO DE TABLAS EXCEL / HOJAS DE CÁLCULO A IMAGEN HD
+        function convertExcelDataToImage(htmlString, plainTextString) {
+            let rows = [];
+            if (htmlString && htmlString.includes('<table')) {
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlString, 'text/html');
+                    const trs = doc.querySelectorAll('tr');
+                    trs.forEach(tr => {
+                        const row = [];
+                        const cells = tr.querySelectorAll('td, th');
+                        cells.forEach(td => row.push(td.innerText.replace(/\s+/g, ' ').trim()));
+                        if (row.length > 0 && row.some(cell => cell.length > 0)) rows.push(row);
+                    });
+                } catch (_) {}
+            }
+
+            if (rows.length === 0 && plainTextString && plainTextString.includes('\t') && plainTextString.includes('\n')) {
+                const lines = plainTextString.split(/\r?\n/);
+                lines.forEach(line => {
+                    if (line.trim().length > 0) {
+                        rows.push(line.split('\t').map(c => c.trim()));
+                    }
+                });
+            }
+
+            if (rows.length === 0) return null;
+
+            const colCount = Math.max(...rows.map(r => r.length));
+            if (colCount <= 1 && rows.length <= 1) return null;
+
+            // Normalizar columnas
+            rows = rows.map(r => {
+                while (r.length < colCount) r.push('');
+                return r;
+            });
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const scale = 2; // Alta resolución retina/DPI
+            const fontSize = 13;
+            ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+
+            // Medir ancho óptimo por columna
+            const colWidths = new Array(colCount).fill(70);
+            const paddingX = 16;
+            const rowHeight = 34;
+
+            rows.forEach((r, rowIdx) => {
+                if (rowIdx === 0) ctx.font = `bold ${fontSize}px sans-serif`;
+                else ctx.font = `500 ${fontSize}px sans-serif`;
+                r.forEach((cell, colIdx) => {
+                    const w = ctx.measureText(cell).width + paddingX * 2;
+                    if (w > colWidths[colIdx]) colWidths[colIdx] = Math.min(360, Math.ceil(w));
+                });
+            });
+
+            const headerHeight = 42;
+            const bannerHeight = 36;
+            const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
+            const totalHeight = bannerHeight + headerHeight + (rows.length - 1) * rowHeight + 12;
+
+            canvas.width = totalTableWidth * scale;
+            canvas.height = totalHeight * scale;
+            ctx.scale(scale, scale);
+
+            // Fondo general blanco puro
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, totalTableWidth, totalHeight);
+
+            // Banner superior verde oficial de Microsoft Excel
+            ctx.fillStyle = '#107C41';
+            ctx.fillRect(0, 0, totalTableWidth, bannerHeight);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('📊 HOJA DE CÁLCULO / TABLA EXCEL', 16, 23);
+
+            // Cabecera de la tabla
+            let currentY = bannerHeight;
+            ctx.fillStyle = '#0B532E';
+            ctx.fillRect(0, currentY, totalTableWidth, headerHeight);
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 12px sans-serif';
+            let currentX = 0;
+            rows[0].forEach((headerText, colIdx) => {
+                const isNum = !isNaN(parseFloat(headerText)) && isFinite(headerText);
+                if (isNum) {
+                    ctx.textAlign = 'right';
+                    ctx.fillText(headerText, currentX + colWidths[colIdx] - paddingX, currentY + 26);
+                } else {
+                    ctx.textAlign = 'left';
+                    ctx.fillText(headerText, currentX + paddingX, currentY + 26);
+                }
+                currentX += colWidths[colIdx];
+            });
+
+            // Filas de datos
+            currentY += headerHeight;
+            ctx.font = '500 12px sans-serif';
+
+            for (let i = 1; i < rows.length; i++) {
+                const isEven = i % 2 === 0;
+                ctx.fillStyle = isEven ? '#F4F9F6' : '#FFFFFF';
+                ctx.fillRect(0, currentY, totalTableWidth, rowHeight);
+
+                // Línea inferior de fila
+                ctx.strokeStyle = '#E2E8F0';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, currentY + rowHeight);
+                ctx.lineTo(totalTableWidth, currentY + rowHeight);
+                ctx.stroke();
+
+                currentX = 0;
+                rows[i].forEach((cellText, colIdx) => {
+                    ctx.fillStyle = '#1E293B';
+                    const isNum = !isNaN(parseFloat(cellText.replace(/[$,]/g, ''))) && cellText.trim() !== '';
+                    if (isNum) {
+                        ctx.textAlign = 'right';
+                        ctx.fillText(cellText, currentX + colWidths[colIdx] - paddingX, currentY + 22);
+                    } else {
+                        ctx.textAlign = 'left';
+                        ctx.fillText(cellText, currentX + paddingX, currentY + 22);
+                    }
+
+                    // Línea divisoria vertical
+                    ctx.strokeStyle = '#E2E8F0';
+                    ctx.beginPath();
+                    ctx.moveTo(currentX + colWidths[colIdx], currentY);
+                    ctx.lineTo(currentX + colWidths[colIdx], currentY + rowHeight);
+                    ctx.stroke();
+
+                    currentX += colWidths[colIdx];
+                });
+
+                currentY += rowHeight;
+            }
+
+            return canvas.toDataURL('image/png');
+        }
+
+        window.addEventListener('paste', (e) => {
+            if (!currentChatId) return;
+            const clip = e.clipboardData || e.originalEvent.clipboardData;
+            if (!clip) return;
+
+            // 1. Verificar si viene como imagen directa
+            const items = clip.items;
+            let foundImage = false;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    foundImage = true;
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        pendingPastedImageB64 = event.target.result;
+                        document.getElementById('pastedImagePreview').src = pendingPastedImageB64;
+                        document.getElementById('pastedImageCaption').value = '';
+                        document.getElementById('pastePreviewModal').style.display = 'flex';
+                        document.getElementById('pastedImageCaption').focus();
+                    };
+                    reader.readAsDataURL(blob);
+                    e.preventDefault();
+                    break;
+                }
+            }
+
+            // 2. Si no fue imagen directa, comprobar si es una tabla de Excel copiada
+            if (!foundImage) {
+                const htmlData = clip.getData('text/html') || '';
+                const plainText = clip.getData('text/plain') || '';
+
+                if ((htmlData && htmlData.includes('<table')) || (plainText && plainText.includes('\t') && plainText.includes('\n'))) {
+                    const tableImgB64 = convertExcelDataToImage(htmlData, plainText);
+                    if (tableImgB64) {
+                        e.preventDefault();
+                        pendingPastedImageB64 = tableImgB64;
+                        document.getElementById('pastedImagePreview').src = pendingPastedImageB64;
+                        document.getElementById('pastedImageCaption').value = '📊 Tabla copiada de Excel';
+                        document.getElementById('pastePreviewModal').style.display = 'flex';
+                        document.getElementById('pastedImageCaption').focus();
+                        showToast('📊 ¡Tabla de Excel convertida a imagen lista para enviar!');
+                    }
+                }
+            }
+        });
+
+        function sendPastedImage() {
+            if (!pendingPastedImageB64 || !currentChatId) return;
+            const caption = document.getElementById('pastedImageCaption').value.trim();
+            const textToSend = caption ? `[Media] ${pendingPastedImageB64}
+${caption}` : `[Media] ${pendingPastedImageB64}`;
+            dispatchMessageObject(textToSend);
+            cancelPastedImage();
+            showToast('🖼️ Imagen pegada enviada');
+        }
+
+        function cancelPastedImage() {
+            pendingPastedImageB64 = null;
+            document.getElementById('pastePreviewModal').style.display = 'none';
+        }
+
+        // ========================================================
+        // 6. NOTAS DE VOZ (🎤 MICRÓFONO)
+        // ========================================================
+        let voiceMediaRecorder = null;
+        let voiceAudioChunks = [];
+        let voiceRecSeconds = 0;
+        let voiceRecInterval = null;
+
+        function handleMessageInputChange(el) {
+            const val = el.value.trim();
+            const btnSend = document.getElementById('btnSendMsg');
+            const btnVoice = document.getElementById('btnVoiceRecord');
+            if (val.length > 0) {
+                btnSend.style.display = 'flex';
+                btnVoice.style.display = 'none';
+            } else {
+                btnSend.style.display = 'none';
+                btnVoice.style.display = 'flex';
+            }
+        }
+
+        async function startVoiceRecording() {
+            if (!currentChatId) {
+                alert('Abre primero una conversación para enviar nota de voz.');
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                voiceAudioChunks = [];
+                voiceMediaRecorder = new MediaRecorder(stream);
+
+                voiceMediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) voiceAudioChunks.push(e.data);
+                };
+
+                voiceMediaRecorder.onstop = () => {
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                voiceMediaRecorder.start();
+
+                // UI
+                document.getElementById('voiceRecordingBar').style.display = 'flex';
+                voiceRecSeconds = 0;
+                document.getElementById('voiceRecTimer').innerText = '0:00';
+                if (voiceRecInterval) clearInterval(voiceRecInterval);
+                voiceRecInterval = setInterval(() => {
+                    voiceRecSeconds++;
+                    const m = Math.floor(voiceRecSeconds / 60);
+                    const s = String(voiceRecSeconds % 60).padStart(2, '0');
+                    document.getElementById('voiceRecTimer').innerText = `${m}:${s}`;
+                }, 1000);
+
+            } catch (err) {
+                alert('No se pudo acceder al micrófono para grabar: ' + err.message);
+            }
+        }
+
+        function stopAndSendVoiceRecording() {
+            if (!voiceMediaRecorder) return;
+            if (voiceRecInterval) clearInterval(voiceRecInterval);
+
+            voiceMediaRecorder.onstop = () => {
+                const blob = new Blob(voiceAudioChunks, { type: 'audio/webm' });
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const b64 = reader.result;
+                    dispatchMessageObject(`[Audio] ${b64}`);
+                    showToast('🎤 Nota de voz enviada');
+                };
+                reader.readAsDataURL(blob);
+            };
+
+            voiceMediaRecorder.stop();
+            document.getElementById('voiceRecordingBar').style.display = 'none';
+        }
+
+        function cancelVoiceRecording() {
+            if (voiceRecInterval) clearInterval(voiceRecInterval);
+            if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
+                voiceMediaRecorder.stop();
+            }
+            voiceAudioChunks = [];
+            document.getElementById('voiceRecordingBar').style.display = 'none';
+            showToast('Grabación cancelada');
+        }
+
+        // ========================================================
+        // 7. GRUPOS ILIMITADOS (DE 1 A 1,000,000+ MIEMBROS)
+        // ========================================================
+        let selectedGroupMembers = [];
+
+        function openCreateGroupModal() {
+            selectedGroupMembers = [];
+            if (currentRecipient && currentRecipient !== myPhone) {
+                selectedGroupMembers.push(currentRecipient);
+            }
+
+            document.getElementById('newGroupName').value = '';
+            document.getElementById('newGroupDesc').value = '';
+            
+            const listContainer = document.getElementById('groupMembersList');
+            listContainer.innerHTML = '';
+
+            const available = Object.keys(usersMap).filter(p => p !== myPhone);
+            if (available.length === 0) {
+                listContainer.innerHTML = '<div style="font-size:12px; color:var(--text-secondary); text-align:center; padding:10px;">No hay otros usuarios registrados aún en la red.</div>';
+            } else {
+                available.forEach(phone => {
+                    const u = usersMap[phone];
+                    const name = (u && u.name) ? u.name : phone;
+                    const isChecked = selectedGroupMembers.includes(phone);
+
+                    const item = document.createElement('label');
+                    item.style.display = 'flex';
+                    item.style.alignItems = 'center';
+                    item.style.gap = '10px';
+                    item.style.padding = '6px 8px';
+                    item.style.cursor = 'pointer';
+                    item.style.fontSize = '13px';
+                    item.style.color = 'var(--text-primary)';
+
+                    item.innerHTML = `
+                        <input type="checkbox" value="${phone}" ${isChecked ? 'checked' : ''} onchange="toggleGroupMemberSelection('${phone}', this.checked)">
+                        <div class="chat-avatar" style="width:28px; height:28px; font-size:12px; margin:0;">${name.charAt(0).toUpperCase()}</div>
+                        <span>${escapeHtml(name)} <small style="color:var(--text-secondary);">(${phone})</small></span>
+                    `;
+                    listContainer.appendChild(item);
+                });
+            }
+
+            document.getElementById('createGroupModal').style.display = 'flex';
+        }
+
+        function toggleGroupMemberSelection(phone, isChecked) {
+            if (isChecked) {
+                if (!selectedGroupMembers.includes(phone)) selectedGroupMembers.push(phone);
+            } else {
+                selectedGroupMembers = selectedGroupMembers.filter(p => p !== phone);
+            }
+        }
+
+        function submitCreateGroup() {
+            const name = document.getElementById('newGroupName').value.trim();
+            const desc = document.getElementById('newGroupDesc').value.trim();
+
+            if (!name) {
+                alert('Ingresa el nombre del grupo.');
+                return;
+            }
+
+            const groupId = 'group_' + Date.now();
+            const members = Array.from(new Set([myPhone, ...selectedGroupMembers]));
+
+            const groupObj = {
+                id: groupId,
+                name: name,
+                description: desc,
+                createdBy: myPhone,
+                createdAt: Date.now(),
+                members: members,
+                type: 'group'
+            };
+
+            db.ref(`groups/${groupId}`).set(groupObj).then(() => {
+                document.getElementById('createGroupModal').style.display = 'none';
+                showToast(`✅ Grupo '${name}' creado con ${members.length} miembro(s)`);
+                
+                // Mensaje inicial del sistema
+                db.ref(`chats/${groupId}/messages`).push().set({
+                    id: 'sys_' + Date.now(),
+                    text: `📢 Grupo creado por ${myName}. Bienvenidos.`,
+                    timestamp: Date.now(),
+                    senderId: 'SYSTEM',
+                    senderName: 'Sistema'
+                });
+
+                selectChat({
+                    chatId: groupId,
+                    recipientPhone: groupId,
+                    name: name,
+                    isGroup: true
+                });
+            });
+        }
+
+        // ========================================================
+        // 8. FILTROS DE CHAT (Todos, No leídos, Grupos, Favoritos)
+        // ========================================================
+        let currentChatFilter = 'all';
+
+        function setChatFilter(filter, element) {
+            currentChatFilter = filter;
+            document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+            if (element) element.classList.add('active');
+            renderChatsList(document.getElementById('searchFilter').value);
+        }
+
+        function insertEmoji(em) {
+            const input = document.getElementById('messageInput');
+            input.value += em;
+            input.focus();
+            handleMessageInputChange(input);
+        }
+
+        function toggleChatSearch() {
+            const q = prompt('Buscar palabra clave en este chat:');
+            if (!q) return;
+            const messages = document.querySelectorAll('.msg-bubble');
+            let found = 0;
+            messages.forEach(m => {
+                if (m.innerText.toLowerCase().includes(q.toLowerCase())) {
+                    m.style.outline = '2px solid var(--neon-green)';
+                    m.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    found++;
+                } else {
+                    m.style.outline = 'none';
+                }
+            });
+            showToast(found > 0 ? `🔍 Encontrados ${found} mensaje(s)` : 'No se encontraron coincidencias');
+        }
+
+        // ESTADO GLOBAL
+        let myPhone = localStorage.getItem('neo_user_phone') || '';
+        let myName = localStorage.getItem('neo_user_name') || 'Usuario';
+        let currentRecipient = '';
+        let currentChatId = '';
+        let currentContactName = '';
+        
+        let usersMap = {};          // phone -> user info
+        let mySavedContacts = [];   // contactos
+        let conversations = [];     // chats activos
+        let blockedUsers = {};      // phone -> true
+        let allStatuses = [];       // estados de 24 horas
+        let viewedStatusIds = JSON.parse(localStorage.getItem('neo_viewed_statuses') || '[]');
+
+        let messagesListener = null;
+        let qrSessionListener = null;
+        let qrTimer = null;
+        let deferredInstallPrompt = null;
+        let activeTab = 'chats';
+
+        let currentViewingStory = null;
+        let storyProgressInterval = null;
+        let selectedTextStatusBg = '#005C4B';
+
+        // PWA INSTALL
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            const btn = document.getElementById('installBtn');
+            if (btn) btn.style.display = 'flex';
+        });
+
+        function installPWA() {
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                deferredInstallPrompt.userChoice.then(() => {
+                    document.getElementById('installBtn').style.display = 'none';
+                    deferredInstallPrompt = null;
+                });
+            } else {
+                showToast('Haz clic en el icono de instalación en la barra de tu navegador.');
+            }
+        }
+
+        // INICIALIZACIÓN DE LA APLICACIÓN
+        function initApp() {
+            const savedTheme = localStorage.getItem('neo_theme') || 'default';
+            setAppTheme(savedTheme, false);
+
+            const savedWallpaper = localStorage.getItem('neo_chat_bg');
+            if (savedWallpaper) {
+                document.getElementById('mainChatPane').style.backgroundImage = `url(${savedWallpaper})`;
+            }
+
+            // Si NO está autenticado mediante el celular físico:
+            if (!myPhone) {
+                document.getElementById('loginModal').style.display = 'flex';
+                generateNewQRSession();
+                return;
+            }
+
+            document.getElementById('loginModal').style.display = 'none';
+
+            // 1. Sincronizar perfil propio
+            syncMyProfileFromFirebase();
+
+            // 2. Escuchar lista de bloqueados
+            listenToBlockedUsers();
+
+            // 3. Escuchar usuarios de la red
+            db.ref('users').on('value', (snap) => {
+                usersMap = snap.val() || {};
+                renderChatsList();
+                renderContactsList();
+            });
+
+            // 4. Escuchar contactos
+            listenToUserContacts();
+
+            // 5. Escuchar chats
+            listenToUserChats();
+
+            // 6. Escuchar estados de 24 horas
+            listenToStatuses();
+
+            // 7. Conectar Relay local
+            connectLocalRelaySSE();
+        }
+
+        // PROTOCOLO DE VINCULACIÓN SEGURA (QR DINÁMICO ANTIFRAUDE)
+        function generateNewQRSession() {
+            if (qrSessionListener) qrSessionListener.off();
+            if (qrTimer) clearTimeout(qrTimer);
+
+            document.getElementById('qrReloadOverlay').style.display = 'none';
+
+            const randomCode = Math.random().toString(36).substring(2, 9).toUpperCase();
+            const sessionId = `NEO-${randomCode}-${Date.now()}`;
+
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(sessionId)}&color=000000&bgcolor=FFFFFF`;
+            document.getElementById('qrImage').src = qrUrl;
+
+            // Escuchar cuando el celular físico escanea el código
+            qrSessionListener = db.ref(`sessions/${sessionId}`);
+            qrSessionListener.on('value', (snap) => {
+                const data = snap.val();
+                if (data && (data.phone || data.userId)) {
+                    const phone = (data.phone || data.userId).replace(/\D/g, '');
+                    const name = data.name || `Usuario ${phone.slice(-4)}`;
+
+                    myPhone = phone;
+                    myName = name;
+                    localStorage.setItem('neo_user_phone', myPhone);
+                    localStorage.setItem('neo_user_name', myName);
+
+                    db.ref(`linked_devices/${myPhone}/${Date.now()}`).set({
+                        name: 'Windows Desktop PC (Navegador)',
+                        time: new Date().toLocaleString()
+                    });
+
+                    db.ref(`sessions/${sessionId}`).remove();
+                    showToast(`🔐 Conectado con éxito como ${myName}`);
+                    initApp();
+                }
+            });
+
+            // Expiración por seguridad a los 60s
+            qrTimer = setTimeout(() => {
+                document.getElementById('qrReloadOverlay').style.display = 'flex';
+                if (qrSessionListener) qrSessionListener.off();
+            }, 60000);
+        }
+
+        function toggleManualCodeLogin() {
+            const box = document.getElementById('manualCodeBox');
+            box.style.display = box.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function verifySixDigitCode() {
+            const code = document.getElementById('inputSixDigits').value.trim();
+            if (code.length !== 6) {
+                alert('Ingresa el código de 6 dígitos que muestra tu app.');
+                return;
+            }
+
+            db.ref(`sessions/${code}`).once('value', (snap) => {
+                const data = snap.val();
+                if (data && data.phone && (data.expiry > Date.now())) {
+                    myPhone = data.phone.replace(/\D/g, '');
+                    myName = data.name || 'Usuario';
+                    localStorage.setItem('neo_user_phone', myPhone);
+                    localStorage.setItem('neo_user_name', myName);
+
+                    db.ref(`linked_devices/${myPhone}/${Date.now()}`).set({
+                        name: 'Windows Desktop PC (Código 6D)',
+                        time: new Date().toLocaleString()
+                    });
+
+                    db.ref(`sessions/${code}`).remove();
+                    showToast(`🔐 Vinculado con éxito`);
+                    initApp();
+                } else {
+                    alert('Código inválido o expirado. Genera uno nuevo en tu celular.');
+                }
+            });
+        }
+
+        function doLogout() {
+            if (confirm('¿Cerrar sesión en esta PC?\nTus chats seguirán protegidos en tu celular.')) {
+                localStorage.removeItem('neo_user_phone');
+                localStorage.removeItem('neo_user_name');
+                location.reload();
+            }
+        }
+
+        // PERFIL
+        function syncMyProfileFromFirebase() {
+            if (!myPhone) return;
+            db.ref(`users/${myPhone}`).on('value', (snap) => {
+                const data = snap.val() || {};
+                if (data.name) {
+                    myName = data.name;
+                    localStorage.setItem('neo_user_name', myName);
+                }
+                const photo = data.photoUrl || data.profilePhoto;
+                const dockAvatar = document.getElementById('myDockAvatar');
+                const setPic = document.getElementById('settingsProfilePic');
+
+                if (photo) {
+                    if (dockAvatar) { dockAvatar.style.backgroundImage = `url(${photo})`; dockAvatar.innerText = ''; }
+                    if (setPic) { setPic.style.backgroundImage = `url(${photo})`; setPic.innerText = ''; }
+                } else {
+                    const initial = myName ? myName.charAt(0).toUpperCase() : 'N';
+                    if (dockAvatar) { dockAvatar.style.backgroundImage = 'none'; dockAvatar.innerText = initial; }
+                    if (setPic) { setPic.style.backgroundImage = 'none'; setPic.innerText = initial; }
+                }
+
+                const sName = document.getElementById('settingsProfileName');
+                const sPhone = document.getElementById('settingsProfilePhone');
+                if (sName) sName.innerText = myName;
+                if (sPhone) sPhone.innerText = myPhone;
+            });
+        }
+
+        function openProfileModal() {
+            document.getElementById('editProfileName').value = myName;
+            db.ref(`users/${myPhone}/status`).once('value', snap => {
+                document.getElementById('editProfileStatus').value = snap.val() || 'Disponible en NeoMessage';
+            });
+            db.ref(`users/${myPhone}`).once('value', snap => {
+                const d = snap.val() || {};
+                const photo = d.photoUrl || d.profilePhoto;
+                const prev = document.getElementById('editAvatarPreview');
+                if (photo) { prev.style.backgroundImage = `url(${photo})`; prev.innerText = ''; }
+                else { prev.style.backgroundImage = 'none'; prev.innerText = myName.charAt(0).toUpperCase(); }
+            });
+            document.getElementById('profileModal').style.display = 'flex';
+        }
+
+        function handleProfilePhotoSelected(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const maxDim = 320;
+                    let w = img.width, h = img.height;
+                    if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+                    else if (h > maxDim) { h = Math.round(h * maxDim / h); h = maxDim; }
+
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const b64 = canvas.toDataURL('image/jpeg', 0.8);
+
+                    db.ref(`users/${myPhone}/photoUrl`).set(b64);
+                    db.ref(`users/${myPhone}/profilePhoto`).set(b64);
+                    
+                    const prev = document.getElementById('editAvatarPreview');
+                    prev.style.backgroundImage = `url(${b64})`;
+                    prev.innerText = '';
+                    showToast('📷 Foto de perfil actualizada');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        function saveProfileChanges() {
+            const newName = document.getElementById('editProfileName').value.trim();
+            const newStatus = document.getElementById('editProfileStatus').value.trim();
+
+            if (!newName) {
+                alert('Ingresa tu nombre.');
+                return;
+            }
+
+            myName = newName;
+            localStorage.setItem('neo_user_name', myName);
+
+            db.ref(`users/${myPhone}`).update({
+                name: newName,
+                status: newStatus || 'Disponible en NeoMessage',
+                lastSeen: Date.now()
+            }).then(() => {
+                document.getElementById('profileModal').style.display = 'none';
+                showToast('Perfil actualizado correctamente');
+            });
+        }
+
+        // BLOQUEO DE CONTACTOS
+        function listenToBlockedUsers() {
+            db.ref(`blocked/${myPhone}`).on('value', snap => {
+                blockedUsers = snap.val() || {};
+                updateBlockedStatusUI();
+                renderBlockedModalList();
+            });
+        }
+
+        function toggleBlockContact() {
+            if (!currentRecipient || currentRecipient === myPhone) return;
+            const isBlocked = !!blockedUsers[currentRecipient];
+
+            if (isBlocked) {
+                db.ref(`blocked/${myPhone}/${currentRecipient}`).remove().then(() => {
+                    db.ref(`users/${myPhone}/blocked/${currentRecipient}`).remove();
+                    showToast('Contacto desbloqueado');
+                });
+            } else {
+                if (confirm(`¿Bloquear a ${currentContactName}? No podrás recibir ni enviar mensajes con este contacto.`)) {
+                    db.ref(`blocked/${myPhone}/${currentRecipient}`).set(true).then(() => {
+                        db.ref(`users/${myPhone}/blocked/${currentRecipient}`).set(true);
+                        showToast('Contacto bloqueado');
+                    });
+                }
+            }
+        }
+
+        function updateBlockedStatusUI() {
+            const isBlocked = !!blockedUsers[currentRecipient];
+            const banner = document.getElementById('blockedBanner');
+            const inputBar = document.getElementById('chatInputBar');
+            const btnBlock = document.getElementById('btnBlockToggle');
+
+            if (btnBlock) btnBlock.innerText = isBlocked ? '✅ Desbloquear Contacto' : '🚫 Bloquear Contacto';
+
+            if (isBlocked) {
+                if (banner) banner.style.display = 'block';
+                if (inputBar) inputBar.style.display = 'none';
+            } else {
+                if (banner) banner.style.display = 'none';
+                if (inputBar) inputBar.style.display = 'flex';
+            }
+        }
+
+        function openBlockedContactsModal() {
+            renderBlockedModalList();
+            document.getElementById('blockedModal').style.display = 'flex';
+        }
+
+        function renderBlockedModalList() {
+            const container = document.getElementById('blockedListContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const keys = Object.keys(blockedUsers);
+            if (keys.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary); font-size:13px;">No tienes contactos bloqueados.</div>';
+                return;
+            }
+
+            keys.forEach(phone => {
+                const row = document.createElement('div');
+                row.className = 'settings-item';
+                const name = (usersMap[phone] && usersMap[phone].name) ? usersMap[phone].name : phone;
+                row.innerHTML = `
+                    <div>
+                        <div style="font-weight:bold; font-size:14px;">${escapeHtml(name)}</div>
+                        <div style="font-size:11px; color:var(--text-secondary);">${phone}</div>
+                    </div>
+                    <button style="background:var(--accent); border:none; color:#FFF; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold;" onclick="unblockPhone('${phone}')">Desbloquear</button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function unblockPhone(phone) {
+            db.ref(`blocked/${myPhone}/${phone}`).remove();
+            db.ref(`users/${myPhone}/blocked/${phone}`).remove();
+            showToast('Contacto desbloqueado');
+        }
+
+        // CAMBIAR PESTAÑAS DOCK
+        function switchSidebarTab(tabName) {
+            activeTab = tabName;
+            document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            const sContainer = document.getElementById('searchContainerBox');
+            const sWelcome = document.getElementById('statusWelcomePane');
+            const ePlace = document.getElementById('emptyPlaceholder');
+            const cBox = document.getElementById('activeChatBox');
+
+            const filterRow = document.getElementById('chatFiltersRow');
+
+            if (tabName === 'status') {
+                document.getElementById('dockBtnStatus').classList.add('active');
+                document.getElementById('tabStatus').classList.add('active');
+                document.getElementById('sidebarTitle').innerText = 'Estados';
+                if (sContainer) sContainer.style.display = 'none';
+                if (filterRow) filterRow.style.display = 'none';
+
+                // Mostrar pantalla de bienvenida de estados estilo WhatsApp Desktop si no hay chat
+                if (cBox) cBox.style.display = 'none';
+                if (ePlace) ePlace.style.display = 'none';
+                if (sWelcome) sWelcome.style.display = 'flex';
+                renderStatusesTab();
+            } else if (tabName === 'calls') {
+                document.getElementById('dockBtnCalls').classList.add('active');
+                document.getElementById('tabCalls').classList.add('active');
+                document.getElementById('sidebarTitle').innerText = 'Llamadas';
+                if (sContainer) sContainer.style.display = 'none';
+                if (filterRow) filterRow.style.display = 'none';
+                if (sWelcome) sWelcome.style.display = 'none';
+                if (!currentChatId && ePlace) ePlace.style.display = 'flex';
+                else if (currentChatId && cBox) cBox.style.display = 'flex';
+                renderCallsList();
+            } else if (tabName === 'chats') {
+                document.getElementById('dockBtnChats').classList.add('active');
+                document.getElementById('tabChats').classList.add('active');
+                document.getElementById('sidebarTitle').innerText = 'Chats';
+                if (sContainer) sContainer.style.display = 'flex';
+                if (filterRow) filterRow.style.display = 'flex';
+                if (sWelcome) sWelcome.style.display = 'none';
+                if (!currentChatId && ePlace) ePlace.style.display = 'flex';
+                else if (currentChatId && cBox) cBox.style.display = 'flex';
+                renderChatsList();
+            } else if (tabName === 'contacts') {
+                document.getElementById('dockBtnContacts').classList.add('active');
+                document.getElementById('tabContacts').classList.add('active');
+                document.getElementById('sidebarTitle').innerText = 'Contactos';
+                if (sContainer) sContainer.style.display = 'flex';
+                if (sWelcome) sWelcome.style.display = 'none';
+                if (!currentChatId && ePlace) ePlace.style.display = 'flex';
+                else if (currentChatId && cBox) cBox.style.display = 'flex';
+            } else if (tabName === 'quotes') {
+                document.getElementById('dockBtnQuotes').classList.add('active');
+                document.getElementById('tabQuotes').classList.add('active');
+                document.getElementById('sidebarTitle').innerText = 'Cotizaciones & Notas';
+                if (sContainer) sContainer.style.display = 'none';
+                if (sWelcome) sWelcome.style.display = 'none';
+                if (!currentChatId && ePlace) ePlace.style.display = 'flex';
+                else if (currentChatId && cBox) cBox.style.display = 'flex';
+            } else if (tabName === 'themes') {
+                document.getElementById('dockBtnThemes').classList.add('active');
+                document.getElementById('tabThemes').classList.add('active');
+                document.getElementById('sidebarTitle').innerText = 'Temas & Fondos';
+                if (sContainer) sContainer.style.display = 'none';
+                if (sWelcome) sWelcome.style.display = 'none';
+                if (!currentChatId && ePlace) ePlace.style.display = 'flex';
+                else if (currentChatId && cBox) cBox.style.display = 'flex';
+            }
+        }
+
+        function openSettingsModal() { document.getElementById('settingsModal').style.display = 'flex'; }
+        function openLegalModal() { document.getElementById('legalModal').style.display = 'flex'; }
+        function closeAllModals() { document.querySelectorAll('.modal-overlay').forEach(m => { if (m.id !== 'loginModal') m.style.display = 'none'; }); }
+
+        function toggleDropdownMenu() {
+            const m = document.getElementById('chatDropdownMenu');
+            m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        window.onclick = function(e) {
+            if (!e.target.closest('.header-actions') && !e.target.closest('.chat-header-info')) {
+                const m = document.getElementById('chatDropdownMenu');
+                if (m) m.style.display = 'none';
+            }
+        };
+
+        // ESCUCHAR CONTACTOS GUARDADOS
+        function listenToUserContacts() {
+            db.ref(`users/${myPhone}/contacts`).on('value', snap => {
+                const raw = snap.val() || {};
+                const list = [];
+                Object.keys(raw).forEach(k => {
+                    const c = raw[k];
+                    const clean = (c.id || k).replace(/\D/g, '');
+                    if (clean && clean !== myPhone) {
+                        list.push({ id: clean, name: c.name || `Contacto (${clean})` });
+                    }
+                });
+                mySavedContacts = list;
+                renderContactsList();
+            });
+        }
+
+        // ESCUCHAR CHATS ACTIVOS
+        function listenToUserChats() {
+            db.ref('chats').on('value', snap => {
+                const list = [];
+                const raw = snap.val() || {};
+
+                const selfChatId = `private_${myPhone}_${myPhone}`;
+                let selfLastText = 'Notas y archivos personales';
+                let selfTime = Date.now();
+
+                if (raw[selfChatId] && raw[selfChatId].messages) {
+                    const mList = Object.values(raw[selfChatId].messages);
+                    if (mList.length > 0) {
+                        const lastM = mList[mList.length - 1];
+                        selfLastText = formatPreviewText(lastM.text);
+                        selfTime = lastM.timestamp || Date.now();
+                    }
+                }
+
+                list.push({
+                    chatId: selfChatId,
+                    recipientPhone: myPhone,
+                    name: 'Mis Notas Personales (Tú)',
+                    lastText: selfLastText,
+                    timestamp: selfTime,
+                    isSelf: true
+                });
+
+                Object.keys(raw).forEach(cId => {
+                    if (cId === selfChatId) return;
+                    if (cId.includes(myPhone)) {
+                        const parts = cId.replace('private_', '').split('_');
+                        const otherPhone = parts[0] === myPhone ? parts[1] : parts[0];
+                        if (!otherPhone) return;
+
+                        const msgs = raw[cId].messages ? Object.values(raw[cId].messages) : [];
+                        let lastText = 'Conversación abierta';
+                        let time = Date.now();
+
+                        if (msgs.length > 0) {
+                            const lastM = msgs[msgs.length - 1];
+                            lastText = formatPreviewText(lastM.text);
+                            time = lastM.timestamp || Date.now();
+                        }
+
+                        const saved = mySavedContacts.find(c => c.id === otherPhone);
+                        const userEntry = usersMap[otherPhone];
+                        const contactName = saved ? saved.name : (userEntry && userEntry.name ? userEntry.name : otherPhone);
+
+                        list.push({
+                            chatId: cId,
+                            recipientPhone: otherPhone,
+                            name: contactName,
+                            lastText: lastText,
+                            timestamp: time,
+                            isSelf: false
+                        });
+                    }
+                });
+
+                // Integrar Grupos Ilimitados
+                db.ref('groups').once('value', gSnap => {
+                    const groupsData = gSnap.val() || {};
+                    Object.values(groupsData).forEach(g => {
+                        if (g && g.id && (!g.members || g.members.includes(myPhone) || g.createdBy === myPhone)) {
+                            const grpChatId = g.id;
+                            const msgs = (raw[grpChatId] && raw[grpChatId].messages) ? Object.values(raw[grpChatId].messages) : [];
+                            let lastText = g.description || 'Grupo masivo';
+                            let time = g.createdAt || Date.now();
+                            if (msgs.length > 0) {
+                                const lastM = msgs[msgs.length - 1];
+                                lastText = formatPreviewText(lastM.text);
+                                time = lastM.timestamp || time;
+                            }
+                            // Evitar duplicados
+                            if (!list.some(item => item.chatId === grpChatId)) {
+                                list.push({
+                                    chatId: grpChatId,
+                                    recipientPhone: grpChatId,
+                                    name: g.name || 'Grupo',
+                                    lastText: lastText,
+                                    timestamp: time,
+                                    isGroup: true,
+                                    isSelf: false
+                                });
+                            }
+                        }
+                    });
+
+                    list.sort((a, b) => {
+                        if (a.isSelf) return -1;
+                        if (b.isSelf) return 1;
+                        return b.timestamp - a.timestamp;
+                    });
+
+                    conversations = list;
+                    renderChatsList();
+                });
+            });
+        }
+
+        // RENDERIZAR CHATS CON BOTÓN PARA ELIMINAR RASTRO
+        function renderChatsList(filterQuery = '') {
+            const container = document.getElementById('tabChats');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const q = filterQuery.toLowerCase().trim();
+            let filtered = conversations.filter(c => 
+                c.name.toLowerCase().includes(q) || c.recipientPhone.includes(q) || c.lastText.toLowerCase().includes(q)
+            );
+
+            if (currentChatFilter === 'groups') {
+                filtered = filtered.filter(c => c.isGroup || c.recipientPhone.startsWith('group_') || (c.name && c.name.toLowerCase().includes('grupo')));
+            } else if (currentChatFilter === 'unread') {
+                filtered = filtered.filter(c => c.unreadCount && c.unreadCount > 0);
+            } else if (currentChatFilter === 'favorites') {
+                filtered = filtered.filter(c => c.isFavorite);
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-secondary); font-size:13px;">No hay conversaciones.</div>';
+                return;
+            }
+
+            filtered.forEach(item => {
+                const row = document.createElement('div');
+                row.className = `chat-row ${currentChatId === item.chatId ? 'active' : ''}`;
+                
+                const timeStr = formatTime(item.timestamp);
+                const initial = item.isSelf ? '📌' : (item.name ? item.name.charAt(0).toUpperCase() : '#');
+                const avatarBg = item.isSelf ? 'background: linear-gradient(135deg, var(--neon-green), #00BFFF); color: #000;' : '';
+
+                const u = usersMap[item.recipientPhone];
+                const photoStyle = (u && (u.photoUrl || u.profilePhoto)) ? `background-image: url(${u.photoUrl || u.profilePhoto});` : '';
+
+                row.innerHTML = `
+                    <div class="chat-avatar" style="${avatarBg} ${photoStyle}">${photoStyle ? '' : initial}</div>
+                    <div class="chat-meta">
+                        <div class="chat-title-row">
+                            <span class="chat-name">${escapeHtml(item.name)}</span>
+                            <span class="chat-time">${timeStr}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
+                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(item.name)}')" title="Eliminar y borrar todo rastro del número">🗑️</button>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                row.onclick = () => selectChat(item);
+                container.appendChild(row);
+            });
+        }
+
+        // ELIMINAR CHAT Y BORRAR TODO RASTRO DEL NÚMERO (PARA QUE NADIE SEPA CON QUIÉN SE HABLÓ)
+        function deleteChatWithNoTrace(chatId, recipientPhone, displayName) {
+            if (confirm(`🔒 ¿ELIMINAR ESTE CHAT Y BORRAR TODO RASTRO?\n\nSe borrará la conversación y el número ${recipientPhone} de tu historial. Nadie podrá ver que te comunicaste con este contacto.`)) {
+                // 1. Borrar todos los mensajes en Firebase
+                db.ref(`chats/${chatId}`).remove();
+
+                // 2. Borrar de contactos guardados
+                db.ref(`users/${myPhone}/contacts/${recipientPhone}`).remove();
+
+                // 3. Borrar de archivados si existía
+                db.ref(`users/${myPhone}/archived/${chatId}`).remove();
+
+                // 4. Si estaba abierto en pantalla, cerrarlo
+                if (currentChatId === chatId) {
+                    currentChatId = '';
+                    currentRecipient = '';
+                    document.getElementById('activeChatBox').style.display = 'none';
+                    document.getElementById('emptyPlaceholder').style.display = 'flex';
+                }
+
+                // 5. Quitar de la lista local
+                conversations = conversations.filter(c => c.chatId !== chatId);
+                renderChatsList();
+
+                showToast(`🔒 Chat con ${displayName} borrado sin dejar rastro`);
+            }
+        }
+
+        // RENDERIZAR CONTACTOS
+        function renderContactsList(filterQuery = '') {
+            const container = document.getElementById('tabContacts');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const q = filterQuery.toLowerCase().trim();
+
+            let list = mySavedContacts;
+            if (list.length === 0 && Object.keys(usersMap).length > 0) {
+                list = Object.keys(usersMap)
+                    .filter(p => p !== myPhone)
+                    .map(p => ({
+                        id: p,
+                        name: (usersMap[p] && usersMap[p].name) ? usersMap[p].name : ('Contacto ' + p.slice(-4))
+                    }));
+            }
+
+            const filtered = list.filter(c => c.name.toLowerCase().includes(q) || c.id.includes(q));
+
+            const addBtnRow = document.createElement('div');
+            addBtnRow.style.padding = '12px 16px';
+            addBtnRow.innerHTML = `
+                <button class="btn-primary" style="padding:10px; font-size:13px;" onclick="openAddContactModal()">
+                    ➕ Añadir Nuevo Contacto
+                </button>
+            `;
+            container.appendChild(addBtnRow);
+
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.cssText = 'text-align:center; padding:24px; color:var(--text-secondary); font-size:13px;';
+                empty.innerText = 'No hay contactos registrados.';
+                container.appendChild(empty);
+                return;
+            }
+
+            filtered.forEach(c => {
+                const row = document.createElement('div');
+                row.className = `chat-row ${currentRecipient === c.id ? 'active' : ''}`;
+                const initial = c.name.charAt(0).toUpperCase();
+
+                const u = usersMap[c.id];
+                const photoStyle = (u && (u.photoUrl || u.profilePhoto)) ? `background-image: url(${u.photoUrl || u.profilePhoto});` : '';
+
+                row.innerHTML = `
+                    <div class="chat-avatar" style="${photoStyle}">${photoStyle ? '' : initial}</div>
+                    <div class="chat-meta">
+                        <div class="chat-title-row">
+                            <span class="chat-name">${escapeHtml(c.name)}</span>
+                        </div>
+                        <div class="chat-last-msg">${c.id}</div>
+                    </div>
+                `;
+
+                row.onclick = () => {
+                    const ids = [myPhone, c.id].sort();
+                    const cId = `private_${ids[0]}_${ids[1]}`;
+                    selectChat({
+                        chatId: cId,
+                        recipientPhone: c.id,
+                        name: c.name,
+                        lastText: '',
+                        timestamp: Date.now(),
+                        isSelf: false
+                    });
+                };
+                container.appendChild(row);
+            });
+        }
+
+        // GUARDAR CONTACTO
+        function openAddContactModal() {
+            document.getElementById('addContactModal').style.display = 'flex';
+            document.getElementById('newContactName').focus();
+        }
+
+        function saveNewContact() {
+            const name = document.getElementById('newContactName').value.trim();
+            const phone = document.getElementById('newContactPhone').value.replace(/\D/g, '');
+
+            if (!name || phone.length < 10) {
+                alert('Ingresa el nombre y un teléfono de 10 dígitos.');
+                return;
+            }
+
+            if (phone === myPhone) {
+                alert('No puedes agregarte a ti mismo como contacto.');
+                return;
+            }
+
+            db.ref(`users/${myPhone}/contacts/${phone}`).set({
+                id: phone,
+                name: name,
+                addedAt: Date.now()
+            }).then(() => {
+                document.getElementById('addContactModal').style.display = 'none';
+                document.getElementById('newContactName').value = '';
+                document.getElementById('newContactPhone').value = '';
+                showToast(`👤 Contacto ${name} guardado`);
+
+                const ids = [myPhone, phone].sort();
+                selectChat({
+                    chatId: `private_${ids[0]}_${ids[1]}`,
+                    recipientPhone: phone,
+                    name: name,
+                    lastText: '',
+                    timestamp: Date.now(),
+                    isSelf: false
+                });
+            });
+        }
+
+        // SELECCIONAR CHAT
+        function selectChat(item) {
+            currentChatId = item.chatId;
+            currentRecipient = item.recipientPhone;
+            currentContactName = item.name;
+
+            document.getElementById('emptyPlaceholder').style.display = 'none';
+            document.getElementById('statusWelcomePane').style.display = 'none';
+            document.getElementById('activeChatBox').style.display = 'flex';
+            document.getElementById('activeChatName').innerText = item.name;
+
+            const activeAv = document.getElementById('activeAvatar');
+            const u = usersMap[item.recipientPhone];
+            if (u && (u.photoUrl || u.profilePhoto)) {
+                activeAv.style.backgroundImage = `url(${u.photoUrl || u.profilePhoto})`;
+                activeAv.style.backgroundSize = 'cover';
+                activeAv.style.backgroundPosition = 'center';
+                activeAv.innerText = '';
+            } else {
+                activeAv.style.backgroundImage = 'none';
+                activeAv.innerText = item.isSelf ? '📌' : (item.isGroup ? '👥' : item.name.charAt(0).toUpperCase());
+            }
+
+            if (item.isSelf) {
+                document.getElementById('activeChatSubtitle').innerText = 'Espacio personal cifrado';
+            } else if (item.isGroup || item.recipientPhone.startsWith('group_')) {
+                document.getElementById('activeChatSubtitle').innerText = 'Grupo • Miembros ilimitados';
+            } else {
+                listenActiveContactPresence(item.recipientPhone);
+            }
+
+            updateBlockedStatusUI();
+            renderChatsList();
+
+            if (messagesListener) messagesListener.off();
+
+            const messagesContainer = document.getElementById('messagesList');
+            messagesContainer.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:12px; margin-top:20px;">Cargando mensajes...</div>';
+
+            messagesListener = db.ref(`chats/${currentChatId}/messages`);
+            messagesListener.on('value', snap => {
+                messagesContainer.innerHTML = '';
+                const msgs = snap.val() || {};
+                const list = Object.values(msgs).sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
+
+                if (list.length === 0) {
+                    messagesContainer.innerHTML = `
+                        <div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:40px;">
+                            ${item.isSelf ? '📌 Este es tu espacio privado para notas, presupuestos y recordatorios.' : '👋 No hay mensajes aún. ¡Escribe el primero con tu teclado!'}
+                        </div>
+                    `;
+                    return;
+                }
+
+                list.forEach(m => {
+                    renderMessageBubble(m);
+                    // Marcar como leído
+                    const senderClean = (m.senderId || '').replace(/\D/g, '');
+                    if (senderClean !== myPhone && (!m.readBy || !m.readBy[myPhone])) {
+                        db.ref(`chats/${currentChatId}/messages/${m.id}/readBy/${myPhone}`).set(true);
+                    }
+                });
+
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+
+            document.getElementById('messageInput').focus();
+        }
+
+        function openSelfChat() {
+            const selfChatId = `private_${myPhone}_${myPhone}`;
+            selectChat({
+                chatId: selfChatId,
+                recipientPhone: myPhone,
+                name: 'Mis Notas Personales (Tú)',
+                lastText: '',
+                timestamp: Date.now(),
+                isSelf: true
+            });
+            switchSidebarTab('chats');
+        }
+
+        function clearActiveChatMessages() {
+            if (!currentChatId) return;
+            if (confirm(`¿Vaciar todos los mensajes de esta conversación?\nLos mensajes desaparecerán tanto en tu PC como en tu celular.`)) {
+                db.ref(`chats/${currentChatId}/messages`).remove().then(() => {
+                    showToast('Mensajes vaciados');
+                });
+            }
+        }
+
+        function deleteActiveChatEntirely() {
+            if (!currentChatId) return;
+            deleteChatWithNoTrace(currentChatId, currentRecipient, currentContactName);
+        }
+
+        function deleteSingleMessage(msgId) {
+            if (!currentChatId || !msgId) return;
+            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Eliminar para todos (deja aviso de mensaje eliminado)\n• Cancelar: No eliminar");
+            if (opt) {
+                db.ref(`chats/${currentChatId}/messages/${msgId}`).update({
+                    text: '[DELETED]',
+                    deleted: true
+                }).then(() => {
+                    showToast('🚫 Mensaje eliminado para todos');
+                });
+            }
+        }
+
+        // RENDERIZAR MENSAJES Y REGLA DE PALOMITAS
+        function renderMessageBubble(msg) {
+            const container = document.getElementById('messagesList');
+            const b = document.createElement('div');
+            
+            const isMine = (msg.senderId || '').replace(/\D/g, '') === myPhone.replace(/\D/g, '');
+            b.className = `msg-bubble ${isMine ? 'me' : 'other'}`;
+
+            const text = msg.text || '';
+            const timeStr = formatTime(msg.timestamp || Date.now());
+
+            // REGLA EXACTA DE PALOMITAS:
+            // 1 palomita gris mientras no lo lea
+            // 2 palomitas azules cuando lo lea
+            const isReadByOther = msg.readBy && Object.keys(msg.readBy).some(k => k.replace(/\D/g, '') !== myPhone);
+            const checkmarksHtml = isReadByOther 
+                ? '<span style="color:#53BDEB; font-weight:bold; font-size:13px; margin-left:4px;" title="Leído">✓✓</span>' 
+                : '<span style="color:#8696A0; font-weight:bold; font-size:13px; margin-left:4px;" title="Enviado (no leído)">✓</span>';
+
+            const deleteAction = `<span class="msg-actions" onclick="deleteSingleMessage('${msg.id}')" title="Eliminar Mensaje">🗑️</span>`;
+
+            // 1. MENSAJES ELIMINADOS ESTILO WHATSAPP WINDOWS EXACTO
+            if (text === '[DELETED]' || msg.deleted) {
+                b.innerHTML = `
+                    <div class="msg-deleted">
+                        <span style="font-size:14px;">🚫</span>
+                        <span>${isMine ? 'Eliminaste este mensaje.' : 'Este mensaje fue eliminado.'}</span>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                `;
+            } else if (text.startsWith('[Document]|')) {
+                // 2. DOCUMENTOS ADJUNTOS (.PDF, .APK, .ZIP, .DOCX, ETC.)
+                const p = text.split('|');
+                const docName = p[1] || 'Documento';
+                const docSize = p[2] || '';
+                const docB64 = p.slice(3).join('|');
+                const isPkg = docName.endsWith('.apk') || docName.endsWith('.zip') || docName.endsWith('.rar');
+                b.innerHTML = `
+                    ${deleteAction}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div class="doc-msg-box">
+                        <div class="doc-icon">${isPkg ? '📦' : '📄'}</div>
+                        <div class="doc-info">
+                            <div class="doc-name" title="${escapeHtml(docName)}">${escapeHtml(docName)}</div>
+                            <div class="doc-size">${escapeHtml(docSize)}</div>
+                        </div>
+                        <button class="doc-btn-download" onclick="downloadDocumentFromB64('${escapeHtml(docName)}', '${docB64}')" title="Descargar en PC">⬇️ Descargar</button>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                `;
+            } else if (text.startsWith('[Audio] ')) {
+                // 3. NOTAS DE VOZ CON REPRODUCTOR INTERACTIVO
+                const audioSrc = text.replace('[Audio] ', '').trim();
+                const aId = 'audio_' + (msg.id || Math.random().toString(36).substring(7));
+                b.innerHTML = `
+                    ${deleteAction}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div class="audio-msg-box">
+                        <button class="audio-play-btn" id="btn_${aId}" onclick="toggleAudioMsgPlayback('${aId}')">▶</button>
+                        <audio id="${aId}" src="${audioSrc}" onended="resetAudioMsgPlayBtn('${aId}')" ontimeupdate="updateAudioMsgProgress('${aId}')"></audio>
+                        <div class="audio-track-slider" onclick="seekAudioMsg('${aId}', event)">
+                            <div class="audio-track-fill" id="fill_${aId}"></div>
+                        </div>
+                        <span id="dur_${aId}" style="font-size:11px; color:var(--text-secondary); margin-left:4px;">0:00</span>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                `;
+            } else if (text.startsWith('[Video] ')) {
+                // 4. VIDEO EN CHAT
+                const vidSrc = text.replace('[Video] ', '').trim();
+                b.innerHTML = `
+                    ${deleteAction}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div style="max-width:320px; border-radius:10px; overflow:hidden; margin-top:4px;">
+                        <video src="${vidSrc}" controls playsinline style="width:100%; border-radius:10px; max-height:260px; background:#000;"></video>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                `;
+            } else if (text.startsWith('[NEO_QUOTE]|')) {
+                const p = text.replace('[NEO_QUOTE]|', '').split('|');
+                const folio = p[1] || 'FOLIO #000';
+                const oficio = (p[2] || 'TRABAJO').toUpperCase();
+                const concept = p[3] || 'Sin concepto';
+                const mat = parseFloat(p[4]) || 0;
+                const lab = parseFloat(p[5]) || 0;
+                const total = mat + lab;
+                const adv = parseFloat(p[7]) || 0;
+                const bal = Math.max(0, total - adv);
+                const notes = p[8] || '';
+
+                const copyText = `📋 COTIZACIÓN NEOMESSAGE\nFolio: ${folio} | ${oficio}\nTrabajo: ${concept}\n• Materiales: $${mat.toFixed(2)}\n• Mano de Obra: $${lab.toFixed(2)}\nTOTAL: $${total.toFixed(2)}\nAnticipo: $${adv.toFixed(2)}\nSaldo restante: $${bal.toFixed(2)}\nNotas: ${notes}`;
+
+                b.innerHTML = `
+                    ${deleteAction}
+                    <div class="quote-box">
+                        <div class="quote-badge-row">
+                            <span class="quote-badge">${oficio}</span>
+                            <span class="quote-folio">${folio}</span>
+                        </div>
+                        <div class="quote-title">${escapeHtml(concept)}</div>
+                        ${mat > 0 ? `<div class="quote-item-row"><span>Materiales:</span><span>$${mat.toFixed(2)} MXN</span></div>` : ''}
+                        ${lab > 0 ? `<div class="quote-item-row"><span>Mano de Obra:</span><span>$${lab.toFixed(2)} MXN</span></div>` : ''}
+                        <div class="quote-total-row"><span>TOTAL:</span><span>$${total.toFixed(2)} MXN</span></div>
+                        ${adv > 0 ? `<div class="quote-item-row" style="color:var(--gold); margin-top:4px;"><span>Anticipo:</span><span>$${adv.toFixed(2)}</span></div><div class="quote-item-row"><span>Saldo a liquidar:</span><span>$${bal.toFixed(2)}</span></div>` : ''}
+                        ${notes ? `<div style="font-size:11px; color:#94A3B8; margin-top:6px; font-style:italic;">${escapeHtml(notes)}</div>` : ''}
+                        <button class="btn-copy-quote" onclick="copyQuoteToClipboard(\`${encodeURIComponent(copyText)}\`)">📋 COPIAR TODO</button>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                `;
+            } else if (text.startsWith('[Media]')) {
+                const src = text.replace('[Media] ', '').trim();
+                b.innerHTML = `
+                    ${deleteAction}
+                    <div>📷 Foto adjunta:</div>
+                    <img src="${src}" class="msg-photo" onclick="window.open('${src}')">
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                `;
+            } else {
+                b.innerHTML = `
+                    ${deleteAction}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div>${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                `;
+            }
+
+            container.appendChild(b);
+        }
+
+        
+        function toggleAudioMsgPlayback(audioId) {
+            const audio = document.getElementById(audioId);
+            const btn = document.getElementById('btn_' + audioId);
+            if (!audio) return;
+            if (audio.paused) {
+                // Pausar otros audios que se estén reproduciendo
+                document.querySelectorAll('audio').forEach(a => { if (a !== audio) a.pause(); });
+                audio.play();
+                if (btn) btn.innerText = '⏸';
+            } else {
+                audio.pause();
+                if (btn) btn.innerText = '▶';
+            }
+        }
+
+        function resetAudioMsgPlayBtn(audioId) {
+            const btn = document.getElementById('btn_' + audioId);
+            const fill = document.getElementById('fill_' + audioId);
+            if (btn) btn.innerText = '▶';
+            if (fill) fill.style.width = '0%';
+        }
+
+        function updateAudioMsgProgress(audioId) {
+            const audio = document.getElementById(audioId);
+            const fill = document.getElementById('fill_' + audioId);
+            const dur = document.getElementById('dur_' + audioId);
+            if (!audio || !fill) return;
+            if (audio.duration) {
+                const pct = (audio.currentTime / audio.duration) * 100;
+                fill.style.width = pct + '%';
+                const curM = Math.floor(audio.currentTime / 60);
+                const curS = String(Math.floor(audio.currentTime % 60)).padStart(2, '0');
+                if (dur) dur.innerText = `${curM}:${curS}`;
+            }
+        }
+
+        function seekAudioMsg(audioId, e) {
+            const audio = document.getElementById(audioId);
+            const slider = e.currentTarget;
+            if (!audio || !audio.duration) return;
+            const rect = slider.getBoundingClientRect();
+            const clickPos = (e.clientX - rect.left) / rect.width;
+            audio.currentTime = clickPos * audio.duration;
+        }
+
+        // ENVIAR MENSAJE
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const txt = input.value.trim();
+            if (!txt || !currentChatId) return;
+
+            if (blockedUsers[currentRecipient]) {
+                alert('No puedes enviar mensajes a un contacto bloqueado.');
+                return;
+            }
+
+            input.value = '';
+            input.style.height = '42px';
+            dispatchMessageObject(txt);
+        }
+
+        function dispatchMessageObject(textPayload) {
+            const newRef = db.ref(`chats/${currentChatId}/messages`).push();
+            const msgId = newRef.key;
+
+            const msgObj = {
+                id: msgId,
+                text: textPayload,
+                timestamp: Date.now(),
+                senderId: myPhone,
+                senderName: myName,
+                rank: 'PC Desktop',
+                readBy: {}
+            };
+
+            // 1. Firebase
+            newRef.set(msgObj);
+
+            // 2. Relay local hacia el destinatario (<1ms)
+            fetch('/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: currentRecipient,
+                    chatId: currentChatId,
+                    message: msgObj
+                })
+            }).catch(() => {});
+
+            // 3. Notificar inmediatamente a MI PROPIO CELULAR
+            if (currentRecipient !== myPhone) {
+                fetch('/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: myPhone,
+                        chatId: currentChatId,
+                        message: msgObj
+                    })
+                }).catch(() => {});
+            }
+        }
+
+        // COTIZADOR
+        function openQuoteModal() {
+            if (!currentChatId) {
+                alert('Abre primero una conversación para enviarle la cotización.');
+                return;
+            }
+            document.getElementById('quoteModal').style.display = 'flex';
+            calculateQuoteTotal();
+        }
+
+        function calculateQuoteTotal() {
+            const mat = parseFloat(document.getElementById('qMaterials').value) || 0;
+            const lab = parseFloat(document.getElementById('qLabor').value) || 0;
+            const tot = mat + lab;
+            document.getElementById('qTotalDisplay').innerText = `$${tot.toFixed(2)} MXN`;
+        }
+
+        function submitQuote() {
+            const oficio = document.getElementById('qOficio').value.trim() || 'TRABAJO';
+            const concept = document.getElementById('qConcept').value.trim();
+            const mat = parseFloat(document.getElementById('qMaterials').value) || 0;
+            const lab = parseFloat(document.getElementById('qLabor').value) || 0;
+            const adv = parseFloat(document.getElementById('qAdvance').value) || 0;
+            const warranty = document.getElementById('qWarranty').value.trim() || '30 días';
+            const notes = document.getElementById('qNotes').value.trim();
+
+            if (!concept) {
+                alert('Por favor escribe el concepto del trabajo.');
+                return;
+            }
+
+            const folio = '#' + Math.floor(100000 + Math.random() * 900000);
+            const quoteTag = `[NEO_QUOTE]|${Date.now()}|${folio}|${oficio}|${concept}|${mat}|${lab}|${warranty}|${adv}|${notes}`;
+
+            dispatchMessageObject(quoteTag);
+            document.getElementById('quoteModal').style.display = 'none';
+            showToast('📋 Cotización enviada');
+        }
+
+        // SUBIR FOTO AL CHAT
+        function handleImageSelected(input) {
+            if (!input.files || !input.files[0] || !currentChatId) return;
+            const file = input.files[0];
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const maxDim = 800;
+                    let w = img.width, h = img.height;
+                    if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+                    else if (h > maxDim) { h = Math.round(h * maxDim / h); h = maxDim; }
+
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const b64 = canvas.toDataURL('image/jpeg', 0.7);
+
+                    dispatchMessageObject('[Media] ' + b64);
+                    showToast('📷 Foto enviada');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        // TEMAS Y FONDOS
+        function setAppTheme(themeName, persist = true) {
+            document.body.setAttribute('data-theme', themeName);
+            if (persist) {
+                localStorage.setItem('neo_theme', themeName);
+                showToast(`🎨 Tema ${themeName} aplicado`);
+            }
+        }
+
+        function handleWallpaperUpload(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const b64 = e.target.result;
+                document.getElementById('mainChatPane').style.backgroundImage = `url(${b64})`;
+                localStorage.setItem('neo_chat_bg', b64);
+                showToast('🖼️ Fondo de pantalla guardado');
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        function clearWallpaper() {
+            document.getElementById('mainChatPane').style.backgroundImage = 'none';
+            localStorage.removeItem('neo_chat_bg');
+            showToast('Fondo restaurado a original');
+        }
+
+        // ESTADOS DE 24 HORAS (HISTORIAS)
+        function listenToStatuses() {
+            db.ref('status').on('value', snap => {
+                const raw = snap.val() || {};
+                const list = [];
+                const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+
+                Object.keys(raw).forEach(id => {
+                    const s = raw[id];
+                    if (s) {
+                        s.id = id;
+                        if (s.timestamp && s.timestamp > twentyFourHoursAgo) {
+                            list.push(s);
+                        } else if (s.timestamp) {
+                            db.ref(`status/${id}`).remove();
+                        }
+                    }
+                });
+
+                list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                allStatuses = list;
+                renderStatusesTab();
+            });
+        }
+
+        function renderStatusesTab() {
+            const myContainer = document.getElementById('myStatusSection');
+            const recentContainer = document.getElementById('recentStatusSection');
+            const viewedContainer = document.getElementById('viewedStatusSection');
+            const viewedLabel = document.getElementById('viewedSectionLabel');
+
+            if (!myContainer || !recentContainer || !viewedContainer) return;
+
+            myContainer.innerHTML = '';
+            recentContainer.innerHTML = '';
+            viewedContainer.innerHTML = '';
+
+            const myClean = myPhone.replace(/\D/g, '');
+            const myStatusList = allStatuses.filter(s => (s.senderId || '').replace(/\D/g, '') === myClean);
+            const otherStatusList = allStatuses.filter(s => (s.senderId || '').replace(/\D/g, '') !== myClean);
+
+            // 1. MI ESTADO (FILA SUPERIOR CON +)
+            const myRow = document.createElement('div');
+            myRow.className = 'chat-row';
+            myRow.style.padding = '10px 16px';
+
+            const myHasStatus = myStatusList.length > 0;
+            const myRingClass = myHasStatus ? 'status-ring-green' : '';
+            const myTimeSub = myHasStatus ? `Hoy a la(s) ${new Date(myStatusList[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Toca para actualizar tu estado';
+
+            myRow.innerHTML = `
+                <div class="chat-avatar ${myRingClass}" style="background-image: ${document.getElementById('myDockAvatar').style.backgroundImage || 'none'};">
+                    ${document.getElementById('myDockAvatar').style.backgroundImage ? '' : myName.charAt(0).toUpperCase()}
+                    <div class="my-status-plus" onclick="event.stopPropagation(); openTextStatusModal();">+</div>
+                </div>
+                <div class="chat-meta">
+                    <div class="chat-title-row">
+                        <span class="chat-name">Mi estado</span>
+                    </div>
+                    <div class="chat-last-msg">${myTimeSub}</div>
+                </div>
+            `;
+            myRow.onclick = () => {
+                if (myHasStatus) openStoryViewer(myStatusList[0]);
+                else openTextStatusModal();
+            };
+            myContainer.appendChild(myRow);
+
+            // 2. ESTADOS RECIENTES Y VISTOS
+            let unviewedCount = 0;
+            let viewedCount = 0;
+
+            otherStatusList.forEach(s => {
+                const isViewed = viewedStatusIds.includes(s.id);
+                const item = document.createElement('div');
+                item.className = 'chat-row';
+                const initial = (s.senderName ? s.senderName.charAt(0) : '?').toUpperCase();
+                const ringClass = isViewed ? 'status-ring-gray' : 'status-ring-green';
+                const timeStr = formatStatusTime(s.timestamp);
+
+                item.innerHTML = `
+                    <div class="chat-avatar ${ringClass}">${initial}</div>
+                    <div class="chat-meta">
+                        <div class="chat-title-row">
+                            <span class="chat-name">${escapeHtml(s.senderName || 'Contacto')}</span>
+                        </div>
+                        <div class="chat-last-msg">${timeStr}</div>
+                    </div>
+                `;
+
+                item.onclick = () => {
+                    if (!viewedStatusIds.includes(s.id)) {
+                        viewedStatusIds.push(s.id);
+                        localStorage.setItem('neo_viewed_statuses', JSON.stringify(viewedStatusIds));
+                    }
+                    openStoryViewer(s);
+                };
+
+                if (isViewed) {
+                    viewedContainer.appendChild(item);
+                    viewedCount++;
+                } else {
+                    recentContainer.appendChild(item);
+                    unviewedCount++;
+                }
+            });
+
+            if (unviewedCount === 0) {
+                recentContainer.innerHTML = '<div style="padding: 10px 16px; font-size: 13px; color: var(--text-secondary);">No hay estados recientes.</div>';
+            }
+
+            if (viewedLabel) {
+                viewedLabel.style.display = viewedCount > 0 ? 'block' : 'none';
+            }
+        }
+
+        function formatStatusTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            const now = new Date();
+            const timePart = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (d.toDateString() === now.toDateString()) {
+                return `Hoy a la(s) ${timePart}`;
+            }
+            return `Ayer a la(s) ${timePart}`;
+        }
+
+        function openTextStatusModal() {
+            document.getElementById('textStatusInput').value = '';
+            document.getElementById('textStatusModal').style.display = 'flex';
+            document.getElementById('textStatusInput').focus();
+        }
+
+        function setTextStatusBg(colorHex) {
+            selectedTextStatusBg = colorHex;
+            document.getElementById('statusTextPreviewBox').style.background = colorHex;
+        }
+
+        function submitTextStatus() {
+            const txt = document.getElementById('textStatusInput').value.trim();
+            if (!txt) {
+                alert('Escribe el texto de tu estado.');
+                return;
+            }
+
+            const newId = db.ref('status').push().key;
+            const statusObj = {
+                id: newId,
+                text: txt,
+                timestamp: Date.now(),
+                senderName: myName,
+                senderId: myPhone,
+                imageUrl: '',
+                musicUrl: selectedTextStatusBg
+            };
+
+            db.ref(`status/${newId}`).set(statusObj).then(() => {
+                document.getElementById('textStatusModal').style.display = 'none';
+                showToast('✅ ¡Estado publicado por 24 horas!');
+            });
+        }
+
+        function handleStatusPhotoSelected(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const maxDim = 800;
+                    let w = img.width, h = img.height;
+                    if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+                    else if (h > maxDim) { h = Math.round(h * maxDim / h); h = maxDim; }
+
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const b64 = canvas.toDataURL('image/jpeg', 0.75);
+
+                    const caption = prompt('Pie de foto opcional para tu estado:') || '';
+                    const newId = db.ref('status').push().key;
+
+                    const statusObj = {
+                        id: newId,
+                        text: caption || 'Foto de estado',
+                        timestamp: Date.now(),
+                        senderName: myName,
+                        senderId: myPhone,
+                        imageUrl: b64,
+                        musicUrl: null
+                    };
+
+                    db.ref(`status/${newId}`).set(statusObj).then(() => {
+                        showToast('✅ ¡Foto publicada en tu estado (24h)!');
+                    });
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        function openStoryViewer(status) {
+            currentViewingStory = status;
+            const overlay = document.getElementById('storyViewerOverlay');
+            const authorName = document.getElementById('storyViewerName');
+            const timeLabel = document.getElementById('storyViewerTime');
+            const content = document.getElementById('storyViewerContent');
+            const caption = document.getElementById('storyViewerCaption');
+            const delBtn = document.getElementById('storyDeleteBtn');
+            const progressBar = document.getElementById('storyProgressBar');
+
+            authorName.innerText = status.senderName || 'Contacto';
+            timeLabel.innerText = formatStatusTime(status.timestamp);
+
+            const isMine = (status.senderId || '').replace(/\D/g, '') === myPhone.replace(/\D/g, '');
+            delBtn.style.display = isMine ? 'block' : 'none';
+
+            content.innerHTML = '';
+            const isVid = status.mediaType === 'video' || status.videoUrl || (status.imageUrl && status.imageUrl.startsWith('data:video/'));
+
+            if (isVid) {
+                const vidSrc = status.videoUrl || status.imageUrl;
+                content.style.background = '#000';
+                content.innerHTML = `<video id="storyVideoPlayer" src="${vidSrc}" autoplay playsinline controls style="max-width:100%; max-height:100%; object-fit:contain; border-radius:10px;"></video>`;
+                caption.innerText = status.text && status.text !== 'Video de estado' ? status.text : '';
+                caption.style.display = caption.innerText ? 'block' : 'none';
+
+                const vEl = document.getElementById('storyVideoPlayer');
+                vEl.onended = () => { closeStoryViewer(); };
+            } else if (status.imageUrl) {
+                content.style.background = '#000';
+                content.innerHTML = `<img src="${status.imageUrl}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
+                caption.innerText = status.text && status.text !== 'Foto de estado' ? status.text : '';
+                caption.style.display = caption.innerText ? 'block' : 'none';
+            } else {
+                const bg = status.musicUrl || '#005C4B';
+                content.style.background = bg;
+                content.innerHTML = `<div style="padding:24px; color:#FFF; font-size:26px; font-weight:bold; text-align:center; word-break:break-word;">${escapeHtml(status.text)}</div>`;
+                caption.style.display = 'none';
+            }
+
+            overlay.style.display = 'flex';
+
+            if (storyProgressInterval) clearInterval(storyProgressInterval);
+            let progress = 0;
+            progressBar.style.width = '0%';
+            storyProgressInterval = setInterval(() => {
+                progress += 2;
+                progressBar.style.width = progress + '%';
+                if (progress >= 100) {
+                    closeStoryViewer();
+                }
+            }, 100);
+        }
+
+        function closeStoryViewer() {
+            if (storyProgressInterval) clearInterval(storyProgressInterval);
+            document.getElementById('storyViewerOverlay').style.display = 'none';
+            currentViewingStory = null;
+        }
+
+        function deleteCurrentViewingStory() {
+            if (!currentViewingStory) return;
+            if (confirm('¿Eliminar este estado?')) {
+                db.ref(`status/${currentViewingStory.id}`).remove().then(() => {
+                    closeStoryViewer();
+                    showToast('🗑️ Estado eliminado');
+                });
+            }
+        }
+
+        // EVENTOS
+        function handleSearchFilter(q) {
+            if (activeTab === 'chats') renderChatsList(q);
+            else if (activeTab === 'contacts') renderContactsList(q);
+        }
+
+        function handleInputKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function connectLocalRelaySSE() {
+            try {
+                const es = new EventSource(`/stream?user=${encodeURIComponent(myPhone)}`);
+            } catch (_) {}
+        }
+
+        function formatPreviewText(text) {
+            if (!text) return '';
+            if (text.startsWith('[NEO_QUOTE]|')) return '📄 Presupuesto';
+            if (text.startsWith('[Media]')) return '📷 Foto';
+            if (text.startsWith('[NEO_HEALTH]')) return '❤️ Salud';
+            return text;
+        }
+
+        function formatTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            const now = new Date();
+            if (d.toDateString() === now.toDateString()) {
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            return d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function copyQuoteToClipboard(encoded) {
+            const text = decodeURIComponent(encoded);
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('📋 Cotización copiada al portapapeles');
+            });
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.style.display = 'block';
+            setTimeout(() => { t.style.display = 'none'; }, 3000);
+        }
+
+        window.onload = initApp;
+    </script>
+</body>
+</html>
