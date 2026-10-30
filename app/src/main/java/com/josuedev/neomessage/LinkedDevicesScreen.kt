@@ -151,6 +151,83 @@ fun LinkedDevicesScreen(
 
 
 
+            // ---- ENLACE Y DESCARGA PARA PC ----
+            item {
+                Surface(
+                    color = surfaceColor,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Computer, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Abrir o Instalar en tu Computadora", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text("Abre este enlace en el navegador de tu PC para chatear en pantalla grande, o instalar la app en Windows en 1 clic:", color = textSubColor, fontSize = 12.sp)
+                        Spacer(Modifier.height(10.dp))
+                        
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "http://192.168.100.38:3060",
+                                color = Color(0xFF00FF7F),
+                                fontSize = 13.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(10.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        
+                        Spacer(Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("NeoMessage PC", "http://192.168.100.38:3060")
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "🔗 Enlace copiado. Pégalo en tu PC.", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
+                            ) {
+                                Icon(Icons.Filled.ContentCopy, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("COPIAR LINK", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_SUBJECT, "NeoMessage para PC")
+                                            putExtra(Intent.EXTRA_TEXT, "Abre o instala NeoMessage en tu PC entrando aquí:\nhttp://192.168.100.38:3060")
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, "Enviar enlace a mi PC"))
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFF00FF7F))
+                            ) {
+                                Icon(Icons.Filled.Share, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("COMPARTIR", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
             // ---- BOTÓN DE ESCÁNER ----
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

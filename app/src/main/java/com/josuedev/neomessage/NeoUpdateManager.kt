@@ -32,8 +32,8 @@ data class UpdateInfo(
 
 object NeoUpdateManager {
     // Código de versión local de la app
-    const val CURRENT_VERSION_CODE = 23
-    const val CURRENT_VERSION_NAME = "3.13-GOLD-INTERACTIVE"
+    const val CURRENT_VERSION_CODE = 24
+    const val CURRENT_VERSION_NAME = "3.14-GOLD-DESKTOP"
 
     /**
      * Consulta Firebase o el servidor para ver si hay una versión más reciente
