@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NeoMessage Chat</string>
+    <string name="login_title">NeoMessage Auth</string>
+    <string name="login_desc">Protocolo Seguro de Comunicación</string>
+    <string name="vault_title">Bóveda de Seguridad</string>
+    <string name="chat_title">NeoMessage Messenger</string>
+</resources>

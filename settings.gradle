@@ -1,0 +1,2 @@
+rootProject.name = "NeoMessage"
+include ':app'

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NeoMessenger</string>
+    
+    <!-- Login Screen -->
+    <string name="login_title">NeoMessenger</string>
+    <string name="login_subtitle">Enter your number to register</string>
+    <string name="login_name_hint">Full name</string>
+    <string name="login_code_hint">Code</string>
+    <string name="login_phone_hint">Phone number</string>
+    <string name="login_button">ENTER SECURELY</string>
+    <string name="login_error_empty">Please complete all fields</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_chats">Chats</string>
+    <string name="nav_status">Status</string>
+    <string name="nav_communities">Communities</string>
+    <string name="nav_calls">Calls</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Chats List -->
+    <string name="chats_title">NeoMessenger</string>
+    <string name="chats_filter_all">All</string>
+    <string name="chats_filter_unread">Unread</string>
+    <string name="chats_filter_favorites">Favorites</string>
+    <string name="chats_filter_groups">Groups</string>
+</resources>

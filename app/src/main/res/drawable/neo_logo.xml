@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="256dp"
+    android:height="256dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+
+    <!-- Fondo de Cuadro Redondeado Oscuro Tipo Carbono (Como Titan POS) -->
+    <path android:pathData="M 40,0 L 216,0 C 238.1,0 256,17.9 256,40 L 256,216 C 256,238.1 238.1,256 216,256 L 40,256 C 17.9,256 0,238.1 0,216 L 0,40 C 0,17.9 17.9,0 40,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="128" android:startY="0"
+                android:endX="128" android:endY="256">
+                <item android:color="#2c3035" android:offset="0.0"/>
+                <item android:color="#101216" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Borde interior sutil para el cuadro 3D -->
+    <path
+        android:strokeWidth="2"
+        android:pathData="M 40,1 L 216,1 C 237.5,1 255,18.5 255,40 L 255,216 C 255,237.5 237.5,255 216,255 L 40,255 C 18.5,255 1,237.5 1,216 L 1,40 C 1,18.5 18.5,1 40,1 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="128" android:startY="0"
+                android:endX="128" android:endY="256">
+                <item android:color="#464d55" android:offset="0.0"/>
+                <item android:color="#000000" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Relleno Interno del Mensaje (Verde muy oscuro) -->
+    <path
+        android:pathData="M 68,64 H 188 A 12,12 0 0 1 200,76 V 148 A 12,12 0 0 1 188,160 H 152 L 118,198 L 108,160 H 68 A 12,12 0 0 1 56,148 V 76 A 12,12 0 0 1 68,64 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="128" android:startY="64"
+                android:endX="128" android:endY="198">
+                <item android:color="#0a1f14" android:offset="0.0"/>
+                <item android:color="#040d08" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Borde Exterior de la Burbuja N (Glow Verde Neón) -->
+    <path
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:pathData="M 68,64 H 188 A 12,12 0 0 1 200,76 V 148 A 12,12 0 0 1 188,160 H 152 L 118,198 L 108,160 H 68 A 12,12 0 0 1 56,148 V 76 A 12,12 0 0 1 68,64 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="128" android:startY="64"
+                android:endX="128" android:endY="198">
+                <item android:color="#00FF7F" android:offset="0.0"/>
+                <item android:color="#008c46" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- La letra 'N' interna verde neón -->
+    <path
+        android:pathData="M 90,140 V 84 H 106 L 148,126 V 84 H 164 V 140 H 148 L 106,98 V 140 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="128" android:startY="84"
+                android:endX="128" android:endY="140">
+                <item android:color="#80ffbf" android:offset="0.0"/>
+                <item android:color="#00e673" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

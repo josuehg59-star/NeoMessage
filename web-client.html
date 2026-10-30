@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>NeoMessage Universal (PWA / iOS / Android)</title>
+    
+    <!-- Meta tags exclusivas para Apple iOS (iPhone / iPad) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="NeoMessage">
+    <meta name="theme-color" content="#0F172A">
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #070B14; color: #FFFFFF; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* HEADER */
+        header { background: #0F172A; border-bottom: 1px solid #1E293B; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; z-index: 10; }
+        .logo-box { display: flex; align-items: center; gap: 10px; }
+        .badge-logo { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #00FF7F, #00BFFF); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000; font-size: 18px; }
+        .title { font-size: 16px; font-weight: 700; color: #FFF; }
+        .subtitle { font-size: 11px; color: #00FF7F; }
+
+        /* SCREENS */
+        .screen { display: none; flex: 1; flex-direction: column; height: calc(100vh - 59px); overflow: hidden; }
+        .screen.active { display: flex; }
+
+        /* LOGIN */
+        #loginScreen { padding: 30px 20px; align-items: center; justify-content: center; text-align: center; }
+        .login-card { background: #0F172A; border: 1px solid #1E293B; border-radius: 16px; padding: 24px; width: 100%; max-width: 360px; }
+        .input-group { margin-bottom: 16px; text-align: left; }
+        .input-group label { display: block; font-size: 12px; color: #94A3B8; margin-bottom: 6px; }
+        .input-group input { width: 100%; background: #1E293B; border: 1px solid #334155; border-radius: 10px; padding: 12px; color: #FFF; font-size: 15px; outline: none; }
+        .input-group input:focus { border-color: #00FF7F; }
+        .btn-green { width: 100%; background: #00FF7F; color: #000; border: none; border-radius: 10px; padding: 14px; font-weight: 700; font-size: 15px; cursor: pointer; transition: 0.2s; }
+        .btn-green:hover { background: #00E676; }
+
+        /* CHAT LIST */
+        #chatsScreen { overflow-y: auto; }
+        .chat-item { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #1E293B; cursor: pointer; }
+        .chat-item:hover { background: #0F172A; }
+        .avatar { width: 44px; height: 44px; border-radius: 50%; background: #1E293B; color: #00FF7F; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; margin-right: 12px; }
+        .chat-info { flex: 1; }
+        .chat-name { font-size: 15px; font-weight: 600; }
+        .chat-last { font-size: 13px; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+
+        /* CHAT ROOM */
+        #roomHeader { background: #0F172A; border-bottom: 1px solid #1E293B; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; }
+        .back-btn { background: none; border: none; color: #FFF; font-size: 22px; cursor: pointer; padding: 4px 8px; margin-right: 6px; }
+        .messages-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #070B14; }
+        .msg-bubble { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4; word-break: break-word; }
+        .msg-me { align-self: flex-end; background: #00382B; color: #FFF; border-bottom-right-radius: 2px; }
+        .msg-other { align-self: flex-start; background: #1E293B; color: #FFF; border-bottom-left-radius: 2px; }
+        .msg-time { font-size: 10px; color: #94A3B8; text-align: right; margin-top: 4px; }
+        .msg-img { max-width: 100%; border-radius: 10px; margin-top: 6px; cursor: pointer; display: block; }
+
+        /* INPUT BAR */
+        .chat-input-bar { background: #0F172A; padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-top: 1px solid #1E293B; }
+        .chat-input-bar input { flex: 1; background: #1E293B; border: 1px solid #334155; border-radius: 20px; padding: 10px 16px; color: #FFF; font-size: 14px; outline: none; }
+        .icon-btn { background: none; border: none; color: #00FF7F; font-size: 20px; cursor: pointer; padding: 6px; }
+
+        /* MODAL ZOOM */
+        #zoomModal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 999; flex-direction: column; align-items: center; justify-content: center; }
+        #zoomModal img { max-width: 95vw; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+        .close-zoom { position: absolute; top: 20px; right: 20px; font-size: 28px; color: #FFF; background: none; border: none; cursor: pointer; }
+
+        /* MAP CARD */
+        .map-card { background: #0F172A; border: 1px solid #00FF7F; border-radius: 10px; padding: 10px; margin-top: 6px; }
+        .map-btn { display: inline-block; background: #00FF7F; color: #000; text-decoration: none; font-weight: bold; font-size: 12px; padding: 8px 12px; border-radius: 6px; margin-top: 6px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-box">
+            <div class="badge-logo">N</div>
+            <div>
+                <div class="title" id="headerTitle">NeoMessage Universal</div>
+                <div class="subtitle" id="headerSubtitle">⚡ P2P Soberano ($0.00 Costo)</div>
+            </div>
+        </div>
+        <div id="statusBadge" style="font-size: 12px; color: #00FF7F;">🟢 Online</div>
+    </header>
+
+    <!-- PANTALLA 1: LOGIN -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-card">
+            <h2 style="margin-bottom: 6px; color: #00FF7F;">Acceso Universal</h2>
+            <p style="font-size: 12px; color: #94A3B8; margin-bottom: 20px;">Compatible con Apple iPhone, Android, Mac y PC sin pagar nada.</p>
+            
+            <div class="input-group">
+                <label>Tu Nombre:</label>
+                <input type="text" id="loginName" placeholder="Ej: Josué">
+            </div>
+            <div class="input-group">
+                <label>Tu Número Telefónico (10 dígitos):</label>
+                <input type="tel" id="loginPhone" placeholder="Ej: 9611234567" maxlength="15">
+            </div>
+            <button class="btn-green" onclick="doLogin()">Ingresar a NeoMessage</button>
+        </div>
+    </div>
+
+    <!-- PANTALLA 2: LISTA DE CHATS -->
+    <div id="chatsScreen" class="screen">
+        <div style="padding: 12px 16px; background: #0F172A; display: flex; gap: 8px;">
+            <input type="tel" id="newChatPhone" placeholder="Número del contacto (ej: 9612765041)" style="flex: 1; background: #1E293B; border: 1px solid #334155; border-radius: 8px; padding: 8px 12px; color: #FFF;">
+            <button class="btn-green" style="width: auto; padding: 8px 14px;" onclick="startNewChat()">Abrir Chat</button>
+        </div>
+        <div id="chatsList"></div>
+    </div>
+
+    <!-- PANTALLA 3: SALA DE CHAT -->
+    <div id="roomScreen" class="screen">
+        <div id="roomHeader">
+            <div style="display: flex; align-items: center;">
+                <button class="back-btn" onclick="showChats()">←</button>
+                <div>
+                    <div style="font-weight: 700; font-size: 15px;" id="currentChatName">Contacto</div>
+                    <div style="font-size: 11px; color: #00FF7F;" id="currentChatStatus">Cifrado P2P Activo</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="icon-btn" onclick="alert('📞 Conectando llamada de voz...')">📞</button>
+                <button class="icon-btn" onclick="alert('📹 Conectando videollamada...')">📹</button>
+            </div>
+        </div>
+
+        <div class="messages-container" id="msgBox"></div>
+
+        <div class="chat-input-bar">
+            <input type="file" id="photoInput" accept="image/*" style="display: none;" onchange="handlePhotoUpload(this)">
+            <button class="icon-btn" onclick="document.getElementById('photoInput').click()" title="Enviar Foto">📸</button>
+            <button class="icon-btn" onclick="shareLocation()" title="Compartir Ubicación">📍</button>
+            <input type="text" id="txtInput" placeholder="Escribe un mensaje..." onkeypress="if(event.key==='Enter') sendText()">
+            <button class="icon-btn" onclick="sendText()" style="color: #00FF7F; font-weight: bold;">➤</button>
+        </div>
+    </div>
+
+    <!-- MODAL ZOOM DE IMÁGENES -->
+    <div id="zoomModal" onclick="this.style.display='none'">
+        <button class="close-zoom">✕</button>
+        <img id="zoomImg" src="">
+    </div>
+
+    <script>
+        let myPhone = localStorage.getItem('neo_user_phone') || '';
+        let myName = localStorage.getItem('neo_user_name') || '';
+        let currentRecipient = '';
+        let currentChatId = '';
+        let eventSource = null;
+        let knownChats = JSON.parse(localStorage.getItem('neo_known_chats') || '[]');
+
+        function init() {
+            if (myPhone && myName) {
+                connectRelay();
+                showChats();
+            } else {
+                showScreen('loginScreen');
+            }
+        }
+
+        function doLogin() {
+            const name = document.getElementById('loginName').value.trim();
+            const phone = document.getElementById('loginPhone').value.replace(/\D/g, '');
+            if (!name || phone.length < 10) {
+                alert('Ingresa tu nombre y teléfono de al menos 10 dígitos.');
+                return;
+            }
+            myPhone = phone;
+            myName = name;
+            localStorage.setItem('neo_user_phone', myPhone);
+            localStorage.setItem('neo_user_name', myName);
+            connectRelay();
+            showChats();
+        }
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function showChats() {
+            showScreen('chatsScreen');
+            renderChatsList();
+        }
+
+        function connectRelay() {
+            if (eventSource) eventSource.close();
+            const url = `/stream?user=${myPhone}`;
+            eventSource = new EventSource(url);
+
+            eventSource.onopen = () => {
+                document.getElementById('statusBadge').innerText = '🟢 Conectado';
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleIncomingMessage(data.chatId, data.message);
+                } catch(e) {}
+            };
+
+            eventSource.onerror = () => {
+                document.getElementById('statusBadge').innerText = '🟡 Reconectando...';
+            };
+        }
+
+        function handleIncomingMessage(chatId, msg) {
+            const senderClean = (msg.senderId || '').replace(/\D/g, '');
+            if (!knownChats.includes(senderClean) && senderClean !== myPhone) {
+                knownChats.push(senderClean);
+                localStorage.setItem('neo_known_chats', JSON.stringify(knownChats));
+                renderChatsList();
+            }
+
+            if (currentRecipient === senderClean) {
+                renderMessageBubble(msg, false);
+            }
+        }
+
+        function renderChatsList() {
+            const list = document.getElementById('chatsList');
+            list.innerHTML = '';
+            if (knownChats.length === 0) {
+                list.innerHTML = '<div style="padding: 30px; text-align: center; color: #94A3B8;">No tienes chats abiertos aún.<br>Escribe un número arriba para comenzar.</div>';
+                return;
+            }
+            knownChats.forEach(phone => {
+                const item = document.createElement('div');
+                item.className = 'chat-item';
+                item.innerHTML = `
+                    <div class="avatar">${phone.slice(-2)}</div>
+                    <div class="chat-info">
+                        <div class="chat-name">${phone === '9612765041' ? 'Miscelánea Brittany (Bot)' : phone}</div>
+                        <div class="chat-last">Toca para abrir chat instantáneo</div>
+                    </div>
+                `;
+                item.onclick = () => openChat(phone);
+                list.appendChild(item);
+            });
+        }
+
+        function startNewChat() {
+            const phone = document.getElementById('newChatPhone').value.replace(/\D/g, '');
+            if (phone.length < 10) {
+                alert('Ingresa un número válido de al menos 10 dígitos.');
+                return;
+            }
+            if (!knownChats.includes(phone)) {
+                knownChats.push(phone);
+                localStorage.setItem('neo_known_chats', JSON.stringify(knownChats));
+            }
+            openChat(phone);
+        }
+
+        function openChat(phone) {
+            currentRecipient = phone;
+            const ids = [myPhone, phone].sort();
+            currentChatId = `private_${ids[0]}_${ids[1]}`;
+
+            document.getElementById('currentChatName').innerText = phone === '9612765041' ? 'Miscelánea Brittany (Bot)' : phone;
+            document.getElementById('msgBox').innerHTML = '';
+            showScreen('roomScreen');
+        }
+
+        function sendText() {
+            const txt = document.getElementById('txtInput').value.trim();
+            if (!txt) return;
+            document.getElementById('txtInput').value = '';
+
+            const msg = {
+                id: 'web_' + Date.now(),
+                text: txt,
+                timestamp: Date.now(),
+                senderId: myPhone,
+                senderName: myName,
+                rank: 'Universal Web'
+            };
+
+            renderMessageBubble(msg, true);
+            dispatchToRelay(msg);
+        }
+
+        function dispatchToRelay(msg) {
+            fetch('/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: currentRecipient,
+                    chatId: currentChatId,
+                    message: msg
+                })
+            }).catch(e => console.error('Error dispatching message', e));
+        }
+
+        function renderMessageBubble(msg, isMine) {
+            const box = document.getElementById('msgBox');
+            const b = document.createElement('div');
+            b.className = `msg-bubble ${isMine ? 'msg-me' : 'msg-other'}`;
+
+            const text = msg.text || '';
+            const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            if (text.startsWith('[Media]')) {
+                const src = text.replace('[Media] ', '').trim();
+                b.innerHTML = `<div>📷 Foto adjunta:</div><img src="${src}" class="msg-img" onclick="zoomImage('${src}')"><div class="msg-time">${time}</div>`;
+            } else if (text.startsWith('[Location]')) {
+                const parts = text.replace('[Location] ', '').trim().split('|');
+                const lat = parts[0] || '0';
+                const lon = parts[1] || '0';
+                b.innerHTML = `
+                    <div class="map-card">
+                        <div>📍 Ubicación GPS: ${lat}, ${lon}</div>
+                        <a href="https://maps.google.com/?q=${lat},${lon}" target="_blank" class="map-btn">🗺️ Abrir en Google Maps</a>
+                    </div>
+                    <div class="msg-time">${time}</div>
+                `;
+            } else {
+                b.innerHTML = `<div>${text.replace(/\n/g, '<br>')}</div><div class="msg-time">${time}</div>`;
+            }
+
+            box.appendChild(b);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function zoomImage(src) {
+            document.getElementById('zoomImg').src = src;
+            document.getElementById('zoomModal').style.display = 'flex';
+        }
+
+        function handlePhotoUpload(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const maxDim = 800;
+                    let w = img.width, h = img.height;
+                    if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+                    else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const b64 = canvas.toDataURL('image/jpeg', 0.65);
+
+                    const msg = {
+                        id: 'web_img_' + Date.now(),
+                        text: '[Media] ' + b64,
+                        timestamp: Date.now(),
+                        senderId: myPhone,
+                        senderName: myName,
+                        rank: 'Universal Web'
+                    };
+                    renderMessageBubble(msg, true);
+                    dispatchToRelay(msg);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function shareLocation() {
+            if (!navigator.geolocation) {
+                alert('Geolocalización no soportada en este navegador.');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude.toFixed(6);
+                    const lon = pos.coords.longitude.toFixed(6);
+                    const msg = {
+                        id: 'web_loc_' + Date.now(),
+                        text: `[Location] ${lat}|${lon}`,
+                        timestamp: Date.now(),
+                        senderId: myPhone,
+                        senderName: myName,
+                        rank: 'Universal Web'
+                    };
+                    renderMessageBubble(msg, true);
+                    dispatchToRelay(msg);
+                },
+                (err) => {
+                    alert('Error obteniendo ubicación: ' + err.message);
+                }
+            );
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "56506410022",
+    "project_id": "com-josuedev-neomessage",
+    "storage_bucket": "com-josuedev-neomessage.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:56506410022:android:d6efd191df516e2ed3b2e7",
+        "android_client_info": {
+          "package_name": "com.josuedev.neomessage"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBYMrb3BnmYIUoAZfoSOBx9Nq64ei2ULUo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
