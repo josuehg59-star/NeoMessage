@@ -227,7 +227,7 @@ fun ChatRoomScreen(
                         if (NeoUtils.sanitizeId(m.senderId).takeLast(10) != cleanMyId.takeLast(10) && m.deliveredTo[cleanMyId] != true) {
                             try { database.child(m.id).child("deliveredTo").child(cleanMyId).setValue(true) } catch (_: Exception) {}
                         }
-                        if (m.senderId != cleanMyId) {
+                        if (NeoUtils.sanitizeId(m.senderId).takeLast(10) != cleanMyId.takeLast(10)) {
                             NeoBotManager.dispatchAutoReplyIfNeeded(
                                 context = context,
                                 chatId = chatId,

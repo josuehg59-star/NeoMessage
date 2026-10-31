@@ -422,7 +422,7 @@ fun ChatsListScreen(
                                             val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
                                             val cleanMe = NeoUtils.sanitizeId(myCleanId)
                                             if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
-                                                if (System.currentTimeMillis() - lastMsgObj.timestamp < 25000L) {
+                                                if (Math.abs(System.currentTimeMillis() - lastMsgObj.timestamp) < 30 * 60 * 1000L) {
                                                     NeoBotManager.dispatchAutoReplyIfNeeded(
                                                         context = context,
                                                         chatId = chatId,

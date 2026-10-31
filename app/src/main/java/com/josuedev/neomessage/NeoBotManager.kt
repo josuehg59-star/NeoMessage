@@ -40,11 +40,12 @@ object NeoBotManager {
     }
 
     fun isBotEnabled(context: Context): Boolean {
-        val sp = getPrefs(context)
-        if (sp.contains("bot_active_switch")) {
-            return sp.getBoolean("bot_active_switch", false)
-        }
-        return try { loadConfig(context).isEnabled } catch (_: Exception) { false }
+        return try {
+            val sp = getPrefs(context)
+            val bySwitch = sp.getBoolean("bot_active_switch", false)
+            val byConfig = loadConfig(context).isEnabled
+            bySwitch || byConfig
+        } catch (_: Exception) { false }
     }
 
     fun setBotEnabled(context: Context, enabled: Boolean) {
@@ -461,9 +462,9 @@ object NeoBotManager {
         // 3. Anti-loop: no responder a mensajes generados por un bot
         if (incomingText.startsWith("🤖") || incomingText.contains("(Bot)") || incomingText.startsWith("🧾") || incomingText.startsWith("📦")) return
 
-        // 4. Solo responder a mensajes recientes (recibidos en los últimos 25 segundos) para no procesar historial viejo
+        // 4. Solo responder a mensajes de los últimos 30 minutos (para tolerar desfaces de reloj y demoras de red)
         val now = System.currentTimeMillis()
-        if (now - msgTimestamp > 25000L) return
+        if (Math.abs(now - msgTimestamp) > 30 * 60 * 1000L) return
 
         // 5. Anti-repetición inmediata del mismo mensaje (4 segundos de debounce por cliente)
         val key = "$chatId-$cleanSender"
@@ -492,7 +493,12 @@ object NeoBotManager {
                     senderName = senderTitle,
                     rank = "Operador Bot"
                 )
-                messagesRef.child(textKey).setValue(textMsg)
+                android.util.Log.i("NEO_BOT", "🚀 Despachando respuesta a $chatId: $replyText")
+                messagesRef.child(textKey).setValue(textMsg).addOnSuccessListener {
+                    android.util.Log.i("NEO_BOT", "✅ [BOT ENVIADO EXITOSAMENTE] a $chatId: $replyText")
+                }.addOnFailureListener { err ->
+                    android.util.Log.e("NEO_BOT", "❌ [ERROR AL ENVIAR BOT]: ${err.message}")
+                }
                 localDb.messageDao().insertMessage(
                     MessageEntity(
                         id = textKey,
