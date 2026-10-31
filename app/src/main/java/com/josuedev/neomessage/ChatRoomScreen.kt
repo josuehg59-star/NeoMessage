@@ -1651,9 +1651,13 @@ fun openDocumentFile(context: Context, file: File) {
         val extension = file.extension.lowercase()
         val mimeType = when (extension) {
             "pdf" -> "application/pdf"
-            "xlsx", "xls" -> "application/vnd.ms-excel"
-            "docx", "doc" -> "application/msword"
-            "pptx", "ppt" -> "application/vnd.ms-powerpoint"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "xls" -> "application/vnd.ms-excel"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "doc" -> "application/msword"
+            "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "ppt" -> "application/vnd.ms-powerpoint"
+            "csv" -> "text/comma-separated-values"
             "txt" -> "text/plain"
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
@@ -1667,9 +1671,10 @@ fun openDocumentFile(context: Context, file: File) {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mimeType)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        context.startActivity(Intent.createChooser(intent, "Abrir con..."))
+        context.startActivity(Intent.createChooser(intent, "Abrir y Modificar con..."))
     } catch (e: Exception) {
         Toast.makeText(context, "No se encontró aplicación para abrir este archivo (${file.name}): ${e.message}", Toast.LENGTH_LONG).show()
     }
