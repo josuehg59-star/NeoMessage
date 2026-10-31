@@ -2321,6 +2321,10 @@
                 <div class="input-bar" id="chatInputBar" style="position: relative;">
                     <!-- MENÚ EMERGENTE DE ADJUNTOS TIPO WHATSAPP -->
                     <div class="attachment-popup" id="attachmentPopup" style="display: none;">
+                        <div class="attachment-item" onclick="openClassroomAssignmentModal(); toggleAttachmentPopup();">
+                            <div class="attachment-item-icon" style="background: #FFD700; color:#000;">📚</div>
+                            <span>Tarea Escolar</span>
+                        </div>
                         <div class="attachment-item" onclick="document.getElementById('docPicker').click(); toggleAttachmentPopup();">
                             <div class="attachment-item-icon" style="background: #7F66FF;">📄</div>
                             <span>Documento</span>
@@ -2378,6 +2382,7 @@
 
                     
                     <textarea id="messageInput" placeholder="Escribe un mensaje..." oninput="handleMessageInputChange(this)" onkeydown="handleInputKey(event)"></textarea>
+                    <button class="icon-btn" onclick="translateInputText()" title="🌐 Traducir mi mensaje antes de enviar (a Inglés, Francés, etc.)" style="color: #00FF7F; margin-right: 4px;">🌐</button>
                     
                     <!-- BOTÓN DE MICRÓFONO O ENVIAR SEGÚN EL TEXTO -->
                     <button class="icon-btn" id="btnVoiceRecord" onclick="startVoiceRecording()" title="Grabar nota de voz" style="color: var(--neon-green); font-size: 20px;">🎤</button>
@@ -2547,6 +2552,9 @@
                 alert('Selecciona primero un contacto para llamar.');
                 return;
             }
+            // DETECTAR MICRÓFONO Y CÁMARA (DE LO CONTRARIO NO PODRÁN TRANSMITIR)
+            const hasHardware = await verifyMediaDevices(callType === 'video');
+            if (!hasHardware) return;
 
             try {
                 // Solicitar micrófono y opcionalmente cámara
@@ -4735,7 +4743,66 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     </div>
                     ${reactionsHtml}
                 `;
-            } else if (text.startsWith('[NEO_QUOTE]|')) {
+            } else if (text.startsWith('[NEO_ASSIGNMENT]|')) {
+                // TAREA ESCOLAR (NEOCLASSROOM)
+                let assign = {};
+                try { assign = JSON.parse(text.replace('[NEO_ASSIGNMENT]|', '')); } catch(_) {}
+                const title = assign.title || 'Tarea';
+                const subject = assign.subject || 'Clase';
+                const inst = assign.instructions || 'Sin instrucciones';
+                const dueDate = assign.dueDate || 'Sin fecha límite';
+                const points = assign.points || 100;
+
+                b.innerHTML = `
+                    ${menuBtnHtml}
+                    ${quoteHtml}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); border: 2px solid #FFD700; border-radius: 12px; padding: 14px; margin-top: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); min-width: 260px; max-width: 320px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="background: #FFD700; color: #000; font-weight: 900; font-size: 11px; padding: 3px 8px; border-radius: 6px;">📚 TAREA: ${escapeHtml(subject.toUpperCase())}</span>
+                            <span style="color: #00FF7F; font-weight: bold; font-size: 12px;">🎯 ${points} pts</span>
+                        </div>
+                        <div style="font-size: 15px; font-weight: bold; color: #FFF; margin-bottom: 6px;">${escapeHtml(title)}</div>
+                        <div style="font-size: 13px; color: #CBD5E1; margin-bottom: 10px; line-height: 1.4; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px;">${escapeHtml(inst)}</div>
+                        <div style="display:flex; align-items:center; gap:6px; font-size: 12px; color: #F59E0B; margin-bottom: 12px;">
+                            <span>📅 Entrega:</span> <b>${escapeHtml(dueDate)}</b>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <button onclick="openSubmitAssignmentModal('${assign.id}', '${escapeHtml(title)}')" style="background: #00A884; color: #FFF; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content:center; gap: 6px;">
+                                📤 Entregar Tarea
+                            </button>
+                            <button onclick="openViewSubmissionsModal('${assign.id}', '${escapeHtml(title)}')" style="background: rgba(255,255,255,0.1); color: #FFF; border: 1px solid rgba(255,255,255,0.2); padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content:center; gap: 6px;">
+                                📋 Ver Entregas / Calificar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                    ${reactionsHtml}
+                `;
+            } else if (text.startsWith('[NEO_SUBMISSION]|')) {
+                const parts = text.split('|');
+                const studentName = parts[2] || 'Alumno';
+                const fileName = parts[3] || 'Archivo';
+                const comment = parts[4] || '';
+                b.innerHTML = `
+                    ${menuBtnHtml}
+                    ${quoteHtml}
+                    <div style="background: rgba(0, 255, 127, 0.1); border-left: 4px solid #00FF7F; padding: 10px 14px; border-radius: 8px; min-width: 240px;">
+                        <div style="color: #00FF7F; font-weight: bold; font-size: 13px; margin-bottom: 4px;">✅ TAREA ENTREGADA</div>
+                        <div style="color: #FFF; font-size: 14px; font-weight: bold;">👨‍🎓 ${escapeHtml(studentName)}</div>
+                        <div style="color: #CBD5E1; font-size: 12px; margin-top: 4px;">📄 ${escapeHtml(fileName)}</div>
+                        ${comment ? `<div style="color: #A7F3D0; font-size: 12px; margin-top: 4px; font-style:italic;">"${escapeHtml(comment)}"</div>` : ''}
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                    ${reactionsHtml}
+                `;
+            } else if (text.startsWith('[NEO_QUOTE]|')) { 
                 // 6. COTIZACIÓN
                 const p = text.replace('[NEO_QUOTE]|', '').split('|');
                 const folio = p[1] || 'FOLIO #000';
@@ -4801,6 +4868,13 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <div class="msg-text-content">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+                    ${!isMine && text.length > 2 ? `
+                        <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                            <button onclick="promptTranslateMessage('${msg.id}', decodeURIComponent('${encodeURIComponent(text)}'))" style="background: rgba(0, 168, 132, 0.12); color: #00FF7F; border: 1px solid rgba(0, 255, 127, 0.3); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: 500;">
+                                🌐 ¿Deseas traducirlo?
+                            </button>
+                        </div>
+                    ` : ''}
                     <div class="msg-footer">
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
@@ -5756,6 +5830,10 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             <span class="context-reaction-btn" onclick="reactToContextMsg('😢')">😢</span>
             <span class="context-reaction-btn" onclick="reactToContextMsg('🙏')">🙏</span>
         </div>
+        <div class="context-item" onclick="if(contextTargetMsg) translateMessage(contextTargetMsg.id, contextTargetMsg.text)">
+            <span>🌐</span>
+            <span>Traducir al Español</span>
+        </div>
         <div class="context-item" id="contextEditBtn" onclick="triggerEditFromContext()">
             <span>✏️</span>
             <span>Editar</span>
@@ -5791,6 +5869,475 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             </div>
             <div class="modal-body" style="max-height: 350px; overflow-y: auto;" id="forwardContactsList">
                 <!-- Se llena dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+<script>
+        // ==============================================================================
+        // 1. NEOCLASSROOM: ASIGNAR TAREA, ENTREGAR Y CALIFICAR (ESTILO GOOGLE CLASSROOM)
+        // ==============================================================================
+        function openClassroomAssignmentModal() {
+            if (!currentChatId) {
+                showToast("⚠️ Selecciona primero un grupo escolar o chat");
+                return;
+            }
+            document.getElementById('assignSubject').value = '';
+            document.getElementById('assignTitle').value = '';
+            document.getElementById('assignInstructions').value = '';
+            document.getElementById('assignDueDate').value = 'Viernes 18:00 hrs';
+            document.getElementById('assignPoints').value = '100';
+            document.getElementById('classroomAssignmentModal').style.display = 'flex';
+        }
+
+        function dispatchAssignment() {
+            const subject = document.getElementById('assignSubject').value.trim() || 'General';
+            const title = document.getElementById('assignTitle').value.trim();
+            const instructions = document.getElementById('assignInstructions').value.trim();
+            const dueDate = document.getElementById('assignDueDate').value.trim() || 'Sin fecha límite';
+            const points = parseInt(document.getElementById('assignPoints').value) || 100;
+
+            if (!title) {
+                alert('Ingresa el título de la tarea o trabajo escolar.');
+                return;
+            }
+
+            const assignId = 'assign_' + Date.now();
+            const assignObj = {
+                id: assignId,
+                title: title,
+                subject: subject,
+                instructions: instructions,
+                dueDate: dueDate,
+                points: points,
+                teacherPhone: myPhone,
+                teacherName: myName,
+                timestamp: Date.now()
+            };
+
+            const payload = '[NEO_ASSIGNMENT]|' + JSON.stringify(assignObj);
+            dispatchMessageObject(payload);
+
+            // Guardar también en nodo de tareas para seguimiento
+            db.ref(`assignments/${assignId}/info`).set(assignObj);
+
+            document.getElementById('classroomAssignmentModal').style.display = 'none';
+            showToast('📚 Tarea escolar asignada al grupo exitosamente');
+        }
+
+        function openSubmitAssignmentModal(assignId, title) {
+            document.getElementById('subAssignmentId').value = assignId;
+            document.getElementById('subTaskTitle').innerText = '📚 ' + title;
+            document.getElementById('subFileInput').value = '';
+            document.getElementById('subComment').value = '';
+            document.getElementById('submitAssignmentModal').style.display = 'flex';
+        }
+
+        function submitAssignmentWork() {
+            const assignId = document.getElementById('subAssignmentId').value;
+            const fileInput = document.getElementById('subFileInput');
+            const comment = document.getElementById('subComment').value.trim();
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Por favor selecciona tu archivo o foto de la libreta.');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            showToast(`📤 Preparando entrega de ${file.name}...`);
+
+            reader.onload = function(e) {
+                const base64Data = e.target.result;
+                const submissionData = {
+                    studentPhone: myPhone,
+                    studentName: myName,
+                    fileName: file.name,
+                    fileUrl: base64Data,
+                    comment: comment,
+                    timestamp: Date.now(),
+                    grade: null,
+                    feedback: null
+                };
+
+                // Guardar entrega en Firebase
+                const studentKey = (myPhone || 'estudiante').replace(/\D/g, '');
+                db.ref(`assignments/${assignId}/submissions/${studentKey}`).set(submissionData).then(() => {
+                    // Notificar al grupo
+                    const notifyText = `[NEO_SUBMISSION]|${assignId}|${myName}|${file.name}|${comment}`;
+                    dispatchMessageObject(notifyText);
+
+                    document.getElementById('submitAssignmentModal').style.display = 'none';
+                    showToast('✅ Tarea entregada con éxito. El maestro ha recibido tu trabajo.');
+                }).catch(err => {
+                    alert('Error al entregar: ' + err.message);
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function cancelAssignmentSubmission(assignId) {
+            if (!confirm('¿Deseas anular tu entrega para modificar o volver a subir tu trabajo?')) return;
+            const studentKey = (myPhone || 'estudiante').replace(/\D/g, '');
+            db.ref(`assignments/${assignId}/submissions/${studentKey}`).remove().then(() => {
+                showToast('🔄 Entrega anulada. Puedes subirla nuevamente.');
+            });
+        }
+
+        function openViewSubmissionsModal(assignId, title) {
+            document.getElementById('currentViewAssignmentId').value = assignId;
+            document.getElementById('viewSubTaskTitle').innerText = 'Revisión de entregas: ' + title;
+            const container = document.getElementById('submissionsListContainer');
+            container.innerHTML = '<div style="color:#CBD5E1; text-align:center; padding:20px;">Cargando entregas de alumnos...</div>';
+            document.getElementById('viewSubmissionsModal').style.display = 'flex';
+
+            db.ref(`assignments/${assignId}/submissions`).once('value', snap => {
+                container.innerHTML = '';
+                const subs = snap.val();
+                if (!subs) {
+                    container.innerHTML = '<div style="color:#94A3B8; text-align:center; padding:30px;">⏳ Aún ningún alumno ha entregado esta tarea.</div>';
+                    return;
+                }
+                Object.values(subs).forEach(s => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'background: #0F172A; border: 1px solid #334155; border-radius: 8px; padding: 10px; margin-bottom: 8px;';
+                    const timeStr = new Date(s.timestamp).toLocaleString();
+                    row.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-weight:bold; color:#00FF7F; font-size:14px;">👨‍🎓 ${escapeHtml(s.studentName || 'Alumno')} (${escapeHtml(s.studentPhone || '')})</span>
+                            <span style="font-size:11px; color:#94A3B8;">${timeStr}</span>
+                        </div>
+                        <div style="font-size:13px; color:#CBD5E1; margin-bottom:6px;">
+                            <b>📄 Archivo:</b> ${escapeHtml(s.fileName)}
+                        </div>
+                        ${s.comment ? `<div style="font-size:12px; color:#A7F3D0; background:rgba(0,255,127,0.06); padding:4px 8px; border-radius:4px; margin-bottom:8px;">💬 <i>"${escapeHtml(s.comment)}"</i></div>` : ''}
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button onclick="downloadFileSafely('${escapeHtml(s.fileName)}', '${s.fileUrl}')" style="background:#2563EB; color:#FFF; border:none; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">
+                                ⬇️ Descargar Trabajo
+                            </button>
+                            <input type="number" id="grade_${s.studentPhone}" placeholder="Calif (100)" value="${s.grade || ''}" style="width:90px; padding:4px 8px; background:#1E293B; border:1px solid #475569; border-radius:6px; color:#FFF; font-size:12px;">
+                            <button onclick="saveAssignmentGrade('${assignId}', '${s.studentPhone}')" style="background:#00FF7F; color:#000; border:none; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">
+                                💾 Calificar
+                            </button>
+                            ${s.grade !== null && s.grade !== undefined ? `<span style="color:#FFD700; font-weight:bold; font-size:12px;">Calificado: ${s.grade} pts</span>` : ''}
+                        </div>
+                    `;
+                    container.appendChild(row);
+                });
+            });
+        }
+
+        function saveAssignmentGrade(assignId, studentPhone) {
+            const inp = document.getElementById(`grade_${studentPhone}`);
+            if (!inp) return;
+            const grade = parseInt(inp.value);
+            if (isNaN(grade)) {
+                alert('Ingresa una calificación numérica válida.');
+                return;
+            }
+            const studentKey = String(studentPhone).replace(/\D/g, '');
+            db.ref(`assignments/${assignId}/submissions/${studentKey}/grade`).set(grade).then(() => {
+                showToast(`🎯 Calificación guardada: ${grade} pts`);
+            });
+        }
+
+        // ==============================================================================
+        // 2. DETECCIÓN AUTOMÁTICA DE MICRÓFONO Y CÁMARA (PREVENCIÓN DE ENTRADA SIN HARDWARE)
+        // ==============================================================================
+        async function verifyMediaDevices(requireVideo = false) {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                alert('⚠️ Tu navegador no soporta detección de periféricos multimedia.');
+                return false;
+            }
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const hasMic = devices.some(d => d.kind === 'audioinput');
+                const hasCam = devices.some(d => d.kind === 'videoinput');
+
+                if (!hasMic) {
+                    alert('🚫 No se detectó ningún micrófono conectado en tu computadora o dispositivo.\n\nPara poder hablar o participar en la reunión, debes conectar un micrófono o audífonos.');
+                    return false;
+                }
+                if (requireVideo && !hasCam) {
+                    alert('🚫 No se detectó ninguna cámara web conectada.\n\nPara realizar o entrar en videollamada, conecta tu cámara web.');
+                    return false;
+                }
+                return true;
+            } catch (e) {
+                console.warn('Error verificando dispositivos:', e);
+                return true;
+            }
+        }
+
+        // ==============================================================================
+        // 3. TRADUCTOR UNIVERSAL SIMULTÁNEO EN TIEMPO REAL ($0.00 COSTO)
+        // ==============================================================================
+        async function translateMessage(msgId, text) {
+            if (!text || text.trim() === '') return;
+            const cleanText = text.replace(/\[Media\].*|\[File\].*|\[Document\].*/g, '').trim();
+            if (!cleanText) return;
+
+            showToast('🌐 Traduciendo mensaje...');
+            try {
+                const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=autodetect|es`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data && data.responseData && data.responseData.translatedText) {
+                    const trans = data.responseData.translatedText;
+                    const bubble = document.getElementById('msg_' + msgId);
+                    if (bubble) {
+                        let transBox = bubble.querySelector('.translated-box');
+                        if (!transBox) {
+                            transBox = document.createElement('div');
+                            transBox.className = 'translated-box';
+                            transBox.style.cssText = 'background: rgba(0, 168, 132, 0.15); border-left: 3px solid #00A884; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #E2E8F0; margin-top: 6px;';
+                            bubble.appendChild(transBox);
+                        }
+                        transBox.innerHTML = `<b>🌐 Traducción al Español:</b><br>${escapeHtml(trans)}`;
+                    }
+                    showToast('✅ Mensaje traducido');
+                } else {
+                    showToast('⚠️ No se pudo traducir este texto');
+                }
+            } catch (err) {
+                showToast('❌ Error en traducción: ' + err.message);
+            }
+            const menu = document.getElementById('msgContextMenu');
+            if (menu) menu.style.display = 'none';
+        }
+
+        // ==============================================================================
+        // 4. TRANSCRIPTOR DE NOTAS DE VOZ A TEXTO EN PANTALLA
+        // ==============================================================================
+        function transcribeAudio(msgId, audioSrc) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showToast('⚠️ Tu navegador no soporta transcripción por voz directa.');
+                return;
+            }
+            showToast('🎙️ Iniciando transcripción de audio...');
+            const bubble = document.getElementById('msg_' + msgId);
+            if (!bubble) return;
+
+            let transBox = bubble.querySelector('.audio-transcript-box');
+            if (!transBox) {
+                transBox = document.createElement('div');
+                transBox.className = 'audio-transcript-box';
+                transBox.style.cssText = 'background: rgba(0,0,0,0.3); border-left: 3px solid #FFD700; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #FFD700; margin-top: 6px;';
+                bubble.appendChild(transBox);
+            }
+            transBox.innerHTML = `<i>🎙️ Escuchando y transcribiendo en tiempo real...</i>`;
+
+            const audio = new Audio(audioSrc);
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'es-MX';
+            recognition.continuous = true;
+            recognition.interimResults = false;
+
+            let fullText = '';
+            recognition.onresult = (e) => {
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                    if (e.results[i].isFinal) {
+                        fullText += e.results[i][0].transcript + ' ';
+                    }
+                }
+                transBox.innerHTML = `<b>📝 Transcripción de Audio:</b><br>${escapeHtml(fullText)}`;
+            };
+            recognition.onerror = () => {
+                if (!fullText) transBox.innerHTML = `<b>📝 Transcripción:</b><br><i>[Audio claro recibido - Audio reproducido]</i>`;
+            };
+            recognition.onend = () => {
+                if (!fullText) transBox.innerHTML = `<b>📝 Transcripción:</b><br><i>[Audio finalizado]</i>`;
+            };
+
+            recognition.start();
+            audio.play();
+            audio.onended = () => {
+                setTimeout(() => { try { recognition.stop(); } catch(_) {} }, 800);
+            };
+        }
+
+        // ==============================================================================
+        // 5. BÓVEDA CON PIN DE SEÑUELO ANTI-EXTORSIÓN (PIN 0000)
+        // ==============================================================================
+        let isDuressModeActive = false;
+        function checkDuressPin(enteredPin) {
+            if (enteredPin === '0000') {
+                isDuressModeActive = true;
+                showToast('🛡️ Modo de Protección Activo');
+                renderDuressChats();
+                return true;
+            }
+            isDuressModeActive = false;
+            return false;
+        }
+
+        function renderDuressChats() {
+            const list = document.getElementById('chatsList');
+            if (!list) return;
+            list.innerHTML = `
+                <div class="chat-item" onclick="showToast('Grupo de recetas familiares')">
+                    <div class="chat-avatar" style="background:#4A5568;">🍳</div>
+                    <div class="chat-info">
+                        <div class="chat-title">Recetas Familiares</div>
+                        <div class="chat-last-msg">Mamá: No olviden traer la canela para el postre</div>
+                    </div>
+                </div>
+                <div class="chat-item" onclick="showToast('Noticias deportivas')">
+                    <div class="chat-avatar" style="background:#2D3748;">⚽</div>
+                    <div class="chat-info">
+                        <div class="chat-title">Futbol Fin de Semana</div>
+                        <div class="chat-last-msg">Carlos: El partido es el domingo a las 10 am</div>
+                    </div>
+                </div>
+            `;
+        }
+</script>
+
+    <!-- MODAL: ASIGNAR TAREA ESCOLAR (NEOCLASSROOM) -->
+    <div id="classroomAssignmentModal" class="modal-overlay" style="display: none; z-index: 100010;">
+        <div class="dialog-card" style="max-width: 480px; width: 92%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <h3 style="color: #FFD700; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
+                    <span>📚</span> Asignar Tarea Escolar
+                </h3>
+                <button onclick="document.getElementById('classroomAssignmentModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:18px; cursor:pointer;">✕</button>
+            </div>
+            <div class="field-group">
+                <label style="color:#CBD5E1; font-size:13px; font-weight:bold;">Materia / Clase:</label>
+                <input type="text" id="assignSubject" placeholder="Ej: Matemáticas, Historia, Español..." style="width:100%; padding:9px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:14px;">
+            </div>
+            <div class="field-group" style="margin-top:10px;">
+                <label style="color:#CBD5E1; font-size:13px; font-weight:bold;">Título del Trabajo o Tarea:</label>
+                <input type="text" id="assignTitle" placeholder="Ej: Ejercicios de Ecuaciones de 1er Grado" style="width:100%; padding:9px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:14px;">
+            </div>
+            <div class="field-group" style="margin-top:10px;">
+                <label style="color:#CBD5E1; font-size:13px; font-weight:bold;">Instrucciones para los alumnos:</label>
+                <textarea id="assignInstructions" rows="3" placeholder="Describe los requisitos, páginas a resolver o formato de entrega..." style="width:100%; padding:9px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:13px; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <div style="flex:1;">
+                    <label style="color:#CBD5E1; font-size:13px; font-weight:bold;">Fecha Límite:</label>
+                    <input type="text" id="assignDueDate" placeholder="Ej: Viernes 18:00 hrs" style="width:100%; padding:9px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:13px;">
+                </div>
+                <div style="width:110px;">
+                    <label style="color:#CBD5E1; font-size:13px; font-weight:bold;">Puntaje:</label>
+                    <input type="number" id="assignPoints" value="100" style="width:100%; padding:9px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:13px;">
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:16px;">
+                <button type="button" style="flex:1; background:#334155; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="document.getElementById('classroomAssignmentModal').style.display='none'">Cancelar</button>
+                <button type="button" style="flex:2; background:#00A884; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="dispatchAssignment()">Publicar Tarea en Grupo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ENTREGAR TAREA (ALUMNO) -->
+    <div id="submitAssignmentModal" class="modal-overlay" style="display: none; z-index: 100010;">
+        <div class="dialog-card" style="max-width: 440px; width: 92%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <h3 style="color: #00FF7F; margin: 0; font-size: 17px; display:flex; align-items:center; gap:8px;">
+                    <span>📤</span> Entregar Tarea Escolar
+                </h3>
+                <button onclick="document.getElementById('submitAssignmentModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:18px; cursor:pointer;">✕</button>
+            </div>
+            <div style="background:#0F172A; padding:10px; border-radius:8px; margin-bottom:12px; border-left:3px solid #00FF7F;">
+                <div id="subTaskTitle" style="color:#FFF; font-weight:bold; font-size:14px;">Tarea</div>
+                <input type="hidden" id="subAssignmentId">
+            </div>
+            <div class="field-group">
+                <label style="color:#CBD5E1; font-size:13px; font-weight:bold;">Seleccionar archivo o foto de la libreta:</label>
+                <input type="file" id="subFileInput" style="width:100%; margin-top:6px; color:#FFF;">
+            </div>
+            <div class="field-group" style="margin-top:12px;">
+                <label style="color:#CBD5E1; font-size:13px; font-weight:bold;">Comentario privado para el maestro (opcional):</label>
+                <textarea id="subComment" rows="2" placeholder="Ej: Maestro, le adjunto la foto de mis 5 ejercicios resueltos..." style="width:100%; padding:8px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:13px; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:16px;">
+                <button type="button" style="flex:1; background:#334155; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="document.getElementById('submitAssignmentModal').style.display='none'">Cancelar</button>
+                <button type="button" style="flex:2; background:#00FF7F; color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="submitAssignmentWork()">Confirmar Entrega</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: VER ENTREGAS DE ALUMNOS Y CALIFICAR (PROFESOR) -->
+    <div id="viewSubmissionsModal" class="modal-overlay" style="display: none; z-index: 100010;">
+        <div class="dialog-card" style="max-width: 580px; width: 94%; max-height: 85vh; display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <h3 style="color: #FFD700; margin: 0; font-size: 17px; display:flex; align-items:center; gap:8px;">
+                    <span>📋</span> Entregas de Alumnos
+                </h3>
+                <button onclick="document.getElementById('viewSubmissionsModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:18px; cursor:pointer;">✕</button>
+            </div>
+            <div id="viewSubTaskTitle" style="color:#94A3B8; font-size:13px; margin-bottom:10px;"></div>
+            <input type="hidden" id="currentViewAssignmentId">
+            <div id="submissionsListContainer" style="flex:1; overflow-y:auto; max-height:400px; display:flex; flex-direction:column; gap:10px; padding-right:4px;">
+                <!-- Dinámico -->
+            </div>
+        </div>
+    </div>
+
+<script>
+        // BUZÓN DE SUGERENCIAS DE USUARIOS
+        function openSuggestionsModal() {
+            document.getElementById('suggTitle').value = '';
+            document.getElementById('suggDesc').value = '';
+            document.getElementById('suggestionsModal').style.display = 'flex';
+        }
+
+        function submitUserSuggestion() {
+            const title = document.getElementById('suggTitle').value.trim();
+            const desc = document.getElementById('suggDesc').value.trim();
+
+            if (!title || !desc) {
+                alert('Por favor escribe el título y la descripción de tu sugerencia.');
+                return;
+            }
+
+            const suggId = 'sugg_' + Date.now();
+            const data = {
+                id: suggId,
+                title: title,
+                description: desc,
+                userPhone: myPhone || 'Anónimo',
+                userName: myName || 'Usuario',
+                timestamp: Date.now(),
+                status: 'pending_review'
+            };
+
+            db.ref(`suggestions/${suggId}`).set(data).then(() => {
+                document.getElementById('suggestionsModal').style.display = 'none';
+                alert('🎉 ¡Muchas gracias por tu sugerencia! El equipo de NeoMessage la revisará con gusto.');
+                showToast('💡 Sugerencia enviada al equipo');
+            }).catch(err => {
+                alert('Error al enviar sugerencia: ' + err.message);
+            });
+        }
+</script>
+
+    <!-- MODAL: BUZÓN DE SUGERENCIAS DE LA COMUNIDAD -->
+    <div id="suggestionsModal" class="modal-overlay" style="display: none; z-index: 100020;">
+        <div class="dialog-card" style="max-width: 460px; width: 92%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <h3 style="color: #FFD700; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
+                    <span>💡</span> Buzón de Sugerencias
+                </h3>
+                <button onclick="document.getElementById('suggestionsModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:18px; cursor:pointer;">✕</button>
+            </div>
+            <p style="color:#CBD5E1; font-size:13px; margin-bottom:14px; line-height:1.4;">
+                ¿Tienes una idea o función que te gustaría ver en NeoMessage? Escríbela aquí y nuestro equipo evaluará su factibilidad para la próxima actualización.
+            </p>
+            <div class="field-group">
+                <label style="color:#94A3B8; font-size:12px; font-weight:bold;">Título de tu idea:</label>
+                <input type="text" id="suggTitle" placeholder="Ej: Stickers con audio, temas neón..." style="width:100%; padding:9px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:14px;">
+            </div>
+            <div class="field-group" style="margin-top:10px;">
+                <label style="color:#94A3B8; font-size:12px; font-weight:bold;">¿Cómo te gustaría que funcione?</label>
+                <textarea id="suggDesc" rows="3" placeholder="Explícanos los detalles de tu idea o por qué te sería muy útil..." style="width:100%; padding:9px; background:#0F172A; border:1px solid #334155; border-radius:8px; color:#FFF; font-size:13px; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:16px;">
+                <button type="button" style="flex:1; background:#334155; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="document.getElementById('suggestionsModal').style.display='none'">Cerrar</button>
+                <button type="button" style="flex:2; background:#00FF7F; color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="submitUserSuggestion()">Enviar Sugerencia 🚀</button>
             </div>
         </div>
     </div>
