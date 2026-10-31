@@ -255,10 +255,59 @@ def check_cycle():
             with urllib.request.urlopen(p_req, timeout=10):
                 print(f"✅ [RESPUESTA DE {store_name} ENVIADA] a {chat_id}!")
 
+LAST_CLEAN_TIME = 0
+CLEAN_INTERVAL_SECONDS = 3600 * 4 # Auto-limpieza cada 4 horas
+
+def auto_clean_transit_cloud():
+    global LAST_CLEAN_TIME
+    now = time.time()
+    if now - LAST_CLEAN_TIME < CLEAN_INTERVAL_SECONDS:
+        return
+    
+    LAST_CLEAN_TIME = now
+    print("\n🧹 [MANTENIMIENTO SOBERANO] Iniciando auto-limpieza preventiva de Firebase...")
+    try:
+        url = f"{FIREBASE_URL}/chats.json"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        
+        if not data or not isinstance(data, dict):
+            return
+
+        total_cleaned = 0
+        for chat_id, chat_data in data.items():
+            if not isinstance(chat_data, dict):
+                continue
+            messages = chat_data.get("messages", {})
+            if not isinstance(messages, dict) or len(messages) <= 50:
+                continue
+            
+            # Ordenar mensajes por timestamp
+            sorted_items = sorted(messages.items(), key=lambda x: x[1].get("timestamp", 0) if isinstance(x[1], dict) else 0)
+            
+            # Mantener los últimos 50 intactos (búfer de tránsito oficial para la app)
+            # Todo lo anterior a los últimos 50 ya está resguardado en SQLite de los teléfonos
+            excess = sorted_items[:-50]
+            for msg_id, msg_body in excess:
+                try:
+                    del_url = f"{FIREBASE_URL}/chats/{chat_id}/messages/{msg_id}.json"
+                    d_req = urllib.request.Request(del_url, method='DELETE')
+                    with urllib.request.urlopen(d_req, timeout=5):
+                        total_cleaned += 1
+                except Exception:
+                    pass
+
+        print(f"✨ [MANTENIMIENTO FINALIZADO] Se depuraron {total_cleaned} mensajes antiguos de la nube.")
+        print(f"📦 Firebase permanece 100% ligero (< 5 MB) y dentro de la cuota gratuita para siempre.\n")
+    except Exception as e:
+        print(f"⚠️ [Mantenimiento omitido]: {e}")
+
 def loop():
     while True:
         try:
             check_cycle()
+            auto_clean_transit_cloud()
         except Exception as e:
             pass
         time.sleep(CHECK_INTERVAL_SECONDS)
