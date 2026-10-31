@@ -118,13 +118,16 @@ object NeoRelayClient {
             // 2. Emitir al flujo reactivo para actualizar pantalla de chat si está abierta
             _incomingMessages.tryEmit(chatId to msg)
 
-            // 3. Notificación instantánea y limpia
-            NeoNotificationHelper.showNotification(
-                context = context,
-                title = msg.senderName.ifEmpty { "Nuevo mensaje" },
-                message = msg.text,
-                messageId = msg.id
-            )
+            // 3. Notificación instantánea y limpia (solo si el remitente no soy yo)
+            val cleanSender = NeoUtils.sanitizeId(msg.senderId)
+            if (cleanSender.takeLast(10) != currentUserId.takeLast(10)) {
+                NeoNotificationHelper.showNotification(
+                    context = context,
+                    title = msg.senderName.ifEmpty { "Nuevo mensaje" },
+                    message = msg.text,
+                    messageId = msg.id
+                )
+            }
 
             // 4. Despacho a NeoBot si el bot está activado en el dispositivo
             NeoBotManager.dispatchAutoReplyIfNeeded(

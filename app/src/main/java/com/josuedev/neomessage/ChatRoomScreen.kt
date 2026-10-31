@@ -128,6 +128,8 @@ fun ChatRoomScreen(
     var voiceRecordDuration by remember { mutableIntStateOf(0) }
     var playingVoiceMsgId by remember { mutableStateOf<String?>(null) }
     var showCommerceSheet by remember { mutableStateOf(false) }
+    var showExcelDialog by remember { mutableStateOf(false) }
+    var pendingExcelText by remember { mutableStateOf("") }
     val typingUser = remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -337,6 +339,8 @@ fun ChatRoomScreen(
     
     var selectedMessage by remember { mutableStateOf<CloudMessage?>(null) }
     var replyingTo by remember { mutableStateOf<CloudMessage?>(null) }
+    var editingMessage by remember { mutableStateOf<CloudMessage?>(null) }
+    var editTextValue by remember { mutableStateOf("") }
     var showDisappearingDialog by remember { mutableStateOf(false) }
     var isLocked by remember { mutableStateOf(false) }
     var alertMsg by remember { mutableStateOf<String?>(null) }
@@ -533,58 +537,53 @@ fun ChatRoomScreen(
     }
 
     val performDocumentUpload = { uri: Uri ->
-        if (!isUploading) {
-            isUploading = true
-            val fileSize = NeoUtils.getFileSize(context, uri)
-            val fileName = NeoUtils.getFileName(context, uri) ?: "Documento"
-            val sizeMb = fileSize / (1024 * 1024)
-            val sizeText = if (sizeMb > 1024) "%.2f GB".format(fileSize.toDouble() / (1024 * 1024 * 1024)) else "${fileSize / 1024} KB"
+        val fileSize = NeoUtils.getFileSize(context, uri)
+        val fileName = NeoUtils.getFileName(context, uri) ?: "Documento"
+        val sizeMb = fileSize / (1024 * 1024)
+        val sizeText = if (sizeMb > 1024) "%.2f GB".format(fileSize.toDouble() / (1024 * 1024 * 1024)) else "${fileSize / 1024} KB"
 
-            Toast.makeText(context, "📄 Preparando archivo ($sizeText)...", Toast.LENGTH_SHORT).show()
-            
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val directUrl = if (fileSize < 2_000_000) {
-                        // Documentos ligeros (< 600 KB) viajan incrustados en Base64 para entrega 100% garantizada
-                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        if (bytes != null) {
-                            val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                            "data:application/octet-stream;base64,$b64"
-                        } else {
-                            val meta = NeoLocalNodeServer.registerFileForSharing(context, uri)
-                            val myIp = NeoLocalNodeServer.getLocalIpAddress()
-                            "http://$myIp:${NeoLocalNodeServer.activePort}/download?fileId=${meta.fileId}"
-                        }
+        Toast.makeText(context, "📄 Enviando $fileName ($sizeText)...", Toast.LENGTH_SHORT).show()
+        
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                // Hasta 5 MB viajan directo por Base64 en Firebase para entrega 100% inmediata en cualquier red
+                val directUrl = if (fileSize < 5_000_000) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        "data:application/octet-stream;base64,$b64"
                     } else {
                         val meta = NeoLocalNodeServer.registerFileForSharing(context, uri)
                         val myIp = NeoLocalNodeServer.getLocalIpAddress()
                         "http://$myIp:${NeoLocalNodeServer.activePort}/download?fileId=${meta.fileId}"
                     }
+                } else {
+                    val meta = NeoLocalNodeServer.registerFileForSharing(context, uri)
+                    val myIp = NeoLocalNodeServer.getLocalIpAddress()
+                    "http://$myIp:${NeoLocalNodeServer.activePort}/download?fileId=${meta.fileId}"
+                }
 
-                    val mid = database.push().key ?: UUID.randomUUID().toString()
-                    val msgText = "[File] $fileName|$fileSize|$directUrl"
-                    val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
+                val mid = database.push().key ?: UUID.randomUUID().toString()
+                val msgText = "[File] $fileName|$fileSize|$directUrl"
+                val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
 
-                    dao?.insertMessage(msg.toEntity(chatId))
-                    withContext(Dispatchers.Main) {
-                        if (firebaseMessages.none { it.id == msg.id }) {
-                            firebaseMessages.add(msg)
-                            firebaseMessages.sortBy { it.timestamp }
-                        }
-                        Toast.makeText(context, "✅ Documento compartido", Toast.LENGTH_SHORT).show()
-                        isUploading = false
+                dao?.insertMessage(msg.toEntity(chatId))
+                withContext(Dispatchers.Main) {
+                    if (firebaseMessages.none { it.id == msg.id }) {
+                        firebaseMessages.add(msg)
+                        firebaseMessages.sortBy { it.timestamp }
                     }
+                    Toast.makeText(context, "✅ Enviado: $fileName", Toast.LENGTH_SHORT).show()
+                }
 
-                    // Enviar vía UDP Mesh local
-                    NeoLocalNodeServer.broadcastUdpMessage(otherCleanId, msg, chatId)
+                // Enviar vía UDP Mesh local
+                NeoLocalNodeServer.broadcastUdpMessage(otherCleanId, msg, chatId)
 
-                    // Enviar por Firebase a la nube
-                    try { database.child(mid).setValue(msg) } catch (_: Exception) {}
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error al enviar documento: ${e.message}", Toast.LENGTH_SHORT).show()
-                        isUploading = false
-                    }
+                // Enviar por Firebase a la nube
+                try { database.child(mid).setValue(msg) } catch (_: Exception) {}
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error al enviar: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -609,15 +608,15 @@ fun ChatRoomScreen(
             annotatingPhotoUri = uri
         }
     }
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            performMediaUpload(uri)
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            uris.forEach { uri -> performMediaUpload(uri) }
         }
     }
     
-    val documentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            performDocumentUpload(uri)
+    val documentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            uris.forEach { uri -> performDocumentUpload(uri) }
         }
     }
     
@@ -880,7 +879,7 @@ fun ChatRoomScreen(
                     val isDeliveredToOther = msg.deliveredTo.keys.any { NeoUtils.sanitizeId(it).takeLast(10) != cleanMyId.takeLast(10) }
 
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).combinedClickable(onClick = {}, onLongClick = { selectedMessage = msg }),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).combinedClickable(onClick = {}, onDoubleClick = { replyingTo = msg }, onLongClick = { selectedMessage = msg }),
                         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
                     ) {
                         Surface(
@@ -923,12 +922,15 @@ fun ChatRoomScreen(
                                         Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
                                         Spacer(Modifier.width(3.dp))
                                     }
+                                    if (msg.isEdited) {
+                                        Text("Editado ", color = textSubColor.copy(0.7f), fontSize = 10.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                                    }
                                     Text(SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(msg.timestamp)), color = textSubColor.copy(0.5f), fontSize = 10.sp)
                                     if (isMine) {
                                         Spacer(Modifier.width(4.dp))
                                         val showBlueChecks = readReceiptsEnabled && isReadByOther
                                         Icon(
-                                            imageVector = if (showBlueChecks || isDeliveredToOther) Icons.Filled.DoneAll else Icons.Filled.Done,
+                                            imageVector = if (showBlueChecks) Icons.Filled.DoneAll else Icons.Filled.Done,
                                             contentDescription = null,
                                             modifier = Modifier.size(15.dp),
                                             tint = if (showBlueChecks) Color(0xFF53BDEB) else Color.Gray
@@ -1034,6 +1036,10 @@ fun ChatRoomScreen(
                         value = messageText,
                         onValueChange = { 
                             messageText = it 
+                            if (it.contains("\t") && it.contains("\n") && it.lines().count { l -> l.contains("\t") } >= 1) {
+                                pendingExcelText = it
+                                showExcelDialog = true
+                            }
                             if (it.isNotEmpty()) {
                                 typingDb.setValue(mapOf("user" to myName, "time" to com.google.firebase.database.ServerValue.TIMESTAMP))
                             } else {
@@ -1166,6 +1172,64 @@ fun ChatRoomScreen(
                     NeoLocalNodeServer.broadcastUdpMessage(otherCleanId, msg, chatId)
                 }
                 Toast.makeText(context, "Ficha de salud compartida", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+
+    if (showExcelDialog) {
+        AlertDialog(
+            onDismissRequest = { showExcelDialog = false },
+            containerColor = surfaceColor,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("📊 Tabla de Excel Pegada", color = Color(0xFF00FF9C), fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Text(
+                    "Has pegado una tabla copiada de una hoja de cálculo o reporte.\n\n¿Deseas enviarla como una imagen nítida para que el destinatario la vea perfectamente formateada como imagen?",
+                    color = Color.White,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val textToRender = pendingExcelText
+                        showExcelDialog = false
+                        messageText = ""
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val bitmap = NeoUtils.renderTableToBitmap(textToRender)
+                            if (bitmap != null) {
+                                val stream = java.io.ByteArrayOutputStream()
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, stream)
+                                val b64 = android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
+                                
+                                val mid = database.push().key ?: UUID.randomUUID().toString()
+                                val msgText = "[Media] data:image/png;base64,$b64"
+                                val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
+                                dao?.insertMessage(msg.toEntity(chatId))
+                                withContext(Dispatchers.Main) {
+                                    if (firebaseMessages.none { m -> m.id == msg.id }) {
+                                        firebaseMessages.add(msg)
+                                        firebaseMessages.sortBy { it.timestamp }
+                                    }
+                                    Toast.makeText(context, "📊 Tabla de Excel enviada como imagen", Toast.LENGTH_SHORT).show()
+                                }
+                                NeoRelayClient.sendMessage(context, chatId, otherCleanId, msg)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF107C41))
+                ) {
+                    Text("🖼️ ENVIAR COMO IMAGEN", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExcelDialog = false }) {
+                    Text("CONSERVAR COMO TEXTO", color = Color.Gray)
+                }
             }
         )
     }
@@ -1356,9 +1420,13 @@ fun ChatRoomScreen(
 
                     val preview = when {
                         targetMsg.text.startsWith("[Media]") -> "📷 Foto adjunta"
-                        targetMsg.text.startsWith("[File]") -> {
-                            val parts = targetMsg.text.removePrefix("[File] ").split("|")
-                            "📄 Archivo: " + (parts.firstOrNull() ?: "Documento")
+                        targetMsg.text.startsWith("[File]") || targetMsg.text.startsWith("[Document]|") -> {
+                            val name = if (targetMsg.text.startsWith("[Document]|")) {
+                                targetMsg.text.removePrefix("[Document]|").split("|").firstOrNull() ?: "Documento"
+                            } else {
+                                targetMsg.text.removePrefix("[File] ").split("|").firstOrNull() ?: "Documento"
+                            }
+                            "📄 Archivo: $name"
                         }
                         else -> targetMsg.text.take(60)
                     }
@@ -1378,6 +1446,46 @@ fun ChatRoomScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("Responder a este mensaje", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
+
+                                        // EDITAR MENSAJE ✏️
+                    if (targetMsg.senderId == cleanMyId && !targetMsg.text.startsWith("[Media]") && !targetMsg.text.startsWith("[File]") && !targetMsg.text.startsWith("[Document]|") && !targetMsg.text.startsWith("[Voice]")) {
+                        OutlinedButton(
+                            onClick = {
+                                editingMessage = targetMsg
+                                editTextValue = targetMsg.text
+                                selectedMessage = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00FF7F)),
+                            border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(0.6f))
+                        ) {
+                            Icon(Icons.Filled.Edit, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Editar mensaje", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
+
+                    // REENVIAR MENSAJE ↪
+                    OutlinedButton(
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, targetMsg.text)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Reenviar mensaje a..."))
+                            selectedMessage = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00FF7F)),
+                        border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(0.6f))
+                    ) {
+                        Icon(Icons.Filled.Forward, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Reenviar mensaje", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(Modifier.height(4.dp))
 
                     // 2. DESTACAR / GUARDAR MENSAJE ⭐
                     OutlinedButton(
@@ -1459,6 +1567,63 @@ fun ChatRoomScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { selectedMessage = null }) { Text("CANCELAR", color = Color.Gray) }
+            }
+        )
+    }
+
+    if (editingMessage != null) {
+        val target = editingMessage!!
+        AlertDialog(
+            onDismissRequest = { editingMessage = null },
+            containerColor = Color(0xFF1E293B),
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Edit, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Editar mensaje", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                OutlinedTextField(
+                    value = editTextValue,
+                    onValueChange = { editTextValue = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF00FF7F),
+                        unfocusedBorderColor = Color.Gray
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val newTxt = editTextValue.trim()
+                        if (newTxt.isNotEmpty() && newTxt != target.text) {
+                            database.child(target.id).child("text").setValue(newTxt)
+                            database.child(target.id).child("isEdited").setValue(true)
+                            coroutineScope.launch(Dispatchers.IO) {
+                                try { dao?.insertMessage(target.copy(text = newTxt, isEdited = true).toEntity(chatId)) } catch (_: Exception) {}
+                            }
+                            val idx = firebaseMessages.indexOfFirst { it.id == target.id }
+                            if (idx != -1) {
+                                firebaseMessages[idx] = firebaseMessages[idx].copy(text = newTxt, isEdited = true)
+                            }
+                            Toast.makeText(context, "✏️ Mensaje editado", Toast.LENGTH_SHORT).show()
+                        }
+                        editingMessage = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
+                ) {
+                    Text("GUARDAR", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingMessage = null }) {
+                    Text("CANCELAR", color = Color.Gray)
+                }
             }
         )
     }
@@ -1632,25 +1797,50 @@ fun MessageContent(
                 )
             }
         }
-        text.startsWith("[File]") -> {
-            val parts = text.substringAfter("[File]").trim().split("|")
-            val name = parts.getOrNull(0) ?: "Archivo"
-            val sizeBytes = parts.getOrNull(1)?.toLongOrNull() ?: 0L
-            val url = if (parts.size > 2) parts[2] else (parts.getOrNull(1) ?: "")
+        text.startsWith("[File]") || text.startsWith("[Document]|") -> {
+            val name: String
+            val sizeStr: String
+            val url: String
+            val sizeBytes: Long
 
-            val sizeStr = if (sizeBytes > 1024 * 1024 * 1024) {
-                "%.2f GB".format(sizeBytes.toDouble() / (1024 * 1024 * 1024))
-            } else if (sizeBytes > 1024 * 1024) {
-                "%.1f MB".format(sizeBytes.toDouble() / (1024 * 1024))
-            } else if (sizeBytes > 0) {
-                "${sizeBytes / 1024} KB"
-            } else ""
+            if (text.startsWith("[Document]|")) {
+                val parts = text.removePrefix("[Document]|").split("|")
+                name = parts.getOrNull(0) ?: "Documento"
+                sizeStr = parts.getOrNull(1) ?: ""
+                url = parts.drop(2).joinToString("|")
+                sizeBytes = 0L
+            } else {
+                val parts = text.substringAfter("[File]").trim().split("|")
+                name = parts.getOrNull(0) ?: "Archivo"
+                sizeBytes = parts.getOrNull(1)?.toLongOrNull() ?: 0L
+                url = if (parts.size > 2) parts[2] else (parts.getOrNull(1) ?: "")
+                sizeStr = if (sizeBytes > 1024 * 1024 * 1024) {
+                    "%.2f GB".format(sizeBytes.toDouble() / (1024 * 1024 * 1024))
+                } else if (sizeBytes > 1024 * 1024) {
+                    "%.1f MB".format(sizeBytes.toDouble() / (1024 * 1024))
+                } else if (sizeBytes > 0) {
+                    "${sizeBytes / 1024} KB"
+                } else ""
+            }
 
             var isDownloading by remember { mutableStateOf(false) }
             var downloadProgress by remember { mutableIntStateOf(0) }
             var downloadedFile by remember { mutableStateOf<File?>(null) }
 
-            // Si el archivo viene embebido en base64
+            val lowerName = name.lowercase()
+            val fileIconText = when {
+                lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv") -> "📊"
+                lowerName.endsWith(".apk") -> "🤖"
+                lowerName.endsWith(".zip") || lowerName.endsWith(".rar") || lowerName.endsWith(".7z") -> "📦"
+                lowerName.endsWith(".pdf") -> "📕"
+                lowerName.endsWith(".docx") || lowerName.endsWith(".doc") -> "📝"
+                lowerName.endsWith(".pptx") || lowerName.endsWith(".ppt") -> "📑"
+                lowerName.endsWith(".mp3") || lowerName.endsWith(".wav") || lowerName.endsWith(".ogg") -> "🎵"
+                lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") -> "🎬"
+                else -> "📄"
+            }
+
+            // Decodificar Base64 automáticamente
             LaunchedEffect(url) {
                 if (url.startsWith("data:") && downloadedFile == null) {
                     try {
@@ -1666,24 +1856,19 @@ fun MessageContent(
             Surface(
                 color = Color(0xFF1E293B),
                 shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(0.4f)),
+                border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(alpha = 0.4f)),
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(42.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF00FF7F).copy(0.15f)),
+                                .background(Color(0xFF00FF7F).copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.InsertDriveFile,
-                                contentDescription = null,
-                                tint = Color(0xFF00FF7F),
-                                modifier = Modifier.size(24.dp)
-                            )
+                            Text(fileIconText, fontSize = 22.sp)
                         }
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
@@ -1712,9 +1897,11 @@ fun MessageContent(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F)),
-                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                            modifier = Modifier.fillMaxWidth().height(38.dp),
                             shape = RoundedCornerShape(8.dp)
                         ) {
+                            Icon(Icons.Filled.FileOpen, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text("ABRIR ARCHIVO", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     } else {
@@ -1730,19 +1917,21 @@ fun MessageContent(
                                     onComplete = { f ->
                                         isDownloading = false
                                         downloadedFile = f
-                                        Toast.makeText(context, "✅ Descarga completada: ${f.name}", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "✅ Descargado: ${f.name}", Toast.LENGTH_SHORT).show()
                                     },
                                     onFail = { err ->
                                         isDownloading = false
-                                        Toast.makeText(context, "❌ Error descarga: $err", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Error: $err", Toast.LENGTH_SHORT).show()
                                     }
                                 )
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F)),
-                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                            modifier = Modifier.fillMaxWidth().height(38.dp),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("DESCARGAR ARCHIVO", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Icon(Icons.Filled.Download, contentDescription = null, tint = Color(0xFF00FF7F), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("DESCARGAR ARCHIVO", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }

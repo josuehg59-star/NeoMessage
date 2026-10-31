@@ -37,13 +37,33 @@ const server = http.createServer((req, res) => {
             res.writeHead(200, {
                 'Content-Type': 'application/vnd.android.package-archive',
                 'Content-Length': stat.size,
-                'Content-Disposition': 'attachment; filename="NeoMessage-v3.9.apk"'
+                'Content-Disposition': 'attachment; filename="NeoMessage-v3.15.apk"'
             });
             const stream = fs.createReadStream(apkPath);
             return stream.pipe(res);
         } else {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             return res.end('APK not found on server');
+        }
+    }
+
+    // Servir Paquete Instalador para PC (ZIP 38 KB)
+    if (req.url === '/download-pc' || req.url === '/neomessage-pc.zip') {
+        const fs = require('fs');
+        const path = require('path');
+        const zipPath = path.join(__dirname, 'pc-distribution', 'NeoMessage-PC-Windows.zip');
+        if (fs.existsSync(zipPath)) {
+            const stat = fs.statSync(zipPath);
+            res.writeHead(200, {
+                'Content-Type': 'application/zip',
+                'Content-Length': stat.size,
+                'Content-Disposition': 'attachment; filename="NeoMessage-PC-Windows.zip"'
+            });
+            const stream = fs.createReadStream(zipPath);
+            return stream.pipe(res);
+        } else {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            return res.end('PC package not found');
         }
     }
 
@@ -107,8 +127,8 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Endpoint GET /stream?user=TELEFONO (Stream permanente en tiempo real SSE)
-    if (req.url.startsWith('/stream')) {
+    // Endpoint GET /stream o /events?user=TELEFONO (Stream permanente en tiempo real SSE)
+    if (req.url.startsWith('/stream') || req.url.startsWith('/events')) {
         const urlParams = new URL(req.url, `http://localhost:${PORT}`);
         const rawUser = urlParams.searchParams.get('user') || '';
         const user = rawUser.replace(/\D/g, '');

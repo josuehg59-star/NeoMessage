@@ -852,7 +852,7 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
         if (availableUpdate != null) {
             val upd = availableUpdate!!
             AlertDialog(
-                onDismissRequest = {},
+                onDismissRequest = { if (!upd.isMandatory) availableUpdate = null },
                 containerColor = Color(0xFF0F172A),
                 shape = RoundedCornerShape(20.dp),
                 title = {
@@ -878,6 +878,13 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
                     ) {
                         Text("ACTUALIZAR AHORA", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    if (!upd.isMandatory) {
+                        TextButton(onClick = { availableUpdate = null }) {
+                            Text("MÁS TARDE", color = Color.Gray, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
             )

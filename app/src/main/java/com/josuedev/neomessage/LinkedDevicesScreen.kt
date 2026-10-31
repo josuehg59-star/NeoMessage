@@ -151,77 +151,68 @@ fun LinkedDevicesScreen(
 
 
 
-            // ---- ENLACE Y DESCARGA PARA PC ----
+            // ---- VINCULAR A COMPUTADORA (WEB / DESKTOP) ----
             item {
                 Surface(
                     color = surfaceColor,
                     shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(alpha = 0.4f)),
+                    border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(alpha = 0.5f)),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Computer, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Abrir o Instalar en tu Computadora", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("Usar NeoMessage en tu PC", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
-                        Spacer(Modifier.height(6.dp))
-                        Text("Abre este enlace en el navegador de tu PC para chatear en pantalla grande, o instalar la app en Windows en 1 clic:", color = textSubColor, fontSize = 12.sp)
                         Spacer(Modifier.height(10.dp))
+                        Text("1. En tu computadora o laptop abre este enlace:", color = textSubColor, fontSize = 13.sp)
                         
+                        Spacer(Modifier.height(8.dp))
                         Surface(
-                            color = Color.Black.copy(alpha = 0.5f),
+                            color = Color(0xFF020617),
                             shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFF334155)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                "http://192.168.100.38:3060",
-                                color = Color(0xFF00FF7F),
-                                fontSize = 13.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(10.dp),
-                                textAlign = TextAlign.Center
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "is.gd/neopc",
+                                    color = Color(0xFF00FF7F),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
                         }
-                        
-                        Spacer(Modifier.height(12.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = {
-                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    val clip = android.content.ClipData.newPlainText("NeoMessage PC", "http://192.168.100.38:3060")
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "🔗 Enlace copiado. Pégalo en tu PC.", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
-                            ) {
-                                Icon(Icons.Filled.ContentCopy, null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("COPIAR LINK", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            }
 
-                            OutlinedButton(
-                                onClick = {
-                                    try {
-                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
-                                            putExtra(Intent.EXTRA_SUBJECT, "NeoMessage para PC")
-                                            putExtra(Intent.EXTRA_TEXT, "Abre o instala NeoMessage en tu PC entrando aquí:\nhttp://192.168.100.38:3060")
-                                        }
-                                        context.startActivity(Intent.createChooser(shareIntent, "Enviar enlace a mi PC"))
-                                    } catch (_: Exception) {}
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color(0xFF00FF7F))
-                            ) {
-                                Icon(Icons.Filled.Share, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("COMPARTIR", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            }
+                        Spacer(Modifier.height(10.dp))
+                        Text("2. Toca 'VINCULAR UN DISPOSITIVO' abajo y apunta tu c\u00E1mara al c\u00F3digo QR de tu pantalla.", color = textSubColor, fontSize = 13.sp)
+
+                        Spacer(Modifier.height(14.dp))
+
+                        // Botón: Enviar enlace a mi PC
+                        Button(
+                            onClick = {
+                                try {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "NeoMessage Web para Computadora")
+                                        putExtra(Intent.EXTRA_TEXT, "💻 Abre NeoMessage en tu computadora:\nhttps://is.gd/neopc/\n\n(Apunta tu celular a la pantalla para vincular tus chats al instante)")
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Enviar enlace a mi PC"))
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
+                        ) {
+                            Icon(Icons.Filled.Share, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("📲 ENVIAR ENLACE A MI PC", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -240,7 +231,7 @@ fun LinkedDevicesScreen(
                                 setPrompt("Escanea el código QR de NeoMessage Web")
                                 setCameraId(0)
                                 setBeepEnabled(true)
-                                setOrientationLocked(false)
+                                setOrientationLocked(true)
                             }
                             scanLauncher.launch(options)
                         },

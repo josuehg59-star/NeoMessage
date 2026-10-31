@@ -31,15 +31,28 @@ data class UpdateInfo(
 )
 
 object NeoUpdateManager {
-    // Código de versión local de la app
-    const val CURRENT_VERSION_CODE = 24
-    const val CURRENT_VERSION_NAME = "3.14-GOLD-DESKTOP"
+    /**
+     * Obtiene el versionCode real instalado en el sistema Android (nunca hardcodeado)
+     */
+    fun getLocalVersionCode(context: Context): Int {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0).versionCode
+            }
+        } catch (_: Exception) {
+            30
+        }
+    }
 
     /**
      * Consulta Firebase o el servidor para ver si hay una versión más reciente
      */
     fun checkForUpdates(context: Context, onUpdateAvailable: (UpdateInfo) -> Unit) {
         try {
+            val localCode = getLocalVersionCode(context)
             val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
             db.getReference("app_updates").addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
@@ -49,7 +62,7 @@ object NeoUpdateManager {
                     val changelog = snapshot.child("changelog").getValue(String::class.java) ?: "Mejoras de rendimiento y nuevas funciones."
                     val isMandatory = snapshot.child("isMandatory").getValue(Boolean::class.java) ?: false
 
-                    if (serverCode > CURRENT_VERSION_CODE && apkUrl.isNotBlank()) {
+                    if (serverCode > localCode && apkUrl.isNotBlank()) {
                         onUpdateAvailable(
                             UpdateInfo(
                                 versionCode = serverCode,
@@ -78,15 +91,26 @@ object NeoUpdateManager {
                 val apkFile = File(context.cacheDir, "NeoMessage_Update.apk")
                 if (apkFile.exists()) apkFile.delete()
 
-                val url = URL(apkUrl)
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 20000
-                    readTimeout = 40000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                var currentUrl = apkUrl
+                var conn: HttpURLConnection
+                var redirects = 0
+                while (true) {
+                    val url = URL(currentUrl)
+                    conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 25000
+                    conn.readTimeout = 45000
+                    conn.instanceFollowRedirects = true
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                    conn.connect()
+                    val status = conn.responseCode
+                    if ((status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 302 || status == 307 || status == 308) && redirects < 5) {
+                        currentUrl = conn.getHeaderField("Location") ?: break
+                        redirects++
+                        continue
+                    }
+                    break
                 }
-                conn.connect()
 
                 if (conn.responseCode in 200..299) {
                     val totalSize = conn.contentLength

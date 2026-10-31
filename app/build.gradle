@@ -11,8 +11,8 @@ android {
         applicationId "com.josuedev.neomessage"
         minSdk 24
         targetSdk 34
-        versionCode 24
-        versionName "3.14-GOLD-DESKTOP"
+        versionCode 30
+        versionName "3.20-SOVEREIGN"
 
         multiDexEnabled true
         ndk {

@@ -85,6 +85,100 @@ object NeoUtils {
         } catch (ignored: Exception) { null }
     }
 
+    // CONVERTIDOR DE TABLAS EXCEL / REPORTES A IMAGEN BITMAP
+    fun renderTableToBitmap(tableText: String): android.graphics.Bitmap? {
+        return try {
+            val lines = tableText.split("\n").map { it.trimEnd('\r') }.filter { it.isNotBlank() }
+            if (lines.isEmpty()) return null
+            val rows = lines.map { line -> line.split("\t").map { it.trim() } }
+            val colCount = rows.maxOfOrNull { it.size } ?: 1
+            if (colCount <= 1 && rows.size <= 1) return null
+
+            val normalized = rows.map { r ->
+                if (r.size < colCount) r + List(colCount - r.size) { "" } else r
+            }
+
+            val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = 28f
+                color = android.graphics.Color.parseColor("#1E293B")
+            }
+            val headerPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = 28f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                color = android.graphics.Color.WHITE
+            }
+            val bannerPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = 26f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                color = android.graphics.Color.WHITE
+            }
+
+            val paddingX = 30f
+            val rowHeight = 70f
+            val bannerHeight = 76f
+            val headerHeight = 84f
+
+            val colWidths = FloatArray(colCount) { 140f }
+            for (r in normalized) {
+                for (c in 0 until colCount) {
+                    val measured = textPaint.measureText(r[c]) + paddingX * 2
+                    if (measured > colWidths[c]) colWidths[c] = measured.coerceAtMost(700f)
+                }
+            }
+
+            val totalWidth = colWidths.sum().toInt().coerceAtLeast(600)
+            val totalHeight = (bannerHeight + headerHeight + (normalized.size - 1) * rowHeight + 20).toInt()
+
+            val bitmap = android.graphics.Bitmap.createBitmap(totalWidth, totalHeight, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+
+            canvas.drawColor(android.graphics.Color.WHITE)
+
+            val bgPaint = android.graphics.Paint()
+            // Banner Excel Verde Oficial
+            bgPaint.color = android.graphics.Color.parseColor("#107C41")
+            canvas.drawRect(0f, 0f, totalWidth.toFloat(), bannerHeight, bgPaint)
+            canvas.drawText("📊 HOJA DE CÁLCULO / TABLA EXCEL", 24f, 48f, bannerPaint)
+
+            // Cabecera
+            var currentY = bannerHeight
+            bgPaint.color = android.graphics.Color.parseColor("#0B532E")
+            canvas.drawRect(0f, currentY, totalWidth.toFloat(), currentY + headerHeight, bgPaint)
+
+            var currentX = 0f
+            for (c in 0 until colCount) {
+                val cell = normalized[0][c]
+                canvas.drawText(cell, currentX + paddingX, currentY + 52f, headerPaint)
+                currentX += colWidths[c]
+            }
+
+            val borderPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.parseColor("#E2E8F0")
+                strokeWidth = 2f
+                style = android.graphics.Paint.Style.STROKE
+            }
+
+            currentY += headerHeight
+            for (i in 1 until normalized.size) {
+                val isEven = i % 2 == 0
+                bgPaint.color = if (isEven) android.graphics.Color.parseColor("#F4F9F6") else android.graphics.Color.WHITE
+                canvas.drawRect(0f, currentY, totalWidth.toFloat(), currentY + rowHeight, bgPaint)
+                canvas.drawLine(0f, currentY + rowHeight, totalWidth.toFloat(), currentY + rowHeight, borderPaint)
+
+                currentX = 0f
+                for (c in 0 until colCount) {
+                    val cell = normalized[i][c]
+                    canvas.drawText(cell, currentX + paddingX, currentY + 46f, textPaint)
+                    canvas.drawLine(currentX + colWidths[c], currentY, currentX + colWidths[c], currentY + rowHeight, borderPaint)
+                    currentX += colWidths[c]
+                }
+                currentY += rowHeight
+            }
+
+            bitmap
+        } catch (_: Exception) { null }
+    }
+
     fun isWifiConnected(context: Context): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         val capabilities = cm.getNetworkCapabilities(cm.activeNetwork)
