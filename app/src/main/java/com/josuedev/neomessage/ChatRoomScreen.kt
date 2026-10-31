@@ -439,7 +439,9 @@ fun ChatRoomScreen(
 
     // --- MOTOR DE TRANSMISIÓN DE IMÁGENES NÍTIDAS (AUTO-RENDERIZADO BASE64 100% GARANTIZADO) ---
     val performMediaUpload = { uri: Uri ->
-        if (!isUploading) {
+        if (isOtherBlocked.value || amIBlocked.value) {
+            Toast.makeText(context, "🚫 Contacto bloqueado. Envío cancelado.", Toast.LENGTH_SHORT).show()
+        } else if (!isUploading) {
             isUploading = true
             Toast.makeText(context, "📸 Enviando imagen nítida...", Toast.LENGTH_SHORT).show()
             
@@ -631,11 +633,23 @@ fun ChatRoomScreen(
                     var showMoreMenu by remember { mutableStateOf(false) }
                     
                     // SOLAMENTE 2 ICONOS PRINCIPALES + MENÚ 3 PUNTOS: SEPARACIÓN DE VOZ Y VIDEO
-                    IconButton(onClick = { onNavigateToCalling(otherCleanId, true) }) { 
-                        Icon(Icons.Filled.Videocam, "Videollamada", tint = Color(0xFF00BFFF)) 
+                    IconButton(onClick = { 
+                        if (isOtherBlocked.value || amIBlocked.value) {
+                            Toast.makeText(context, "🚫 Contacto bloqueado. No puedes realizar videollamadas.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            onNavigateToCalling(otherCleanId, true)
+                        }
+                    }) { 
+                        Icon(Icons.Filled.Videocam, "Videollamada", tint = if (isOtherBlocked.value || amIBlocked.value) Color.Gray else Color(0xFF00BFFF)) 
                     }
-                    IconButton(onClick = { onNavigateToCalling(otherCleanId, false) }) { 
-                        Icon(Icons.Filled.Call, "Llamada de voz", tint = Color(0xFF00FF7F)) 
+                    IconButton(onClick = { 
+                        if (isOtherBlocked.value || amIBlocked.value) {
+                            Toast.makeText(context, "🚫 Contacto bloqueado. No puedes realizar llamadas de voz.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            onNavigateToCalling(otherCleanId, false)
+                        }
+                    }) { 
+                        Icon(Icons.Filled.Call, "Llamada de voz", tint = if (isOtherBlocked.value || amIBlocked.value) Color.Gray else Color(0xFF00FF7F)) 
                     }
                     
                     Box {
@@ -686,9 +700,19 @@ fun ChatRoomScreen(
                             })
                             DropdownMenuItem(text = { Text(if (isOtherBlocked.value) "Desbloquear contacto" else "Bloquear contacto", color = if(isOtherBlocked.value) NeoTheme.Green else Color.Red) }, onClick = { 
                                 showMoreMenu = false
-                                val ref = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("users").child(userId).child("blocked").child(otherCleanId)
-                                if (isOtherBlocked.value) ref.removeValue() else ref.setValue(true)
-                                Toast.makeText(context, if(isOtherBlocked.value) "Contacto desbloqueado." else "Contacto bloqueado permanentemente.", Toast.LENGTH_SHORT).show()
+                                val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                val refGlobal = db.getReference("blocked").child(cleanMyId).child(otherCleanId)
+                                val refUser = db.getReference("users").child(userId).child("blocked").child(otherCleanId)
+                                if (isOtherBlocked.value) {
+                                    refGlobal.removeValue()
+                                    refUser.removeValue()
+                                    isOtherBlocked.value = false
+                                } else {
+                                    refGlobal.setValue(true)
+                                    refUser.setValue(true)
+                                    isOtherBlocked.value = true
+                                }
+                                Toast.makeText(context, if(!isOtherBlocked.value) "Contacto desbloqueado." else "🚫 Contacto bloqueado: llamadas, video y mensajes cortados.", Toast.LENGTH_SHORT).show()
                             })
                             DropdownMenuItem(text = { Text("🛡️ Auditar Seguridad", color = NeoTheme.Green) }, onClick = { 
                                 showMoreMenu = false
@@ -848,7 +872,8 @@ fun ChatRoomScreen(
                             color = if (isMine) Color(0xFF00382B) else surfaceColor,
                             shape = RoundedCornerShape(16.dp), shadowElevation = 1.dp
                         ) {
-                            Column(modifier = Modifier.padding(12.dp).widthIn(max = 280.dp)) {
+                            Box {
+                                Column(modifier = Modifier.padding(12.dp).widthIn(max = 280.dp)) {
                                 if (msg.isDeletedForEveryone) {
                                     Text("🚫 Este mensaje fue eliminado", color = textSubColor.copy(0.6f), fontSize = 14.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                                 } else if (msg.expiryTime != null && msg.expiryTime < System.currentTimeMillis()) {
@@ -927,6 +952,24 @@ fun ChatRoomScreen(
                                             }
                                         }
                                     }
+                                }
+                                }
+
+                                // FLECHITA DE OPCIONES ▼ ESTILO PC (RESPONDER, EDITAR, REACCIONES)
+                                IconButton(
+                                    onClick = { selectedMessage = msg },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 4.dp, end = 4.dp)
+                                        .size(24.dp)
+                                        .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = "Opciones del mensaje",
+                                        tint = Color.White.copy(alpha = 0.9f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
                             }
                         }
@@ -1236,8 +1279,18 @@ fun ChatRoomScreen(
             },
             isBlocked = isOtherBlocked.value,
             onToggleBlock = { block ->
-                val ref = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("users").child(userId).child("blocked").child(otherCleanId)
-                if (block) ref.setValue(true) else ref.removeValue()
+                val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                val refGlobal = db.getReference("blocked").child(cleanMyId).child(otherCleanId)
+                val refUser = db.getReference("users").child(userId).child("blocked").child(otherCleanId)
+                if (block) {
+                    refGlobal.setValue(true)
+                    refUser.setValue(true)
+                    isOtherBlocked.value = true
+                } else {
+                    refGlobal.removeValue()
+                    refUser.removeValue()
+                    isOtherBlocked.value = false
+                }
             },
             onBack = { showContactInfoScreen = false },
             onAudioCall = {
@@ -1420,8 +1473,9 @@ fun ChatRoomScreen(
                         Text("Responder a este mensaje", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
 
-                                        // EDITAR MENSAJE ✏️
-                    if (targetMsg.senderId == cleanMyId && !targetMsg.text.startsWith("[Media]") && !targetMsg.text.startsWith("[File]") && !targetMsg.text.startsWith("[Document]|") && !targetMsg.text.startsWith("[Voice]")) {
+                                        // EDITAR MENSAJE ✏️ (Permitido si fue enviado por mí desde cel o PC)
+                    val isTargetMine = NeoUtils.sanitizeId(targetMsg.senderId).takeLast(10) == cleanMyId.takeLast(10)
+                    if (isTargetMine && !targetMsg.text.startsWith("[Media]") && !targetMsg.text.startsWith("[File]") && !targetMsg.text.startsWith("[Document]|") && !targetMsg.text.startsWith("[Voice]") && !targetMsg.text.startsWith("[Audio]")) {
                         OutlinedButton(
                             onClick = {
                                 editingMessage = targetMsg
@@ -1515,7 +1569,7 @@ fun ChatRoomScreen(
                     }
 
                     // 5. ELIMINAR PARA TODOS (Si el mensaje fue enviado por mí)
-                    if (isMine) {
+                    if (isTargetMine) {
                         Button(
                             onClick = {
                                 val mid = targetMsg.id

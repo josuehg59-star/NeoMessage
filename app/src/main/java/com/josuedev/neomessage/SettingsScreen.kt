@@ -61,6 +61,9 @@ fun SettingsScreen(
 ) {
     var showQrDialog by remember { mutableStateOf(false) }
     var showLegalDialog by remember { mutableStateOf(false) }
+    var showSuggestionsDialog by remember { mutableStateOf(false) }
+    var suggTitleText by remember { mutableStateOf("") }
+    var suggDescText by remember { mutableStateOf("") }
     var selectedLegalTab by remember { mutableIntStateOf(0) }
     var showQuoteDialog by remember { mutableStateOf(false) }
     var showHealthDialog by remember { mutableStateOf(false) }
@@ -164,6 +167,136 @@ fun SettingsScreen(
 
     
     // DIALOGO LEGAL: AVISO DE PRIVACIDAD & CERTIFICADO DE ORIGINALIDAD CONFORME A LA LEY
+    
+    // DIÁLOGO CONFIDENCIAL: BUZÓN DE SUGERENCIAS DE LA COMUNIDAD
+    if (showSuggestionsDialog) {
+        val coroutineScope = rememberCoroutineScope()
+        AlertDialog(
+            onDismissRequest = { showSuggestionsDialog = false },
+            containerColor = Color(0xFF0F172A),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Lightbulb, null, tint = Color(0xFFFFD700), modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Buzón de Sugerencias", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "¿Qué función te gustaría que agreguemos a NeoMessage? Escribe tu idea y evaluaremos su factibilidad para la próxima actualización.",
+                        color = Color.LightGray,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    OutlinedTextField(
+                        value = suggTitleText,
+                        onValueChange = { suggTitleText = it },
+                        label = { Text("Título de tu idea") },
+                        placeholder = { Text("Ej: Stickers con audio, temas neón...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF00FF7F),
+                            unfocusedBorderColor = Color(0xFF334155),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                    OutlinedTextField(
+                        value = suggDescText,
+                        onValueChange = { suggDescText = it },
+                        label = { Text("¿Cómo te gustaría que funcione?") },
+                        placeholder = { Text("Explícanos tu idea con más detalle...") },
+                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF00FF7F),
+                            unfocusedBorderColor = Color(0xFF334155),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val title = suggTitleText.trim()
+                        val desc = suggDescText.trim()
+                        if (title.isBlank() || desc.isBlank()) {
+                            Toast.makeText(context, "Por favor completa el título y la descripción.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        showSuggestionsDialog = false
+                        suggTitleText = ""
+                        suggDescText = ""
+
+                        val suggId = "sugg_${System.currentTimeMillis()}"
+                        val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                        
+                        // 1. Guardar en nodo global de sugerencias
+                        val suggData = mapOf(
+                            "id" to suggId,
+                            "title" to title,
+                            "description" to desc,
+                            "userPhone" to userId,
+                            "userName" to myName,
+                            "timestamp" to System.currentTimeMillis()
+                        )
+                        db.getReference("suggestions").child(suggId).setValue(suggData)
+
+                        // 2. Notificación confidencial directa al chat del creador (Josué)
+                        val targetAdmin = "9612765041"
+                        val adminChatKey = "private_" + listOf(targetAdmin, cleanId).sorted().joinToString("_")
+                        val alertMsg = "💡 *NUEVA SUGERENCIA DE USUARIO*\n\n👤 *De:* $myName ($userId)\n📌 *Idea:* $title\n📝 *Detalle:* $desc"
+                        val msgId = "sugg_msg_${System.currentTimeMillis()}"
+                        db.getReference("chats").child(adminChatKey).child("messages").child(msgId).setValue(
+                            mapOf(
+                                "id" to msgId,
+                                "senderId" to userId,
+                                "senderName" to myName,
+                                "text" to alertMsg,
+                                "timestamp" to System.currentTimeMillis()
+                            )
+                        )
+                        db.getReference("admin_inbox").child(targetAdmin).child(suggId).setValue(suggData)
+
+                        // 3. Envío confidencial al correo electrónico sin mostrarlo al usuario
+                        Thread {
+                            try {
+                                val destEmail = String(android.util.Base64.decode("am9zdWVoZzU5QGdtYWlsLmNvbQ==", android.util.Base64.NO_WRAP))
+                                val url = java.net.URL("https://formsubmit.co/ajax/$destEmail")
+                                val conn = url.openConnection() as java.net.HttpURLConnection
+                                conn.requestMethod = "POST"
+                                conn.setRequestProperty("Content-Type", "application/json")
+                                conn.doOutput = true
+                                val jsonPayload = org.json.JSONObject().apply {
+                                    put("_subject", "💡 Nueva Sugerencia NeoMessage: $title")
+                                    put("usuario", myName)
+                                    put("telefono", userId)
+                                    put("titulo", title)
+                                    put("detalles", desc)
+                                }.toString()
+                                conn.outputStream.use { it.write(jsonPayload.toByteArray()) }
+                                conn.responseCode
+                            } catch (_: Exception) {}
+                        }.start()
+
+                        Toast.makeText(context, "🎉 ¡Gracias por tu sugerencia! La revisaremos con gusto.", Toast.LENGTH_LONG).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
+                ) {
+                    Text("Enviar Sugerencia 🚀", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSuggestionsDialog = false }) {
+                    Text("Cancelar", color = Color.Gray)
+                }
+            }
+        )
+    }
+
     if (showLegalDialog) {
         AlertDialog(
             onDismissRequest = { showLegalDialog = false },
@@ -387,6 +520,7 @@ fun SettingsScreen(
                 SettingsItem(Icons.Default.Notifications, "Notificaciones Inteligentes", "Tonos y prioridades tácticas", onNavigateToNotifications)
                 SettingsItem(Icons.Default.Storage, "Almacenamiento Zero-Trace", "Uso de datos y limpieza de caché", onNavigateToStorage)
                 SettingsItem(Icons.Default.Help, "Centro de Inteligencia", "Soporte, política de privacidad", onNavigateToHelp)
+                SettingsItem(Icons.Default.Lightbulb, "💡 Buzón de Sugerencias", "Propón nuevas funciones al equipo de desarrollo", onClick = { showSuggestionsDialog = true })
                 SettingsItem(Icons.Default.Gavel, "Legal, Privacidad y Originalidad", "Aviso de Privacidad (LFPDPPP) y Certificado de Autoría (OMPI)", onClick = { showLegalDialog = true })
                 
                 Spacer(Modifier.height(32.dp))
