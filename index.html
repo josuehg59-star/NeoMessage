@@ -1937,9 +1937,9 @@
                         </div>
                     </div>
 
-                    <!-- PICKERS OCULTOS PARA DOCUMENTOS Y MULTIMEDIA -->
-                    <input type="file" id="mediaPicker" accept="image/*,video/*" style="display: none;" onchange="handleMediaSelected(this)">
-                    <input type="file" id="docPicker" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.apk,*" style="display: none;" onchange="handleDocumentSelected(this)">
+                    <!-- PICKERS OCULTOS PARA DOCUMENTOS Y MULTIMEDIA (MULTI-ENVÍO Y CUALQUIER FORMATO) -->
+                    <input type="file" id="mediaPicker" accept="image/*,video/*" multiple style="display: none;" onchange="handleMediaSelected(this)">
+                    <input type="file" id="docPicker" accept="*/*,.zip,.rar,.7z,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.apk,.exe,.csv,.mp3,.mp4" multiple style="display: none;" onchange="handleDocumentSelected(this)">
 
                     <button class="icon-btn" id="btnAttachment" onclick="toggleAttachmentPopup()" title="Adjuntar archivo o multimedia">📎</button>
                     <button class="icon-btn" onclick="insertEmoji('😊')" title="Emojis">😊</button>
@@ -2521,40 +2521,50 @@
         }
 
         function handleDocumentSelected(input) {
-            if (!input.files || !input.files[0] || !currentChatId) return;
-            const file = input.files[0];
-            const fileName = file.name;
-            const sizeBytes = file.size;
-            const sizeStr = formatFileSize(sizeBytes);
+            if (!input.files || input.files.length === 0 || !currentChatId) return;
+            const files = Array.from(input.files);
+            const total = files.length;
+            showToast(`📦 Preparando ${total} archivo(s) para enviar...`);
 
-            const reader = new FileReader();
-            showToast('📄 Preparando documento...');
+            files.forEach((file, index) => {
+                const fileName = file.name;
+                const sizeBytes = file.size;
+                const sizeStr = formatFileSize(sizeBytes);
 
-            reader.onload = (e) => {
-                const b64 = e.target.result;
-                const docPayload = `[Document]|${fileName}|${sizeStr}|${b64}`;
-                dispatchMessageObject(docPayload);
-                showToast(`✅ Archivo '${fileName}' enviado`);
-            };
-            reader.readAsDataURL(file);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const b64 = e.target.result;
+                    const docPayload = `[Document]|${fileName}|${sizeStr}|${b64}`;
+                    setTimeout(() => {
+                        dispatchMessageObject(docPayload);
+                        showToast(`✅ Archivo (${index + 1}/${total}): ${fileName}`);
+                    }, index * 200);
+                };
+                reader.readAsDataURL(file);
+            });
             input.value = '';
         }
 
         function handleMediaSelected(input) {
-            if (!input.files || !input.files[0] || !currentChatId) return;
-            const file = input.files[0];
+            if (!input.files || input.files.length === 0 || !currentChatId) return;
+            const files = Array.from(input.files);
+            const total = files.length;
+            showToast(`📷 Preparando ${total} archivo(s) multimedia...`);
 
-            if (file.type.startsWith('video/')) {
+            files.forEach((file, index) => {
                 const reader = new FileReader();
-                showToast('🎥 Procesando video para enviar...');
                 reader.onload = (e) => {
-                    dispatchMessageObject('[Video] ' + e.target.result);
-                    showToast('🎥 Video enviado');
+                    setTimeout(() => {
+                        if (file.type.startsWith('video/')) {
+                            dispatchMessageObject('[Video] ' + e.target.result);
+                        } else {
+                            dispatchMessageObject('[Media] ' + e.target.result);
+                        }
+                        showToast(`✅ Multimedia (${index + 1}/${total}): ${file.name}`);
+                    }, index * 250);
                 };
                 reader.readAsDataURL(file);
-            } else {
-                handleImageSelected(input);
-            }
+            });
             input.value = '';
         }
 
@@ -2565,14 +2575,24 @@
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
-        function downloadDocumentFromB64(fileName, b64Data) {
-            const a = document.createElement('a');
-            a.href = b64Data;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            showToast(`📥 Descargando ${fileName}`);
+        function downloadDocumentFromB64(fileName, docUrl) {
+            if (!docUrl) return;
+            if (docUrl.startsWith('http://') || docUrl.startsWith('https://')) {
+                window.open(docUrl, '_blank');
+                showToast(`📥 Abriendo descarga de ${fileName}`);
+                return;
+            }
+            try {
+                const a = document.createElement('a');
+                a.href = docUrl;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showToast(`📥 Descargando ${fileName}`);
+            } catch (e) {
+                window.open(docUrl, '_blank');
+            }
         }
 
         // ========================================================
@@ -3905,23 +3925,51 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
-            } else if (text.startsWith('[Document]|')) {
-                // 2. DOCUMENTOS ADJUNTOS (.PDF, .APK, .ZIP, .DOCX, ETC.)
-                const p = text.split('|');
-                const docName = p[1] || 'Documento';
-                const docSize = p[2] || '';
-                const docB64 = p.slice(3).join('|');
-                const isPkg = docName.endsWith('.apk') || docName.endsWith('.zip') || docName.endsWith('.rar');
+            } else if (text.startsWith('[Document]|') || text.startsWith('[File]')) {
+                // 2. ARCHIVOS ADJUNTOS (ZIP, RAR, PDF, WORD, EXCEL, PPT, APK, ETC.)
+                let docName = 'Documento';
+                let docSize = '';
+                let docUrl = '';
+
+                if (text.startsWith('[Document]|')) {
+                    const p = text.split('|');
+                    docName = p[1] || 'Documento';
+                    docSize = p[2] || '';
+                    docUrl = p.slice(3).join('|');
+                } else {
+                    const raw = text.replace('[File] ', '').trim();
+                    const p = raw.split('|');
+                    docName = p[0] || 'Archivo';
+                    const bytes = parseInt(p[1]) || 0;
+                    docSize = formatFileSize(bytes);
+                    docUrl = p.slice(2).join('|');
+                }
+
+                const lowerName = docName.toLowerCase();
+                let docIcon = '📁';
+                if (lowerName.endsWith('.apk')) docIcon = '🤖';
+                else if (lowerName.endsWith('.zip') || lowerName.endsWith('.rar') || lowerName.endsWith('.7z') || lowerName.endsWith('.tar') || lowerName.endsWith('.gz')) docIcon = '📦';
+                else if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx') || lowerName.endsWith('.csv')) docIcon = '📊';
+                else if (lowerName.endsWith('.doc') || lowerName.endsWith('.docx')) docIcon = '📝';
+                else if (lowerName.endsWith('.ppt') || lowerName.endsWith('.pptx')) docIcon = '📑';
+                else if (lowerName.endsWith('.pdf')) docIcon = '📕';
+                else if (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.ogg') || lowerName.endsWith('.m4a')) docIcon = '🎵';
+                else if (lowerName.endsWith('.mp4') || lowerName.endsWith('.mkv') || lowerName.endsWith('.avi') || lowerName.endsWith('.mov')) docIcon = '🎬';
+                else if (lowerName.endsWith('.exe') || lowerName.endsWith('.msi') || lowerName.endsWith('.bat')) docIcon = '⚙️';
+
+                const safeDocName = escapeHtml(docName);
+                const safeDocUrl = encodeURIComponent(docUrl);
+
                 b.innerHTML = `
                     ${deleteAction}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <div class="doc-msg-box">
-                        <div class="doc-icon">${isPkg ? '📦' : '📄'}</div>
+                        <div class="doc-icon">${docIcon}</div>
                         <div class="doc-info">
-                            <div class="doc-name" title="${escapeHtml(docName)}">${escapeHtml(docName)}</div>
+                            <div class="doc-name" title="${safeDocName}">${safeDocName}</div>
                             <div class="doc-size">${escapeHtml(docSize)}</div>
                         </div>
-                        <button class="doc-btn-download" onclick="downloadDocumentFromB64('${escapeHtml(docName)}', '${docB64}')" title="Descargar en PC">⬇️ Descargar</button>
+                        <button class="doc-btn-download" onclick="downloadDocumentFromB64(decodeURIComponent('${encodeURIComponent(docName)}'), decodeURIComponent('${safeDocUrl}'))" title="Descargar archivo">⬇️ Descargar</button>
                     </div>
                     <div class="msg-footer">
                         <span>${timeStr}</span>
