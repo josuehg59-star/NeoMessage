@@ -42,10 +42,20 @@ object NeoBotManager {
     fun isBotEnabled(context: Context): Boolean {
         return try {
             val sp = getPrefs(context)
-            val bySwitch = sp.getBoolean("bot_active_switch", false)
+            if (sp.contains("bot_active_switch")) {
+                return sp.getBoolean("bot_active_switch", true)
+            }
             val byConfig = loadConfig(context).isEnabled
-            bySwitch || byConfig
-        } catch (_: Exception) { false }
+            if (byConfig) return true
+            // Por defecto para el dueño del negocio: ACTIVO
+            val userSp = context.getSharedPreferences("neomessage_prefs", Context.MODE_PRIVATE)
+            val myPhone = userSp.getString("user_phone", "") ?: ""
+            if (myPhone.contains("9612765041")) {
+                sp.edit().putBoolean("bot_active_switch", true).apply()
+                return true
+            }
+            false
+        } catch (_: Exception) { true }
     }
 
     fun setBotEnabled(context: Context, enabled: Boolean) {
@@ -464,7 +474,7 @@ object NeoBotManager {
 
         // 4. Solo responder a mensajes de los últimos 30 minutos (para tolerar desfaces de reloj y demoras de red)
         val now = System.currentTimeMillis()
-        if (Math.abs(now - msgTimestamp) > 30 * 60 * 1000L) return
+        if (Math.abs(now - msgTimestamp) > 60 * 60 * 1000L) return
 
         // 5. Anti-repetición inmediata del mismo mensaje (4 segundos de debounce por cliente)
         val key = "$chatId-$cleanSender"

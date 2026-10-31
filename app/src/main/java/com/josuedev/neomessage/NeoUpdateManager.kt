@@ -43,7 +43,7 @@ object NeoUpdateManager {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionCode
             }
         } catch (_: Exception) {
-            33
+            34
         }
     }
 

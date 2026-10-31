@@ -947,6 +947,49 @@ fun ChatsListScreen(
         }
         
         Column(Modifier.padding(padding).fillMaxSize()) {
+            // --- 🤖 BANNER VISIBLE DE BOT DE VENTAS (PUNTO DE VENTA) ---
+            var botActiveState by remember { mutableStateOf(NeoBotManager.isBotEnabled(context)) }
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                colors = CardDefaults.cardColors(containerColor = if (botActiveState) Color(0xFF0F382A) else Color(0xFF1E293B)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.SmartToy,
+                        contentDescription = null,
+                        tint = if (botActiveState) Color(0xFF00FF7F) else Color.Gray,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (botActiveState) "🤖 Bot Ventas: ACTIVO" else "🤖 Bot Ventas: APAGADO",
+                            color = if (botActiveState) Color(0xFF00FF7F) else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            if (botActiveState) "Contestando catálogo y pedidos a clientes" else "Toca para activar auto-respuestas",
+                            color = Color.LightGray,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = botActiveState,
+                        onCheckedChange = {
+                            botActiveState = it
+                            NeoBotManager.setBotEnabled(context, it)
+                            Toast.makeText(context, if (it) "🤖 Bot de Ventas ACTIVADO" else "🤖 Bot de Ventas APAGADO", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00FF7F), checkedTrackColor = Color(0xFF005C4B))
+                    )
+                }
+            }
+
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).horizontalScroll(rememberScrollState())) {
                 listOf("Todos", "No leídos", "Favoritos", "Grupos").forEach { filter ->
                     Surface(
