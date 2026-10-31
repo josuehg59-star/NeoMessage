@@ -1380,30 +1380,36 @@
         .msg-bubble {
             position: relative;
         }
+        .msg-bubble .msg-menu-btn {
+            opacity: 0.8;
+        }
         .msg-bubble:hover .msg-menu-btn {
             opacity: 1;
         }
         .msg-menu-btn {
             position: absolute;
-            top: 4px;
+            top: 5px;
             right: 6px;
             width: 22px;
             height: 22px;
             border-radius: 50%;
-            background: rgba(0,0,0,0.4);
-            color: #D1D5DB;
+            background: rgba(0,0,0,0.65);
+            color: #E2E8F0;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 13px;
             cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.15s, background 0.15s;
-            z-index: 10;
+            transition: all 0.2s ease;
+            z-index: 30;
+            border: 1px solid rgba(255,255,255,0.25);
+            backdrop-filter: blur(2px);
         }
         .msg-menu-btn:hover {
-            background: rgba(0,0,0,0.7);
-            color: #FFF;
+            background: rgba(0,0,0,0.9);
+            color: #00FF7F;
+            border-color: #00FF7F;
+            transform: scale(1.15);
         }
         .msg-quoted-box {
             background: rgba(0, 0, 0, 0.25);
@@ -4531,11 +4537,22 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
         }
 
         // RENDERIZAR MENSAJES Y REGLA DE PALOMITAS
+        // COMPARADOR ROBUSTO DE REMITENTES (SOPORTA +52, 521 O 10 DÍGITOS)
+        function isSameSender(id1, id2) {
+            if (!id1 || !id2) return false;
+            const s1 = String(id1).replace(/\D/g, '');
+            const s2 = String(id2).replace(/\D/g, '');
+            if (!s1 || !s2) return false;
+            if (s1 === s2) return true;
+            if (s1.length >= 10 && s2.length >= 10 && s1.slice(-10) === s2.slice(-10)) return true;
+            return false;
+        }
+
         function renderMessageBubble(msg) {
             const container = document.getElementById('messagesList');
             const b = document.createElement('div');
             
-            const isMine = (msg.senderId || '').replace(/\D/g, '') === myPhone.replace(/\D/g, '');
+            const isMine = isSameSender(msg.senderId, myPhone) || (msg.senderName && myName && msg.senderName === myName && msg.senderName !== 'Usuario');
             b.className = `msg-bubble ${isMine ? 'me' : 'other'}`;
             b.id = 'msg_' + (msg.id || '');
 
@@ -4760,10 +4777,10 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 const src = text.startsWith('[Media]') ? text.replace('[Media] ', '').trim() : text.trim();
                 const photoName = `foto_${msg.timestamp || Date.now()}.jpg`;
                 b.innerHTML = `
-                    ${menuBtnHtml}
                     ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <div class="photo-msg-wrapper" style="position: relative; display: inline-block; max-width: 320px; border-radius: 10px; overflow: hidden; margin-top: 4px;">
+                        ${menuBtnHtml}
                         <img src="${src}" class="msg-photo" style="max-width: 100%; border-radius: 10px; cursor: pointer; display: block;" onclick="openImageViewer('${src}', '${photoName}')">
                         <div class="photo-overlay-actions" style="position: absolute; bottom: 8px; right: 8px; display: flex; gap: 6px;">
                             <button onclick="event.stopPropagation(); downloadFileSafely('${photoName}', '${src}')" style="background: rgba(0,0,0,0.7); color: #00FF7F; border: 1px solid rgba(0,255,127,0.5); padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; backdrop-filter: blur(4px); display: flex; align-items: center; gap: 4px;">
@@ -5385,10 +5402,13 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             e.stopPropagation();
             contextTargetMsg = { id: msgId, senderName: senderName, text: text, isMine: isMine };
             const menu = document.getElementById('msgContextMenu');
+            
+            const isTextOnly = !text.startsWith('[Media]') && !text.startsWith('[File]') && !text.startsWith('[Document]|') && !text.startsWith('[Audio]') && !text.startsWith('[Video]') && !text.startsWith('[Sticker]') && !text.startsWith('[DELETED]');
+            
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
             const editBtn = document.getElementById('contextEditBtn');
-            if (editBtn) editBtn.style.display = isMine ? 'flex' : 'none';
+            if (editBtn) editBtn.style.display = (isMine && isTextOnly) ? 'flex' : 'none';
 
             let x = e.clientX;
             let y = e.clientY;
