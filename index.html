@@ -58,6 +58,8 @@
             const menu = document.getElementById('msgContextMenu');
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+            const editBtn = document.getElementById('contextEditBtn');
+            if (editBtn) editBtn.style.display = isMine ? 'flex' : 'none';
 
             let x = e.clientX;
             let y = e.clientY;
@@ -73,6 +75,27 @@
             const menu = document.getElementById('msgContextMenu');
             if (menu) menu.style.display = 'none';
         });
+
+        function triggerEditFromContext() {
+            if (!contextTargetMsg || !currentChatId) return;
+            const currentText = contextTargetMsg.text;
+            if (currentText.startsWith('[Document]|') || currentText.startsWith('[File]') || currentText.startsWith('[Media]') || currentText.startsWith('[Audio]') || currentText.startsWith('[Video]')) {
+                showToast('Solo se pueden editar mensajes de texto');
+                document.getElementById('msgContextMenu').style.display = 'none';
+                return;
+            }
+            const newText = prompt("Editar mensaje:", currentText);
+            if (newText !== null && newText.trim() !== "" && newText.trim() !== currentText) {
+                db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}`).update({
+                    text: newText.trim(),
+                    isEdited: true,
+                    editedAt: Date.now()
+                }).then(() => {
+                    showToast('✏️ Mensaje editado');
+                });
+            }
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
 
         function triggerReplyFromContext() {
             if (!contextTargetMsg) return;
@@ -407,6 +430,8 @@
             const menu = document.getElementById('msgContextMenu');
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+            const editBtn = document.getElementById('contextEditBtn');
+            if (editBtn) editBtn.style.display = isMine ? 'flex' : 'none';
 
             let x = e.clientX;
             let y = e.clientY;
@@ -422,6 +447,27 @@
             const menu = document.getElementById('msgContextMenu');
             if (menu) menu.style.display = 'none';
         });
+
+        function triggerEditFromContext() {
+            if (!contextTargetMsg || !currentChatId) return;
+            const currentText = contextTargetMsg.text;
+            if (currentText.startsWith('[Document]|') || currentText.startsWith('[File]') || currentText.startsWith('[Media]') || currentText.startsWith('[Audio]') || currentText.startsWith('[Video]')) {
+                showToast('Solo se pueden editar mensajes de texto');
+                document.getElementById('msgContextMenu').style.display = 'none';
+                return;
+            }
+            const newText = prompt("Editar mensaje:", currentText);
+            if (newText !== null && newText.trim() !== "" && newText.trim() !== currentText) {
+                db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}`).update({
+                    text: newText.trim(),
+                    isEdited: true,
+                    editedAt: Date.now()
+                }).then(() => {
+                    showToast('✏️ Mensaje editado');
+                });
+            }
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
 
         function triggerReplyFromContext() {
             if (!contextTargetMsg) return;
@@ -5013,7 +5059,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         <span>${isMine ? 'Eliminaste este mensaje.' : 'Este mensaje fue eliminado.'}</span>
                     </div>
                     <div class="msg-footer">
-                        <span>${timeStr}</span>
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
@@ -5066,7 +5112,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         <button class="doc-btn-download" onclick="downloadDocumentFromB64(decodeURIComponent('${encodeURIComponent(docName)}'), decodeURIComponent('${safeDocUrl}'))" title="Descargar archivo">⬇️ Descargar</button>
                     </div>
                     <div class="msg-footer">
-                        <span>${timeStr}</span>
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
@@ -5086,7 +5132,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         <span id="dur_${aId}" style="font-size:11px; color:var(--text-secondary); margin-left:4px;">0:00</span>
                     </div>
                     <div class="msg-footer">
-                        <span>${timeStr}</span>
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
@@ -5100,7 +5146,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         <video src="${vidSrc}" controls playsinline style="width:100%; border-radius:10px; max-height:260px; background:#000;"></video>
                     </div>
                     <div class="msg-footer">
-                        <span>${timeStr}</span>
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
@@ -5134,7 +5180,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         <button class="btn-copy-quote" onclick="copyQuoteToClipboard(\`${encodeURIComponent(copyText)}\`)">📋 COPIAR TODO</button>
                     </div>
                     <div class="msg-footer">
-                        <span>${timeStr}</span>
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
@@ -5145,7 +5191,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     <div>📷 Foto adjunta:</div>
                     <img src="${src}" class="msg-photo" onclick="window.open('${src}')">
                     <div class="msg-footer">
-                        <span>${timeStr}</span>
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
@@ -5155,7 +5201,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <div>${escapeHtml(text).replace(/\n/g, '<br>')}</div>
                     <div class="msg-footer">
-                        <span>${timeStr}</span>
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
@@ -5744,6 +5790,8 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             const menu = document.getElementById('msgContextMenu');
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+            const editBtn = document.getElementById('contextEditBtn');
+            if (editBtn) editBtn.style.display = isMine ? 'flex' : 'none';
 
             let x = e.clientX;
             let y = e.clientY;
@@ -5759,6 +5807,27 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             const menu = document.getElementById('msgContextMenu');
             if (menu) menu.style.display = 'none';
         });
+
+        function triggerEditFromContext() {
+            if (!contextTargetMsg || !currentChatId) return;
+            const currentText = contextTargetMsg.text;
+            if (currentText.startsWith('[Document]|') || currentText.startsWith('[File]') || currentText.startsWith('[Media]') || currentText.startsWith('[Audio]') || currentText.startsWith('[Video]')) {
+                showToast('Solo se pueden editar mensajes de texto');
+                document.getElementById('msgContextMenu').style.display = 'none';
+                return;
+            }
+            const newText = prompt("Editar mensaje:", currentText);
+            if (newText !== null && newText.trim() !== "" && newText.trim() !== currentText) {
+                db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}`).update({
+                    text: newText.trim(),
+                    isEdited: true,
+                    editedAt: Date.now()
+                }).then(() => {
+                    showToast('✏️ Mensaje editado');
+                });
+            }
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
 
         function triggerReplyFromContext() {
             if (!contextTargetMsg) return;
@@ -6061,6 +6130,10 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             <span class="context-reaction-btn" onclick="reactToContextMsg('😮')">😮</span>
             <span class="context-reaction-btn" onclick="reactToContextMsg('😢')">😢</span>
             <span class="context-reaction-btn" onclick="reactToContextMsg('🙏')">🙏</span>
+        </div>
+        <div class="context-item" id="contextEditBtn" onclick="triggerEditFromContext()">
+            <span>✏️</span>
+            <span>Editar</span>
         </div>
         <div class="context-item" onclick="triggerReplyFromContext()">
             <span>↩</span>
