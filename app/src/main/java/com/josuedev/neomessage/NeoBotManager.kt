@@ -9,20 +9,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
 import java.net.URLEncoder
+import java.util.Calendar
 
 data class BotProduct(
     val nombre: String = "",
     val precio: String = "",
-    val imagenBase64: String = "" // Foto del producto en Base64 o URL
+    val imagenBase64: String = "",
+    val codigo: Int = 0
 )
 
 data class BotConfig(
     val isEnabled: Boolean = false,
-    val nombreNegocio: String = "Miscelánea Brittany",
+    val nombreNegocio: String = "miscelanea brittany",
     val telefono: String = "9612765041",
     val horario: String = "Lunes a Sábado de 8:30 AM a 7:00 PM",
     val direccion: String = "Av. 16 de septiembre 903, B.S., Tuxtla Gutiérrez, Chiapas",
-    val mensajeBienvenida: String = "¡Hola! 👋 Bienvenido a *{negocio}*.\n\nSoy tu asistente virtual 🤖.\n¿En qué podemos ayudarte hoy?\n\n📦 Escribe *Catalogo* para ver productos y precios\n🛒 Escribe *Carrito* para ver tu total de compras\n📊 Escribe *Corte* para ver el corte de caja del día\n📍 Escribe *Ubicacion* para horarios y dirección\n👤 Escribe *Asesor* para hablar con el encargado\n\n_🔍 O escribe directamente: \"agregar takis\", \"coca\", \"foto aceite\"..._",
+    val mensajeBienvenida: String = "",
     val catalogo: List<BotProduct> = emptyList()
 )
 
@@ -30,7 +32,7 @@ object NeoBotManager {
     private const val PREF_NAME = "neobot_prefs"
     private const val KEY_CONFIG = "bot_config_json"
 
-    // Guardar último mensaje procesado con timestamp para evitar eco inmediato
+    // Guardar último mensaje procesado con timestamp para evitar eco y duplicados
     private val lastProcessedMsg = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
 
     fun getPrefs(context: Context): SharedPreferences {
@@ -60,7 +62,7 @@ object NeoBotManager {
         if (jsonStr.isNullOrEmpty()) {
             val defaultConfig = BotConfig(
                 isEnabled = false,
-                nombreNegocio = "Miscelánea Brittany",
+                nombreNegocio = "miscelanea brittany",
                 telefono = "9612765041",
                 horario = "Lunes a Sábado de 8:30 AM a 7:00 PM",
                 direccion = "Av. 16 de septiembre 903, B.S., Tuxtla Gutiérrez, Chiapas",
@@ -80,7 +82,8 @@ object NeoBotManager {
                     BotProduct(
                         nombre = p.optString("nombre"),
                         precio = p.optString("precio"),
-                        imagenBase64 = p.optString("imagenBase64", "")
+                        imagenBase64 = p.optString("imagenBase64", ""),
+                        codigo = p.optInt("codigo", i + 1)
                     )
                 )
             }
@@ -88,16 +91,16 @@ object NeoBotManager {
             val finalCatalog = if (catList.isEmpty()) defaultCatalog else catList
 
             BotConfig(
-                isEnabled = obj.optBoolean("isEnabled", true),
-                nombreNegocio = obj.optString("nombreNegocio", "Miscelánea Brittany").ifEmpty { "Miscelánea Brittany" },
+                isEnabled = obj.optBoolean("isEnabled", false),
+                nombreNegocio = obj.optString("nombreNegocio", "miscelanea brittany").ifEmpty { "miscelanea brittany" },
                 telefono = obj.optString("telefono", "9612765041").ifEmpty { "9612765041" },
                 horario = obj.optString("horario", "Lunes a Sábado de 8:30 AM a 7:00 PM").ifEmpty { "Lunes a Sábado de 8:30 AM a 7:00 PM" },
                 direccion = obj.optString("direccion", "Av. 16 de septiembre 903, B.S., Tuxtla Gutiérrez, Chiapas").ifEmpty { "Av. 16 de septiembre 903, B.S., Tuxtla Gutiérrez, Chiapas" },
-                mensajeBienvenida = obj.optString("mensajeBienvenida", "").ifEmpty { BotConfig().mensajeBienvenida },
+                mensajeBienvenida = obj.optString("mensajeBienvenida", ""),
                 catalogo = finalCatalog
             )
         } catch (e: Exception) {
-            BotConfig(isEnabled = true, catalogo = defaultCatalog)
+            BotConfig(isEnabled = false, catalogo = defaultCatalog)
         }
     }
 
@@ -112,11 +115,12 @@ object NeoBotManager {
             obj.put("mensajeBienvenida", config.mensajeBienvenida)
 
             val catArray = JSONArray()
-            config.catalogo.forEach {
+            config.catalogo.forEachIndexed { idx, it ->
                 val p = JSONObject()
                 p.put("nombre", it.nombre)
                 p.put("precio", it.precio)
                 p.put("imagenBase64", it.imagenBase64)
+                p.put("codigo", if (it.codigo > 0) it.codigo else (idx + 1))
                 catArray.put(p)
             }
             obj.put("catalogo", catArray)
@@ -137,114 +141,162 @@ object NeoBotManager {
             .trim()
     }
 
+    private fun getGreetingPrefix(): String {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return when {
+            hour in 5..11 -> "¡Buenos días! ☀️"
+            hour in 12..18 -> "¡Buenas tardes! 🌤️"
+            else -> "¡Buenas noches! 🌙"
+        }
+    }
+
     // Procesa el mensaje entrante y genera respuesta de texto y opcionalmente imagen
-    fun processMessageWithMedia(context: Context, incomingText: String): Pair<String, String?> {
+    fun processMessageWithMedia(context: Context, incomingText: String, chatId: String = "default_cart"): Pair<String, String?> {
         val cfg = loadConfig(context)
         val text = cleanText(incomingText)
-        val negocio = cfg.nombreNegocio.ifEmpty { "Miscelánea Brittany" }
-        val catalog = if (cfg.catalogo.isEmpty()) getDefaultCatalog() else cfg.catalogo
+        val negocio = cfg.nombreNegocio.ifEmpty { "miscelanea brittany" }
+        val rawCatalog = if (cfg.catalogo.isEmpty()) getDefaultCatalog() else cfg.catalogo
 
-        // 0. Si el usuario pide explícitamente ver la foto de un producto (ej: "foto coca", "ver foto takis", "imagen de chips")
+        // Asegurar que cada producto tenga su código visible
+        val catalog = rawCatalog.mapIndexed { idx, prod ->
+            if (prod.codigo > 0) prod else prod.copy(codigo = idx + 1)
+        }
+
+        // ==================== 0. FOTO DE PRODUCTO ====================
         if (text.startsWith("foto ") || text.startsWith("ver foto ") || text.startsWith("imagen ") ||
-            text.startsWith("fotos ") || text.startsWith("foto de ") || text.startsWith("foto del ") ||
-            text.startsWith("imagen de ") || text.startsWith("imagen del ")) {
-            
+            text.startsWith("fotos ") || text.startsWith("foto de ") || text.startsWith("foto del ")) {
             val prodQuery = text.replace("ver foto ", "")
                 .replace("foto de ", "")
                 .replace("foto del ", "")
                 .replace("foto ", "")
                 .replace("fotos ", "")
-                .replace("imagen de ", "")
-                .replace("imagen del ", "")
                 .replace("imagen ", "")
                 .trim()
 
             if (prodQuery.isNotEmpty()) {
-                val matched = catalog.firstOrNull { cleanText(it.nombre).contains(prodQuery) }
-                    ?: catalog.firstOrNull { prodQuery.contains(cleanText(it.nombre)) }
+                val codeNum = prodQuery.toIntOrNull()
+                val matched = if (codeNum != null) {
+                    catalog.firstOrNull { it.codigo == codeNum }
+                } else {
+                    catalog.firstOrNull { cleanText(it.nombre).contains(prodQuery) }
+                        ?: catalog.firstOrNull { prodQuery.contains(cleanText(it.nombre)) }
+                }
 
                 if (matched != null) {
                     if (matched.imagenBase64.isNotEmpty()) {
-                        return "📸 Aquí tienes la foto de *${matched.nombre}* ($${matched.precio} MXN):" to matched.imagenBase64
+                        return "📸 Aquí tienes la foto de *[${matched.codigo}] ${matched.nombre}* ($${matched.precio} MXN):" to matched.imagenBase64
                     } else {
-                        return "ℹ️ El producto *${matched.nombre}* ($${matched.precio} MXN) no tiene foto asignada en el catálogo.\n(Puedes solicitar más detalles con un *Asesor*)." to null
+                        return "ℹ️ El producto *[${matched.codigo}] ${matched.nombre}* ($${matched.precio} MXN) no tiene foto asignada en el catálogo.\n(Escribe *${matched.codigo}* para agregarlo a tu carrito)." to null
                     }
                 } else {
-                    return "🔍 No encontré fotos para \"$prodQuery\".\nEscribe *Catalogo* para ver los productos disponibles con fotos 📸." to null
+                    return "🔍 No encontré fotos para \"$prodQuery\".\nEscribe *Catalogo* para ver los productos disponibles." to null
                 }
             }
         }
 
-                // --- 🛒 COMANDOS DE CARRITO Y COMPRAS ---
-        if (text == "corte de caja" || text == "corte" || text == "corte caja" || text == "ventas de hoy" || text == "caja" || text == "ventas") {
+        // ==================== 🛒 CORTE DE CAJA ====================
+        if (text == "corte de caja" || text == "corte" || text == "corte caja" || text == "ventas de hoy" || text == "caja") {
             return NeoCommerceManager.formatCorteDeCajaReport(context, negocio) to null
         }
 
+        // ==================== 🛒 CARRITO ACTUAL ====================
         if (text == "carrito" || text == "ver carrito" || text == "mi carrito" || text == "total" || text == "cuenta" || text == "mi pedido" || text == "compras") {
-            return NeoCommerceManager.formatCartReceipt(context, "default_cart", negocio) to null
+            return NeoCommerceManager.formatCartReceipt(context, chatId, negocio) to null
         }
 
         if (text == "vaciar carrito" || text == "borrar carrito" || text == "limpiar carrito" || text == "cancelar pedido") {
-            NeoCommerceManager.clearCart(context, "default_cart")
-            return "🗑️ Tu carrito de compras ha sido vaciado correctamente.\nEscribe *Catalogo* para ver los productos." to null
+            NeoCommerceManager.clearCart(context, chatId)
+            return "🗑️ Tu carrito de compras ha sido vaciado correctamente.\nEscribe *Catalogo* para ver los productos y volver a agregar." to null
         }
 
-        if (text == "comprar" || text == "confirmar" || text == "confirmar compra" || text == "confirmar pedido" || text == "pagar" || text == "pedir ya" || text == "finalizar") {
-            val (ok, res) = NeoCommerceManager.checkoutCart(context, "default_cart", "Cliente", "Cliente Chat", negocio)
+        // ==================== 🧾 CONFIRMAR PEDIDO / TICKET ====================
+        if (text == "confirmar" || text == "confirmar pedido" || text == "confirmar compra" || text == "comprar" || text == "pagar" || text == "pedir ya" || text == "finalizar") {
+            val (ok, res) = NeoCommerceManager.checkoutCart(context, chatId, "Cliente", "Cliente Chat", negocio)
             return res to null
         }
 
+        // ==================== 🔢 PARSER INTELIGENTE DE PEDIDOS POR CÓDIGO Y CANTIDAD ====================
+        // Casos que maneja:
+        // - "2 del 276"
+        // - "del 1 requiero 2" o "del 3 requierp 1"
+        // - "1 del 276 y 2 del 725"
+        // - "276 2" (código y cantidad)
+        // - "276" (sólo código -> cantidad 1)
+        // - "agregar 26 2" o "pedir 725"
+        val orderItems = parseOrderItems(text)
+        if (orderItems.isNotEmpty()) {
+            val sb = java.lang.StringBuilder("🛒 *¡Agregado al Carrito!*\n\n")
+            var addedAny = false
+            for ((code, qty) in orderItems) {
+                val matched = catalog.firstOrNull { it.codigo == code }
+                if (matched != null) {
+                    NeoCommerceManager.addToCart(context, chatId, matched, qty)
+                    val unitPrice = matched.precio.replace("[^0-9.]".toRegex(), "").toDoubleOrNull() ?: 0.0
+                    val sub = unitPrice * qty
+                    sb.append("✅ ${qty}x *[${matched.codigo}] ${matched.nombre}* ➔ *$${"%.2f".format(sub)} MXN*\n")
+                    addedAny = true
+                }
+            }
+            if (addedAny) {
+                val currentTotal = NeoCommerceManager.getCartTotal(context, chatId)
+                sb.append("───────────────────────\n")
+                sb.append("💰 *Total actual en carrito:* $${"%.2f".format(currentTotal)} MXN\n\n")
+                sb.append("👉 Escribe *carrito* para ver tus compras actuales.\n")
+                sb.append("👉 Escribe *confirmar pedido* para generar tu ticket y total.")
+                return sb.toString() to null
+            }
+        }
+
+        // Si escribió "agregar [nombre producto]"
         if (text.startsWith("agregar ") || text.startsWith("agrega ") || text.startsWith("pedir ") || text.startsWith("comprar ")) {
             val q = text.replace("agregar ", "").replace("agrega ", "").replace("pedir ", "").replace("comprar ", "").trim()
             val matched = catalog.firstOrNull { cleanText(it.nombre).contains(q) } ?: catalog.firstOrNull { q.contains(cleanText(it.nombre)) }
             if (matched != null) {
-                val item = NeoCommerceManager.addToCart(context, "default_cart", matched, 1)
-                val currentTotal = NeoCommerceManager.getCartTotal(context, "default_cart")
-                val sb = StringBuilder("🛒 *¡Agregado al Carrito!*\n\n")
-                sb.append("✅ *${matched.nombre}*\n")
+                val item = NeoCommerceManager.addToCart(context, chatId, matched, 1)
+                val currentTotal = NeoCommerceManager.getCartTotal(context, chatId)
+                val sb = java.lang.StringBuilder("🛒 *¡Agregado al Carrito!*\n\n")
+                sb.append("✅ *[${matched.codigo}] ${matched.nombre}*\n")
                 sb.append("💵 Cantidad: ${item.cantidad} | Precio: $${matched.precio} MXN\n")
                 sb.append("───────────────────────\n")
                 sb.append("💰 *Total actual en carrito:* $${"%.2f".format(currentTotal)} MXN\n\n")
                 sb.append("👉 Escribe *carrito* para ver tu cuenta completa.\n")
-                sb.append("👉 Escribe *comprar* para confirmar tu orden.")
+                sb.append("👉 Escribe *confirmar pedido* para confirmar tu orden.")
                 return sb.toString() to (if (matched.imagenBase64.isNotEmpty()) matched.imagenBase64 else null)
-            } else {
-                return "🔍 No encontré el producto \"$q\" en el catálogo.\nEscribe *Catalogo* para ver la lista completa de artículos disponibles." to null
             }
         }
 
-        // 1. Catálogo completo ("catalogo", "catalago", "catallogo", "productos", "articulos", "lista", "precios", "que venden")
-        if (text == "catalogo" || text == "catalago" || text == "catallogo" || text.contains("catal") || 
-            text.contains("prod") || text.contains("articu") || text.contains("lista") || 
-            text.contains("que vend") || text.contains("que tien") || text == "1") {
+        // ==================== 1. CATÁLOGO COMPLETO ====================
+        if (text == "catalogo" || text == "catalago" || text == "catallogo" || text == "productos" || 
+            text == "articulos" || text == "lista" || text == "precios" || text == "que venden" || text == "menu") {
             
-            val sb = StringBuilder("📦 *Catálogo de $negocio:*\n\n")
-            val sample = catalog.take(25)
+            val sb = java.lang.StringBuilder("🔍 *CATÁLOGO DE PRODUCTOS (${catalog.size}):*\n")
+            sb.append("🏪 _${negocio}_\n\n")
+            
+            val sample = catalog.take(20)
             sample.forEach {
                 val hasImg = if (it.imagenBase64.isNotEmpty()) " 📸" else ""
-                sb.append("• *${it.nombre}*: $${it.precio} MXN$hasImg\n")
+                sb.append("*[${it.codigo}]* ${it.nombre} ➔ *$${it.precio} MXN*$hasImg\n")
             }
-            if (catalog.size > 25) {
-                sb.append("\n_...y ${catalog.size - 25} productos más disponibles._")
+            if (catalog.size > 20) {
+                sb.append("\n_...y ${catalog.size - 20} productos más disponibles._\n")
             }
-            sb.append("\n\n🛒 *¿Cómo comprar y ver total?*\n")
-            sb.append("• Escribe: *agregar [producto]* (ej: *agregar takis fuego*)\n")
-            sb.append("• Escribe: *carrito* para ver los artículos y el total\n")
-            sb.append("• Escribe: *comprar* para confirmar tu pedido y caja\n")
-            sb.append("• Escribe: *corte de caja* para ver el resumen de ventas del día\n")
-            sb.append("• Para ver fotos escribe: *foto [producto]*")
+            sb.append("\n🛒 *¿Cómo agregarlos a tu carrito?*\n")
+            sb.append("• Escribe el número del producto (ej: *${sample.firstOrNull()?.codigo ?: 1}*).\n")
+            sb.append("• O directo con cantidad: (ej: *2 del ${sample.firstOrNull()?.codigo ?: 1}*).\n")
+            sb.append("• O varios juntos: (ej: *1 del 276 y 2 del 725*).\n")
+            sb.append("• Para finalizar escribe: *confirmar pedido*")
             return sb.toString() to null
         }
 
-        // 2. Ubicación ("ubicacion", "ubicasion", "direccion", "donde", "mapa", "como llegar", "2")
+        // ==================== 2. UBICACIÓN Y HORARIOS ====================
         if (text == "ubicacion" || text == "ubicasion" || text.contains("ubic") || 
             text.contains("direc") || text.contains("donde") || text.contains("mapa") || 
-            text.contains("lugar") || text.contains("como llegar") || text == "2") {
+            text.contains("lugar") || text.contains("como llegar")) {
             
             val encodedDir = try { URLEncoder.encode(cfg.direccion, "UTF-8") } catch (_: Exception) { "" }
             val mapsUrl = if (encodedDir.isNotEmpty()) "https://maps.google.com/?q=$encodedDir" else ""
 
-            val resp = StringBuilder("📍 *Ubicación de $negocio:*\n${cfg.direccion}\n\n")
+            val resp = java.lang.StringBuilder("📍 *Ubicación de $negocio:*\n${cfg.direccion}\n\n")
             resp.append("🕒 *Horario:*\n${cfg.horario}\n\n")
             resp.append("📞 *Teléfono de contacto:*\n${cfg.telefono}")
             if (mapsUrl.isNotEmpty()) {
@@ -253,32 +305,39 @@ object NeoBotManager {
             return resp.toString() to null
         }
 
-        // 3. Horario ("horario", "hora", "abren", "cierran", "abierto")
+        // ==================== 3. HORARIO ====================
         if (text.contains("horari") || text.contains("hora") || text.contains("abre") || 
             text.contains("cierra") || text.contains("abierto")) {
             return "🕒 *Horario de Atención en $negocio:*\n${cfg.horario}\n\n📍 Ubicación: ${cfg.direccion}" to null
         }
 
-        // 4. Asesor humano ("asesor", "humano", "persona", "encargado", "ayuda", "3")
+        // ==================== 4. ASESOR HUMANO ====================
         if (text.contains("asesor") || text.contains("human") || text.contains("encargad") || 
-            text.contains("person") || text.contains("ayuda") || text == "3") {
+            text.contains("person") || text.contains("ayuda")) {
             return "👤 *Atención Personalizada*\nUn momento por favor, le estoy avisando al encargado de *$negocio* para que te atienda personalmente." to null
         }
 
-        // 5. Mensaje de Bienvenida o Menú (Palabras exactas o de inicio para no chocar con "coca cola")
+        // ==================== 5. SALUDO Y MENÚ PRINCIPAL ====================
         val isGreeting = text == "hola" || text == "ola" || text == "buenas" || text == "buenos dias" || 
-                         text == "buenas tardes" || text == "buenas noches" || text == "menu" || 
-                         text == "inicio" || text == "start" || text == "que tal" || text == "saludos" ||
+                         text == "buenas tardes" || text == "buenas noches" || text == "inicio" || 
+                         text == "start" || text == "que tal" || text == "saludos" ||
                          text.startsWith("hola ") || text.startsWith("ola ") || text.startsWith("buenas ")
         if (isGreeting) {
-            return cfg.mensajeBienvenida.replace("{negocio}", negocio) to null
+            val greeting = getGreetingPrefix()
+            val welcome = "$greeting Gracias por comunicarte con *$negocio* 🤖.\n\n" +
+                          "Escribe:\n" +
+                          "📦 *Catalogo* ➔ Ver productos y precios\n" +
+                          "📍 *Ubicacion* ➔ Horarios y dirección\n" +
+                          "🛒 *Carrito* ➔ Ver tus compras actuales\n\n" +
+                          "🔍 _O escribe lo que buscas (ej: \"coca\", \"aceite\", \"sabritas\") para buscarlo al instante._"
+            return welcome to null
         }
 
-        // 6. Búsqueda directa de productos en el catálogo (ej: "coca", "aceite", "bateria", "impresiones")
+        // ==================== 6. BÚSQUEDA DIRECTA POR PALABRA CLAVE ====================
         val ignoredWords = setOf(
             "tienen", "precio", "precios", "cuanto", "cuesta", "cuestan", "venden", 
             "vende", "hay", "para", "quiero", "dame", "me", "das", "un", "una", 
-            "de", "el", "la", "los", "las", "por", "favor"
+            "de", "el", "la", "los", "las", "por", "favor", "requiero", "saludos"
         )
         val searchTokens = text.split(" ").filter { it.length >= 2 && !ignoredWords.contains(it) }
 
@@ -288,40 +347,99 @@ object NeoBotManager {
         }
 
         if (matches.isNotEmpty()) {
-            val sb = StringBuilder("🔍 *Resultados en $negocio:*\n\n")
-            var firstProductWithImage: BotProduct? = null
+            val sb = java.lang.StringBuilder("🔍 *PRODUCTOS ENCONTRADOS (${matches.size}):*\n")
+            sb.append("🏪 _${negocio}_\n\n")
 
-            matches.take(8).forEach {
-                val imgTag = if (it.imagenBase64.isNotEmpty()) " [📸 Foto disponible]" else ""
-                sb.append("✅ *${it.nombre}* ➔ *$${it.precio} MXN*$imgTag\n")
-                if (firstProductWithImage == null && it.imagenBase64.isNotEmpty()) {
-                    firstProductWithImage = it
-                }
+            matches.take(10).forEach {
+                sb.append("*[${it.codigo}]* ${it.nombre} ➔ *$${it.precio} MXN*\n")
             }
-            if (matches.size > 8) {
-                sb.append("\n_Hay ${matches.size - 8} artículos más coincidentes._")
+            if (matches.size > 10) {
+                sb.append("\n_Hay ${matches.size - 10} artículos más coincidentes._\n")
             }
 
-            if (firstProductWithImage != null) {
-                sb.append("\n\n💡 Para ver la foto escribe: *foto ${firstProductWithImage!!.nombre.take(15)}*")
-            }
+            val exampleCode1 = matches.first().codigo
+            val exampleCode2 = if (matches.size > 1) matches[1].codigo else (exampleCode1 + 1)
+            sb.append("\n🛒 *¿Cómo agregarlos a tu carrito?*\n")
+            sb.append("• Escribe el número del producto (ej: *$exampleCode1* o *$exampleCode2*).\n")
+            sb.append("• O directo con cantidad: (ej: *2 del $exampleCode1*).\n")
+            sb.append("• O varios juntos: (ej: *1 del $exampleCode1 y 2 del $exampleCode2*).")
             return sb.toString() to null
         }
 
-        // 7. Respuesta por defecto con menú claro
-        return ("🤖 *Asistente Virtual $negocio*\n\n" +
+        // ==================== 7. RESPUESTA POR DEFECTO ====================
+        val defaultResp = "$negocio 🤖\n\n" +
                "¿En qué puedo ayudarte? Puedes escribir:\n" +
-               "📦 *Catalogo* - Ver lista de productos y precios\n" +
-               "📍 *Ubicacion* - Ver dirección y mapa\n" +
-               "🕒 *Horario* - Ver horario de atención\n" +
-               "👤 *Asesor* - Hablar con el encargado\n\n" +
-               "_O escribe lo que buscas (ej: \"coca\", \"impresiones\", \"aceite\")._") to null
+               "📦 *Catalogo* ➔ Ver productos y precios\n" +
+               "📍 *Ubicacion* ➔ Horarios y dirección\n" +
+               "🛒 *Carrito* ➔ Ver tus compras actuales\n" +
+               "👤 *Asesor* ➔ Hablar con el encargado\n\n" +
+               "🔍 _O escribe el producto que buscas (ej: \"coca\", \"aceite\", \"sabritas\")._"
+        return defaultResp to null
     }
 
-    fun processMessage(context: Context, incomingText: String): String {
-        return processMessageWithMedia(context, incomingText).first
+    private fun parseOrderItems(rawText: String): List<Pair<Int, Int>> {
+        val text = rawText.lowercase().trim()
+        val results = mutableListOf<Pair<Int, Int>>()
+
+        try {
+            // Patrón A: "1 del 276 y 2 del 725" o "2 del 276" o "2 de 276"
+            val r1 = "(\\d+)\\s*(?:del?|de)\\s*(\\d+)".toRegex()
+            val m1 = r1.findAll(text).toList()
+            if (m1.isNotEmpty()) {
+                for (m in m1) {
+                    val qty = m.groupValues[1].toIntOrNull() ?: 1
+                    val code = m.groupValues[2].toIntOrNull() ?: 0
+                    if (code > 0) results.add(code to qty)
+                }
+                return results
+            }
+
+            // Patrón B: "del 1 requiero 2" o "del 3 requierp 1" o "del 1 quiero 2" o "del 1 pido 2"
+            val r2 = "(?:del?|de)\\s*(\\d+)\\s*(?:requier[op]|quier[op]|pid[op]|necesit[op]|dame|ponme|agreg[ao])\\s*(\\d+)".toRegex()
+            val m2 = r2.findAll(text).toList()
+            if (m2.isNotEmpty()) {
+                for (m in m2) {
+                    val code = m.groupValues[1].toIntOrNull() ?: 0
+                    val qty = m.groupValues[2].toIntOrNull() ?: 1
+                    if (code > 0) results.add(code to qty)
+                }
+                return results
+            }
+
+            // Patrón C: "del 26" o "del 26 quiero" (sin cantidad explícita -> cantidad 1)
+            val r3 = "^(?:del?|de)\\s*(\\d+)".toRegex()
+            val m3 = r3.find(text)
+            if (m3 != null) {
+                val code = m3.groupValues[1].toIntOrNull() ?: 0
+                if (code > 0) return listOf(code to 1)
+            }
+
+            // Patrón D: "276 2" (código y luego cantidad) o "agregar 276 2"
+            val r4 = "^(?:agregar\\s+|pedir\\s+|comprar\\s+)?(\\d+)\\s+(\\d+)$".toRegex()
+            val m4 = r4.find(text)
+            if (m4 != null) {
+                val code = m4.groupValues[1].toIntOrNull() ?: 0
+                val qty = m4.groupValues[2].toIntOrNull() ?: 1
+                if (code > 0) return listOf(code to qty)
+            }
+
+            // Patrón E: Sólo un número: "276" o "agregar 276" -> cantidad 1
+            val r5 = "^(?:agregar\\s+|pedir\\s+|comprar\\s+)?(\\d+)$".toRegex()
+            val m5 = r5.find(text)
+            if (m5 != null) {
+                val code = m5.groupValues[1].toIntOrNull() ?: 0
+                if (code > 0) return listOf(code to 1)
+            }
+        } catch (_: Exception) {}
+
+        return results
     }
 
+    fun processMessage(context: Context, incomingText: String, chatId: String = "default_cart"): String {
+        return processMessageWithMedia(context, incomingText, chatId).first
+    }
+
+    // ==================== 🚀 AUTO-RESPUESTA DEL BOT DESDE EL TELÉFONO DEL DUEÑO ====================
     fun dispatchAutoReplyIfNeeded(
         context: Context,
         chatId: String,
@@ -333,23 +451,28 @@ object NeoBotManager {
         val cleanSender = NeoUtils.sanitizeId(senderId)
         val cleanMe = NeoUtils.sanitizeId(myId)
 
-        // Evitar auto-responder a uno mismo
+        // 1. Evitar auto-responder a uno mismo (el dueño no se responde a sí mismo)
         if (cleanSender.takeLast(10) == cleanMe.takeLast(10) && cleanMe.isNotEmpty()) return
         if (cleanSender.isEmpty()) return
+
+        // 2. Solo responde si el teléfono del dueño tiene encendido el interruptor de Ventas
         if (!isBotEnabled(context)) return
 
-        // Anti-loop: no responder si el mensaje ya fue generado por un bot
-        if (incomingText.startsWith("🤖") || incomingText.contains("(Bot)")) return
+        // 3. Anti-loop: no responder a mensajes generados por un bot
+        if (incomingText.startsWith("🤖") || incomingText.contains("(Bot)") || incomingText.startsWith("🧾") || incomingText.startsWith("📦")) return
 
-        // Anti-repetición inmediata del mismo mensaje (2 segundos de debounce)
+        // 4. Solo responder a mensajes recientes (recibidos en los últimos 25 segundos) para no procesar historial viejo
+        val now = System.currentTimeMillis()
+        if (now - msgTimestamp > 25000L) return
+
+        // 5. Anti-repetición inmediata del mismo mensaje (4 segundos de debounce por cliente)
         val key = "$chatId-$cleanSender"
         val last = lastProcessedMsg[key]
-        val now = System.currentTimeMillis()
-        if (last != null && last.first == incomingText && now - last.second < 2000) return
+        if (last != null && last.first == incomingText && now - last.second < 4000) return
         lastProcessedMsg[key] = incomingText to now
 
-        // Respuesta en milisegundos
-        val (replyText, replyMedia) = processMessageWithMedia(context, incomingText)
+        // 6. Procesa el mensaje con el catálogo del negocio
+        val (replyText, replyMedia) = processMessageWithMedia(context, incomingText, chatId)
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -357,9 +480,9 @@ object NeoBotManager {
                 val messagesRef = db.getReference("chats").child(chatId).child("messages")
                 val localDb = AppDatabase.getDatabase(context)
                 val cfg = loadConfig(context)
-                val senderTitle = "${cfg.nombreNegocio} (Bot)"
+                val senderTitle = "${cfg.nombreNegocio} 🤖"
 
-                // 1. Mensaje de texto
+                // Enviar mensaje de respuesta desde la cuenta del dueño al chat con el cliente
                 val textKey = messagesRef.push().key ?: java.util.UUID.randomUUID().toString()
                 val textMsg = CloudMessage(
                     id = textKey,
@@ -381,7 +504,7 @@ object NeoBotManager {
                     )
                 )
 
-                // 2. Si hay foto solicitada, enviarla inmediatamente en Base64
+                // Si hay foto solicitada, enviarla inmediatamente
                 if (!replyMedia.isNullOrEmpty()) {
                     val mediaKey = messagesRef.push().key ?: java.util.UUID.randomUUID().toString()
                     val mediaPayload = if (replyMedia.startsWith("data:") || replyMedia.startsWith("http")) {
@@ -420,25 +543,27 @@ object NeoBotManager {
 
     fun getDefaultCatalog(): List<BotProduct> {
         return listOf(
-            BotProduct("IMPRESIONES B/N", "1"),
-            BotProduct("IMPRESIONES A COLOR LETRAS", "2"),
-            BotProduct("IMPRESIONES A COLOR IMÁGENES GDES", "5"),
-            BotProduct("CARGA DE BATERIA COCHE O MOTO", "50"),
-            BotProduct("ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 400 ML", "24"),
-            BotProduct("ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 850 ML", "44"),
-            BotProduct("AGUA CIEL PURIFICADA BOTTLE 1 LTS NR", "16"),
-            BotProduct("AGUA CRISTAL PURIFICADA 20 LTS", "50"),
-            BotProduct("AZUCAR KILO", "22"),
-            BotProduct("BARCEL CHIPS FUEGO 170 GR", "55"),
-            BotProduct("BARCEL TAKIS FUEGO 70 GR", "20"),
-            BotProduct("BIMBO PAN BLANCO GDE 640 GR", "48"),
-            BotProduct("BIMBO PAN TOSTADO 210 GR", "33"),
-            BotProduct("BIMBO NITO 62 GR", "17"),
-            BotProduct("CAFE DOLCA SOLUBLE 80 GR", "75"),
-            BotProduct("COCA COLA 600 ML", "18"),
-            BotProduct("COCA COLA 2.5 LTS", "38"),
-            BotProduct("HUEVO CONO 30 PZAS", "85"),
-            BotProduct("LECHE LALA ENTERA 1 LTS", "26")
+            BotProduct("IMPRESIONES B/N", "1", "", 1),
+            BotProduct("IMPRESIONES A COLOR LETRAS", "2", "", 2),
+            BotProduct("IMPRESIONES A COLOR IMÁGENES GDES", "5", "", 3),
+            BotProduct("CARGA DE BATERIA COCHE O MOTO", "50", "", 4),
+            BotProduct("ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 400 ML", "24", "", 5),
+            BotProduct("ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 850 ML", "44", "", 6),
+            BotProduct("AGUA CIEL PURIFICADA BOTTLE 1 LTS NR", "16", "", 7),
+            BotProduct("AGUA CRISTAL PURIFICADA 20 LTS", "50", "", 8),
+            BotProduct("AZUCAR KILO", "22", "", 9),
+            BotProduct("COCA COLA 600 ML", "18", "", 10),
+            BotProduct("COCA COLA 2.5 LTS", "38", "", 11),
+            BotProduct("HUEVO CONO 30 PZAS", "85", "", 12),
+            BotProduct("LECHE LALA ENTERA 1 LTS", "26", "", 13),
+            BotProduct("ALIMENTO PEDIGREE RAZA PEQUEÑA RES Y VEGETALES 420 GR", "30.00", "", 26),
+            BotProduct("BARCEL BIG MIX QUESO 185 GR", "40.00", "", 45),
+            BotProduct("BARCEL BIG MIX QUESO 75 GR", "22.00", "", 46),
+            BotProduct("BARCEL POP QUESO CHEDDAR 45 GR", "17.00", "", 67),
+            BotProduct("BARCEL TAKIS PIX QUESO 65 GR", "16.00", "", 79),
+            BotProduct("BARCEL WAPAS QUESO 52 GR", "17.00", "", 86),
+            BotProduct("ELASTICO CHICO POR METRO $ 6 PESOS", "70.00", "", 276),
+            BotProduct("BIMBO GALLETAS GABI BESOS DE NUEZ 60 GR", "10.00", "", 725)
         )
     }
 }

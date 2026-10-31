@@ -385,51 +385,6 @@ fun ChatRoomScreen(
                 firebaseMessages.sortBy { it.timestamp }
             }
 
-            // AUTO-RESPUESTA INMEDIATA DEL CHATBOT EN 0ms (SI SE ESCRIBE AL BOT O EN CHAT OFICIAL)
-            val isBotChat = otherCleanId == "neobot" || chatId.contains("neobot") ||
-                            chatName.contains("Bot", ignoreCase = true) || chatName.contains("Brittany", ignoreCase = true) || chatName.contains("Ventas", ignoreCase = true)
-            if (isBotChat && NeoBotManager.isBotEnabled(context)) {
-                val (replyText, replyMedia) = NeoBotManager.processMessageWithMedia(context, currentText)
-                val botMid = database.push().key ?: UUID.randomUUID().toString()
-                val botReplyMsg = CloudMessage(
-                    id = botMid,
-                    text = replyText,
-                    timestamp = System.currentTimeMillis() + 50,
-                    senderId = if (otherCleanId.isNotEmpty()) otherCleanId else "neobot",
-                    senderName = "Miscelánea Brittany (Bot)",
-                    rank = "Operador Bot"
-                )
-                if (firebaseMessages.none { it.id == botReplyMsg.id }) {
-                    firebaseMessages.add(botReplyMsg)
-                    firebaseMessages.sortBy { it.timestamp }
-                }
-                coroutineScope.launch(Dispatchers.IO) {
-                    try { dao?.insertMessage(botReplyMsg.toEntity(chatId)) } catch (_: Exception) {}
-                    try { database.child(botMid).setValue(botReplyMsg) } catch (_: Exception) {}
-
-                    if (!replyMedia.isNullOrEmpty()) {
-                        val mediaMid = database.push().key ?: UUID.randomUUID().toString()
-                        val mediaPayload = if (replyMedia.startsWith("data:") || replyMedia.startsWith("http")) "[Media] $replyMedia" else "[Media] data:image/jpeg;base64,$replyMedia"
-                        val botPhotoMsg = CloudMessage(
-                            id = mediaMid,
-                            text = mediaPayload,
-                            timestamp = System.currentTimeMillis() + 100,
-                            senderId = if (otherCleanId.isNotEmpty()) otherCleanId else "neobot",
-                            senderName = "Miscelánea Brittany (Bot)",
-                            rank = "Operador Bot"
-                        )
-                        withContext(Dispatchers.Main) {
-                            if (firebaseMessages.none { it.id == botPhotoMsg.id }) {
-                                firebaseMessages.add(botPhotoMsg)
-                                firebaseMessages.sortBy { it.timestamp }
-                            }
-                        }
-                        try { dao?.insertMessage(botPhotoMsg.toEntity(chatId)) } catch (_: Exception) {}
-                        try { database.child(mediaMid).setValue(botPhotoMsg) } catch (_: Exception) {}
-                    }
-                }
-            }
-
             // 2. PERSISTENCIA LOCAL EN SQLITE ROOM (SIEMPRE DISPONIBLE OFFLINE)
             coroutineScope.launch(Dispatchers.IO) {
                 try {

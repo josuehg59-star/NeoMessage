@@ -334,24 +334,14 @@ fun ChatsListScreen(
                             selfLastMsgText = display
                             updateEntry(NeoChatEntry("Mis Notas Personales (Tú)", selfChatId, display, timestamp))
                         }
-                        if (NeoBotManager.isBotEnabled(context)) {
-                            val botChatId = "private_${myCleanId}_neobot"
-                            updateEntry(NeoChatEntry("🤖 Chatbot de Ventas (Punto de Venta)", botChatId, "🤖 Asistente activo - Escribe 'catalogo', 'coca', 'corte'", System.currentTimeMillis()))
-                        }
-                    }
+}
                     override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
                 })
         } catch (_: Exception) {}
 
         val spArchived = context.getSharedPreferences("NeoArchived", Context.MODE_PRIVATE)
         spArchived.all.keys.forEach { if (!archivedIds.contains(it)) archivedIds.add(it) }
-
-        if (NeoBotManager.isBotEnabled(context)) {
-            val botChatId = "private_${myCleanId}_neobot"
-            updateEntry(NeoChatEntry("🤖 Chatbot de Ventas (Punto de Venta)", botChatId, "🤖 Asistente activo - Escribe 'catalogo', 'coca', etc.", System.currentTimeMillis()))
-        }
-
-        // B) Mensajes locales guardados en SQLite Room
+// B) Mensajes locales guardados en SQLite Room
         launch(Dispatchers.IO) {
             try {
                 val allEntities = dao?.getAllMessagesDirect() ?: emptyList()
@@ -429,6 +419,20 @@ fun ChatsListScreen(
                                     override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
                                         val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
                                         if (lastMsgObj != null) {
+                                            val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
+                                            val cleanMe = NeoUtils.sanitizeId(myCleanId)
+                                            if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
+                                                if (System.currentTimeMillis() - lastMsgObj.timestamp < 25000L) {
+                                                    NeoBotManager.dispatchAutoReplyIfNeeded(
+                                                        context = context,
+                                                        chatId = chatId,
+                                                        senderId = lastMsgObj.senderId,
+                                                        myId = cleanMe,
+                                                        incomingText = lastMsgObj.text,
+                                                        msgTimestamp = lastMsgObj.timestamp
+                                                    )
+                                                }
+                                            }
                                             val lastMsgText = lastMsgObj.text
                                             val lastMsgTime = lastMsgObj.timestamp
                                             db.getReference("typing").child(chatId).addValueEventListener(object : com.google.firebase.database.ValueEventListener {

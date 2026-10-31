@@ -29,7 +29,7 @@ class NeoForegroundService : Service() {
     private val CHANNEL_ID = "neo_service_channel_silent"
     private var wakeLock: android.os.PowerManager.WakeLock? = null
     private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
-    private var lastNotifiedMsgId = ""
+    private val notifiedMsgIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -237,8 +237,8 @@ class NeoForegroundService : Service() {
                         val messages = chat.child("messages")
                         val lastMsg = messages.children.mapNotNull { it.getValue(CloudMessage::class.java) }.maxByOrNull { it.timestamp }
                         val lastSenderClean = if (lastMsg != null) NeoUtils.sanitizeId(lastMsg.senderId) else ""
-                        if (lastMsg != null && lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && lastMsg.id != lastNotifiedMsgId) {
-                            lastNotifiedMsgId = lastMsg.id
+                        if (lastMsg != null && lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(lastMsg.id)) {
+                            notifiedMsgIds.add(lastMsg.id)
 
                             // Auto-respuesta con NeoBot 24/7 incluso con pantalla apagada
                             NeoBotManager.dispatchAutoReplyIfNeeded(
@@ -264,8 +264,8 @@ class NeoForegroundService : Service() {
         serviceScope.launch {
             NeoRelayClient.incomingMessages.collect { (relChatId, relMsg) ->
                 val cleanSender = NeoUtils.sanitizeId(relMsg.senderId)
-                if (cleanSender.takeLast(10) != cleanMyId.takeLast(10) && relMsg.id != lastNotifiedMsgId) {
-                    lastNotifiedMsgId = relMsg.id
+                if (cleanSender.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(relMsg.id)) {
+                    notifiedMsgIds.add(relMsg.id)
                     NeoBotManager.dispatchAutoReplyIfNeeded(
                         context = this@NeoForegroundService,
                         chatId = relChatId,
