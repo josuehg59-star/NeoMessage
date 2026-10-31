@@ -16,8 +16,704 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%2300A884'/><text x='50' y='65' font-size='45' font-weight='900' text-anchor='middle' fill='%23FFF'>N</text></svg>">
 
     <!-- Firebase Compat SDK (Realtime Database Gratuita) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js">
+        // ========================================================
+        // GESTIÓN DE RESPUESTAS (REPLY) Y REENVÍO (FORWARD)
+        // ========================================================
+        let activeReply = null;
+        let contextTargetMsg = null;
+
+        function startReply(msgId, senderName, text) {
+            let cleanText = text || '';
+            if (cleanText.startsWith('[Document]|') || cleanText.startsWith('[File]')) {
+                cleanText = '📄 Archivo adjunto';
+            } else if (cleanText.startsWith('[Media]')) {
+                cleanText = '📷 Foto';
+            } else if (cleanText.startsWith('[Video]')) {
+                cleanText = '🎬 Video';
+            } else if (cleanText.startsWith('[Audio]')) {
+                cleanText = '🎵 Nota de voz';
+            }
+            activeReply = {
+                id: msgId,
+                senderName: senderName || 'Contacto',
+                text: cleanText.substring(0, 100)
+            };
+            document.getElementById('replyBarSender').innerText = `Respondiendo a ${activeReply.senderName}`;
+            document.getElementById('replyBarText').innerText = activeReply.text;
+            document.getElementById('replyBar').style.display = 'flex';
+            const msgInput = document.getElementById('messageInput');
+            if (msgInput) msgInput.focus();
+        }
+
+        function cancelReply() {
+            activeReply = null;
+            document.getElementById('replyBar').style.display = 'none';
+        }
+
+        // Menú Contextual
+        function openMsgMenu(e, msgId, senderName, text, isMine) {
+            e.stopPropagation();
+            contextTargetMsg = { id: msgId, senderName: senderName, text: text, isMine: isMine };
+            const menu = document.getElementById('msgContextMenu');
+            const delBtn = document.getElementById('contextDeleteBtn');
+            if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+
+            let x = e.clientX;
+            let y = e.clientY;
+            if (x + 230 > window.innerWidth) x = window.innerWidth - 235;
+            if (y + 260 > window.innerHeight) y = window.innerHeight - 265;
+
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.style.display = 'block';
+        }
+
+        document.addEventListener('click', () => {
+            const menu = document.getElementById('msgContextMenu');
+            if (menu) menu.style.display = 'none';
+        });
+
+        function triggerReplyFromContext() {
+            if (!contextTargetMsg) return;
+            startReply(contextTargetMsg.id, contextTargetMsg.senderName, contextTargetMsg.text);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerCopyFromContext() {
+            if (!contextTargetMsg) return;
+            let t = contextTargetMsg.text;
+            if (t.startsWith('[Document]|') || t.startsWith('[File]')) t = t.split('|')[1] || t;
+            navigator.clipboard.writeText(t).then(() => showToast('📋 Mensaje copiado'));
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerStarFromContext() {
+            if (!contextTargetMsg || !currentChatId) return;
+            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/isStarred`).transaction(v => !v);
+            showToast('⭐ Mensaje destacado');
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerDeleteFromContext() {
+            if (!contextTargetMsg) return;
+            deleteSingleMessage(contextTargetMsg.id);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function reactToContextMsg(emoji) {
+            if (!contextTargetMsg || !currentChatId) return;
+            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/reactions/${myPhone}`).set(emoji);
+            document.getElementById('msgContextMenu').style.display = 'none';
+            showToast(`Reacción ${emoji} enviada`);
+        }
+
+        // Reenviar mensaje
+        function triggerForwardFromContext() {
+            if (!contextTargetMsg) return;
+            const modal = document.getElementById('forwardModal');
+            const list = document.getElementById('forwardContactsList');
+            list.innerHTML = '';
+
+            const contacts = Object.values(cachedChats || {});
+            if (contacts.length === 0) {
+                list.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats recientes</div>';
+            } else {
+                contacts.forEach(c => {
+                    const item = document.createElement('div');
+                    item.className = 'contact-item';
+                    item.style.padding = '10px 14px';
+                    item.style.cursor = 'pointer';
+                    item.innerHTML = `
+                        <div class="avatar" style="width:40px;height:40px;font-size:16px;">${(c.name || 'C')[0]}</div>
+                        <div class="contact-info">
+                            <div class="contact-name">${escapeHtml(c.name || c.phone || 'Contacto')}</div>
+                            <div class="contact-last-msg" style="color:#8696A0;font-size:12px;">${escapeHtml(c.phone || '')}</div>
+                        </div>
+                    `;
+                    item.onclick = () => {
+                        forwardMessageToChat(c.id || c.phone, contextTargetMsg.text);
+                        closeForwardModal();
+                    };
+                    list.appendChild(item);
+                });
+            }
+
+            modal.style.display = 'flex';
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function closeForwardModal() {
+            document.getElementById('forwardModal').style.display = 'none';
+        }
+
+        function forwardMessageToChat(targetId, textPayload) {
+            if (!targetId || !textPayload) return;
+            const targetChatId = targetId.includes('_') ? targetId : [myPhone.replace(/\D/g,''), targetId.replace(/\D/g,'')].sort().join('_');
+            const newRef = db.ref(`chats/${targetChatId}/messages`).push();
+            newRef.set({
+                id: newRef.key,
+                text: textPayload,
+                timestamp: Date.now(),
+                senderId: myPhone,
+                senderName: myName,
+                rank: 'PC Desktop',
+                readBy: {}
+            }).then(() => {
+                showToast('↪ Mensaje reenviado');
+            });
+        }
+
+    
+        // ========================================================
+        // MOTOR COMPLETO DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP
+        // ========================================================
+        let currentPanelMode = 'emoji'; // 'emoji', 'gif', 'sticker'
+        
+        const EMOJI_DATABASE = {
+            recent: ['❤️', '😂', '👍', '🙏', '😍', '😊', '🔥', '🎉', '🥺', '👏', '✨', '💯', '🤔', '😎', '👌', '🙌'],
+            smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'],
+            animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦','🦥','🐁','🐀','🐿️','🦔'],
+            food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🥮','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🥛','🍼','☕','🫖','🍵','🧃','🥤','🧋','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾'],
+            activity: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🎱','🥏','🏓','🏸','🏒','🏑','🥍','🏏','⛳','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🏋️','🤺','🤼','🤸','⛹️','🤺','🤾','🧗','🚵','🚴','🏍️','🏎️','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩'],
+            travel: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛺','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥','🛳️','⛴️','🚢','⚓','⛽','🚧','🚥','🚦','🪧','🛑','🗺️','🗿','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛲','⛱️','🏖️','🏝️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🏠','🏡'],
+            objects: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','⏱️','⏲️','⏰','🕰️','⏳','⌛','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','🪙','💰','💳','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒️','🛠️','⛏️','🪚','🔩','⚙️','🪤','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬','⚰️','🪦','⚱️','🏺','🔮','📿','🧿'],
+            symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🈳','🈂️','🛂','🛃','🛄','🛅','🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
+        };
+
+        const GIF_DATABASE = [
+            { name: 'Risa', url: 'https://media.giphy.com/media/26n6Gx9moCgs1qxxt/giphy.gif' },
+            { name: 'Celebración', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
+            { name: 'OK / Perfecto', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
+            { name: 'Bailando', url: 'https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif' },
+            { name: 'Aplausos', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
+            { name: 'Sorpresa / WOW', url: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif' },
+            { name: 'Amor / Corazón', url: 'https://media.giphy.com/media/26FLdm964upN2ZYPA/giphy.gif' },
+            { name: 'Hola / Saludo', url: 'https://media.giphy.com/media/ASd0Ukj0BC5roG5Lmp/giphy.gif' },
+            { name: 'Dinero / Éxito', url: 'https://media.giphy.com/media/3o6gDWzmAzrpi5DQU8/giphy.gif' },
+            { name: 'Pensativo', url: 'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' }
+        ];
+
+        const STICKER_DATABASE = [
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo1',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo2',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo3',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo4',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Smile',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Cool',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Love',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Wink'
+        ];
+
+        function toggleEmojiStickerPanel() {
+            const p = document.getElementById('emojiStickerPanel');
+            if (p.style.display === 'flex') {
+                p.style.display = 'none';
+            } else {
+                p.style.display = 'flex';
+                renderPanelContent();
+            }
+        }
+
+        function switchPanelMode(mode) {
+            currentPanelMode = mode;
+            document.getElementById('tabModeEmoji').className = `panel-mode-tab ${mode === 'emoji' ? 'active' : ''}`;
+            document.getElementById('tabModeGif').className = `panel-mode-tab ${mode === 'gif' ? 'active' : ''}`;
+            document.getElementById('tabModeSticker').className = `panel-mode-tab ${mode === 'sticker' ? 'active' : ''}`;
+            
+            const header = document.getElementById('panelCategoriesHeader');
+            const search = document.getElementById('emojiSearchInput');
+            if (mode === 'emoji') {
+                header.style.display = 'flex';
+                search.placeholder = '🔍 Buscar emoji...';
+            } else if (mode === 'gif') {
+                header.style.display = 'none';
+                search.placeholder = '🔍 Buscar GIF...';
+            } else {
+                header.style.display = 'none';
+                search.placeholder = '🔍 Buscar en stickers de NeoMessage...';
+            }
+            renderPanelContent();
+        }
+
+        function renderPanelContent(filter = '') {
+            const body = document.getElementById('emojiPanelBody');
+            body.innerHTML = '';
+
+            if (currentPanelMode === 'emoji') {
+                // Render Emojis
+                const query = filter.trim().toLowerCase();
+                for (const [catName, emojis] of Object.entries(EMOJI_DATABASE)) {
+                    const filtered = query ? emojis.filter(e => e.includes(query)) : emojis;
+                    if (filtered.length === 0) continue;
+
+                    const title = document.createElement('div');
+                    title.className = 'emoji-section-title';
+                    title.innerText = catName;
+                    body.appendChild(title);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'emoji-grid';
+                    filtered.forEach(em => {
+                        const it = document.createElement('span');
+                        it.className = 'emoji-item';
+                        it.innerText = em;
+                        it.onclick = () => {
+                            insertEmojiAtCursor(em);
+                        };
+                        grid.appendChild(it);
+                    });
+                    body.appendChild(grid);
+                }
+            } else if (currentPanelMode === 'gif') {
+                // Render GIFs
+                const grid = document.createElement('div');
+                grid.className = 'gif-grid';
+                const query = filter.trim().toLowerCase();
+                const gifs = query ? GIF_DATABASE.filter(g => g.name.toLowerCase().includes(query)) : GIF_DATABASE;
+
+                gifs.forEach(g => {
+                    const it = document.createElement('div');
+                    it.className = 'gif-item';
+                    it.title = g.name;
+                    it.innerHTML = `<img src="${g.url}" loading="lazy"><span style="position:absolute;bottom:4px;left:6px;font-size:10px;background:rgba(0,0,0,0.6);padding:2px 6px;border-radius:4px;color:#FFF;">${g.name}</span>`;
+                    it.onclick = () => {
+                        dispatchMessageObject('[Media] ' + g.url);
+                        toggleEmojiStickerPanel();
+                        showToast(`🎬 GIF '${g.name}' enviado`);
+                    };
+                    grid.appendChild(it);
+                });
+                body.appendChild(grid);
+            } else if (currentPanelMode === 'sticker') {
+                // Render Stickers
+                const grid = document.createElement('div');
+                grid.className = 'sticker-grid';
+
+                // Botón Crear Sticker
+                const createBtn = document.createElement('div');
+                createBtn.className = 'sticker-create-btn';
+                createBtn.innerHTML = '<span style="font-size:20px;">➕</span><span>Crear</span>';
+                createBtn.onclick = () => {
+                    const inp = document.createElement('input');
+                    inp.type = 'file';
+                    inp.accept = 'image/*';
+                    inp.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (re) => {
+                                dispatchMessageObject('[Media] ' + re.target.result);
+                                toggleEmojiStickerPanel();
+                                showToast('✨ Sticker personalizado enviado');
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    };
+                    inp.click();
+                };
+                grid.appendChild(createBtn);
+
+                STICKER_DATABASE.forEach((stUrl, idx) => {
+                    const it = document.createElement('div');
+                    it.className = 'sticker-item';
+                    it.innerHTML = `<img src="${stUrl}" loading="lazy">`;
+                    it.onclick = () => {
+                        dispatchMessageObject('[Media] ' + stUrl);
+                        toggleEmojiStickerPanel();
+                        showToast('✨ Sticker enviado');
+                    };
+                    grid.appendChild(it);
+                });
+                body.appendChild(grid);
+            }
+        }
+
+        function switchEmojiCategory(catKey) {
+            const body = document.getElementById('emojiPanelBody');
+            body.innerHTML = '';
+            const emojis = EMOJI_DATABASE[catKey] || [];
+            const grid = document.createElement('div');
+            grid.className = 'emoji-grid';
+            emojis.forEach(em => {
+                const it = document.createElement('span');
+                it.className = 'emoji-item';
+                it.innerText = em;
+                it.onclick = () => insertEmojiAtCursor(em);
+                grid.appendChild(it);
+            });
+            body.appendChild(grid);
+
+            // update active header
+            document.querySelectorAll('.panel-cat-icon').forEach(icon => icon.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
+        }
+
+        function filterEmojiContent(val) {
+            renderPanelContent(val);
+        }
+
+        function insertEmojiAtCursor(emoji) {
+            const input = document.getElementById('messageInput');
+            if (!input) return;
+            const start = input.selectionStart || input.value.length;
+            const end = input.selectionEnd || input.value.length;
+            const text = input.value;
+            input.value = text.substring(0, start) + emoji + text.substring(end);
+            input.selectionStart = input.selectionEnd = start + emoji.length;
+            input.focus();
+        }
+
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js">
+        // ========================================================
+        // GESTIÓN DE RESPUESTAS (REPLY) Y REENVÍO (FORWARD)
+        // ========================================================
+        let activeReply = null;
+        let contextTargetMsg = null;
+
+        function startReply(msgId, senderName, text) {
+            let cleanText = text || '';
+            if (cleanText.startsWith('[Document]|') || cleanText.startsWith('[File]')) {
+                cleanText = '📄 Archivo adjunto';
+            } else if (cleanText.startsWith('[Media]')) {
+                cleanText = '📷 Foto';
+            } else if (cleanText.startsWith('[Video]')) {
+                cleanText = '🎬 Video';
+            } else if (cleanText.startsWith('[Audio]')) {
+                cleanText = '🎵 Nota de voz';
+            }
+            activeReply = {
+                id: msgId,
+                senderName: senderName || 'Contacto',
+                text: cleanText.substring(0, 100)
+            };
+            document.getElementById('replyBarSender').innerText = `Respondiendo a ${activeReply.senderName}`;
+            document.getElementById('replyBarText').innerText = activeReply.text;
+            document.getElementById('replyBar').style.display = 'flex';
+            const msgInput = document.getElementById('messageInput');
+            if (msgInput) msgInput.focus();
+        }
+
+        function cancelReply() {
+            activeReply = null;
+            document.getElementById('replyBar').style.display = 'none';
+        }
+
+        // Menú Contextual
+        function openMsgMenu(e, msgId, senderName, text, isMine) {
+            e.stopPropagation();
+            contextTargetMsg = { id: msgId, senderName: senderName, text: text, isMine: isMine };
+            const menu = document.getElementById('msgContextMenu');
+            const delBtn = document.getElementById('contextDeleteBtn');
+            if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+
+            let x = e.clientX;
+            let y = e.clientY;
+            if (x + 230 > window.innerWidth) x = window.innerWidth - 235;
+            if (y + 260 > window.innerHeight) y = window.innerHeight - 265;
+
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.style.display = 'block';
+        }
+
+        document.addEventListener('click', () => {
+            const menu = document.getElementById('msgContextMenu');
+            if (menu) menu.style.display = 'none';
+        });
+
+        function triggerReplyFromContext() {
+            if (!contextTargetMsg) return;
+            startReply(contextTargetMsg.id, contextTargetMsg.senderName, contextTargetMsg.text);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerCopyFromContext() {
+            if (!contextTargetMsg) return;
+            let t = contextTargetMsg.text;
+            if (t.startsWith('[Document]|') || t.startsWith('[File]')) t = t.split('|')[1] || t;
+            navigator.clipboard.writeText(t).then(() => showToast('📋 Mensaje copiado'));
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerStarFromContext() {
+            if (!contextTargetMsg || !currentChatId) return;
+            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/isStarred`).transaction(v => !v);
+            showToast('⭐ Mensaje destacado');
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerDeleteFromContext() {
+            if (!contextTargetMsg) return;
+            deleteSingleMessage(contextTargetMsg.id);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function reactToContextMsg(emoji) {
+            if (!contextTargetMsg || !currentChatId) return;
+            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/reactions/${myPhone}`).set(emoji);
+            document.getElementById('msgContextMenu').style.display = 'none';
+            showToast(`Reacción ${emoji} enviada`);
+        }
+
+        // Reenviar mensaje
+        function triggerForwardFromContext() {
+            if (!contextTargetMsg) return;
+            const modal = document.getElementById('forwardModal');
+            const list = document.getElementById('forwardContactsList');
+            list.innerHTML = '';
+
+            const contacts = Object.values(cachedChats || {});
+            if (contacts.length === 0) {
+                list.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats recientes</div>';
+            } else {
+                contacts.forEach(c => {
+                    const item = document.createElement('div');
+                    item.className = 'contact-item';
+                    item.style.padding = '10px 14px';
+                    item.style.cursor = 'pointer';
+                    item.innerHTML = `
+                        <div class="avatar" style="width:40px;height:40px;font-size:16px;">${(c.name || 'C')[0]}</div>
+                        <div class="contact-info">
+                            <div class="contact-name">${escapeHtml(c.name || c.phone || 'Contacto')}</div>
+                            <div class="contact-last-msg" style="color:#8696A0;font-size:12px;">${escapeHtml(c.phone || '')}</div>
+                        </div>
+                    `;
+                    item.onclick = () => {
+                        forwardMessageToChat(c.id || c.phone, contextTargetMsg.text);
+                        closeForwardModal();
+                    };
+                    list.appendChild(item);
+                });
+            }
+
+            modal.style.display = 'flex';
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function closeForwardModal() {
+            document.getElementById('forwardModal').style.display = 'none';
+        }
+
+        function forwardMessageToChat(targetId, textPayload) {
+            if (!targetId || !textPayload) return;
+            const targetChatId = targetId.includes('_') ? targetId : [myPhone.replace(/\D/g,''), targetId.replace(/\D/g,'')].sort().join('_');
+            const newRef = db.ref(`chats/${targetChatId}/messages`).push();
+            newRef.set({
+                id: newRef.key,
+                text: textPayload,
+                timestamp: Date.now(),
+                senderId: myPhone,
+                senderName: myName,
+                rank: 'PC Desktop',
+                readBy: {}
+            }).then(() => {
+                showToast('↪ Mensaje reenviado');
+            });
+        }
+
+    
+        // ========================================================
+        // MOTOR COMPLETO DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP
+        // ========================================================
+        let currentPanelMode = 'emoji'; // 'emoji', 'gif', 'sticker'
+        
+        const EMOJI_DATABASE = {
+            recent: ['❤️', '😂', '👍', '🙏', '😍', '😊', '🔥', '🎉', '🥺', '👏', '✨', '💯', '🤔', '😎', '👌', '🙌'],
+            smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'],
+            animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦','🦥','🐁','🐀','🐿️','🦔'],
+            food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🥮','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🥛','🍼','☕','🫖','🍵','🧃','🥤','🧋','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾'],
+            activity: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🎱','🥏','🏓','🏸','🏒','🏑','🥍','🏏','⛳','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🏋️','🤺','🤼','🤸','⛹️','🤺','🤾','🧗','🚵','🚴','🏍️','🏎️','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩'],
+            travel: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛺','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥','🛳️','⛴️','🚢','⚓','⛽','🚧','🚥','🚦','🪧','🛑','🗺️','🗿','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛲','⛱️','🏖️','🏝️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🏠','🏡'],
+            objects: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','⏱️','⏲️','⏰','🕰️','⏳','⌛','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','🪙','💰','💳','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒️','🛠️','⛏️','🪚','🔩','⚙️','🪤','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬','⚰️','🪦','⚱️','🏺','🔮','📿','🧿'],
+            symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🈳','🈂️','🛂','🛃','🛄','🛅','🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
+        };
+
+        const GIF_DATABASE = [
+            { name: 'Risa', url: 'https://media.giphy.com/media/26n6Gx9moCgs1qxxt/giphy.gif' },
+            { name: 'Celebración', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
+            { name: 'OK / Perfecto', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
+            { name: 'Bailando', url: 'https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif' },
+            { name: 'Aplausos', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
+            { name: 'Sorpresa / WOW', url: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif' },
+            { name: 'Amor / Corazón', url: 'https://media.giphy.com/media/26FLdm964upN2ZYPA/giphy.gif' },
+            { name: 'Hola / Saludo', url: 'https://media.giphy.com/media/ASd0Ukj0BC5roG5Lmp/giphy.gif' },
+            { name: 'Dinero / Éxito', url: 'https://media.giphy.com/media/3o6gDWzmAzrpi5DQU8/giphy.gif' },
+            { name: 'Pensativo', url: 'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' }
+        ];
+
+        const STICKER_DATABASE = [
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo1',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo2',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo3',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo4',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Smile',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Cool',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Love',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Wink'
+        ];
+
+        function toggleEmojiStickerPanel() {
+            const p = document.getElementById('emojiStickerPanel');
+            if (p.style.display === 'flex') {
+                p.style.display = 'none';
+            } else {
+                p.style.display = 'flex';
+                renderPanelContent();
+            }
+        }
+
+        function switchPanelMode(mode) {
+            currentPanelMode = mode;
+            document.getElementById('tabModeEmoji').className = `panel-mode-tab ${mode === 'emoji' ? 'active' : ''}`;
+            document.getElementById('tabModeGif').className = `panel-mode-tab ${mode === 'gif' ? 'active' : ''}`;
+            document.getElementById('tabModeSticker').className = `panel-mode-tab ${mode === 'sticker' ? 'active' : ''}`;
+            
+            const header = document.getElementById('panelCategoriesHeader');
+            const search = document.getElementById('emojiSearchInput');
+            if (mode === 'emoji') {
+                header.style.display = 'flex';
+                search.placeholder = '🔍 Buscar emoji...';
+            } else if (mode === 'gif') {
+                header.style.display = 'none';
+                search.placeholder = '🔍 Buscar GIF...';
+            } else {
+                header.style.display = 'none';
+                search.placeholder = '🔍 Buscar en stickers de NeoMessage...';
+            }
+            renderPanelContent();
+        }
+
+        function renderPanelContent(filter = '') {
+            const body = document.getElementById('emojiPanelBody');
+            body.innerHTML = '';
+
+            if (currentPanelMode === 'emoji') {
+                // Render Emojis
+                const query = filter.trim().toLowerCase();
+                for (const [catName, emojis] of Object.entries(EMOJI_DATABASE)) {
+                    const filtered = query ? emojis.filter(e => e.includes(query)) : emojis;
+                    if (filtered.length === 0) continue;
+
+                    const title = document.createElement('div');
+                    title.className = 'emoji-section-title';
+                    title.innerText = catName;
+                    body.appendChild(title);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'emoji-grid';
+                    filtered.forEach(em => {
+                        const it = document.createElement('span');
+                        it.className = 'emoji-item';
+                        it.innerText = em;
+                        it.onclick = () => {
+                            insertEmojiAtCursor(em);
+                        };
+                        grid.appendChild(it);
+                    });
+                    body.appendChild(grid);
+                }
+            } else if (currentPanelMode === 'gif') {
+                // Render GIFs
+                const grid = document.createElement('div');
+                grid.className = 'gif-grid';
+                const query = filter.trim().toLowerCase();
+                const gifs = query ? GIF_DATABASE.filter(g => g.name.toLowerCase().includes(query)) : GIF_DATABASE;
+
+                gifs.forEach(g => {
+                    const it = document.createElement('div');
+                    it.className = 'gif-item';
+                    it.title = g.name;
+                    it.innerHTML = `<img src="${g.url}" loading="lazy"><span style="position:absolute;bottom:4px;left:6px;font-size:10px;background:rgba(0,0,0,0.6);padding:2px 6px;border-radius:4px;color:#FFF;">${g.name}</span>`;
+                    it.onclick = () => {
+                        dispatchMessageObject('[Media] ' + g.url);
+                        toggleEmojiStickerPanel();
+                        showToast(`🎬 GIF '${g.name}' enviado`);
+                    };
+                    grid.appendChild(it);
+                });
+                body.appendChild(grid);
+            } else if (currentPanelMode === 'sticker') {
+                // Render Stickers
+                const grid = document.createElement('div');
+                grid.className = 'sticker-grid';
+
+                // Botón Crear Sticker
+                const createBtn = document.createElement('div');
+                createBtn.className = 'sticker-create-btn';
+                createBtn.innerHTML = '<span style="font-size:20px;">➕</span><span>Crear</span>';
+                createBtn.onclick = () => {
+                    const inp = document.createElement('input');
+                    inp.type = 'file';
+                    inp.accept = 'image/*';
+                    inp.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (re) => {
+                                dispatchMessageObject('[Media] ' + re.target.result);
+                                toggleEmojiStickerPanel();
+                                showToast('✨ Sticker personalizado enviado');
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    };
+                    inp.click();
+                };
+                grid.appendChild(createBtn);
+
+                STICKER_DATABASE.forEach((stUrl, idx) => {
+                    const it = document.createElement('div');
+                    it.className = 'sticker-item';
+                    it.innerHTML = `<img src="${stUrl}" loading="lazy">`;
+                    it.onclick = () => {
+                        dispatchMessageObject('[Media] ' + stUrl);
+                        toggleEmojiStickerPanel();
+                        showToast('✨ Sticker enviado');
+                    };
+                    grid.appendChild(it);
+                });
+                body.appendChild(grid);
+            }
+        }
+
+        function switchEmojiCategory(catKey) {
+            const body = document.getElementById('emojiPanelBody');
+            body.innerHTML = '';
+            const emojis = EMOJI_DATABASE[catKey] || [];
+            const grid = document.createElement('div');
+            grid.className = 'emoji-grid';
+            emojis.forEach(em => {
+                const it = document.createElement('span');
+                it.className = 'emoji-item';
+                it.innerText = em;
+                it.onclick = () => insertEmojiAtCursor(em);
+                grid.appendChild(it);
+            });
+            body.appendChild(grid);
+
+            // update active header
+            document.querySelectorAll('.panel-cat-icon').forEach(icon => icon.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
+        }
+
+        function filterEmojiContent(val) {
+            renderPanelContent(val);
+        }
+
+        function insertEmojiAtCursor(emoji) {
+            const input = document.getElementById('messageInput');
+            if (!input) return;
+            const start = input.selectionStart || input.value.length;
+            const end = input.selectionEnd || input.value.length;
+            const text = input.value;
+            input.value = text.substring(0, start) + emoji + text.substring(end);
+            input.selectionStart = input.selectionEnd = start + emoji.length;
+            input.focus();
+        }
+
+    </script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -1375,6 +2071,350 @@
             user-select: none;
         }
 
+    
+        /* --- ESTILOS DE RESPUESTA Y MENÚ CONTEXTUAL TIPO WHATSAPP --- */
+        .msg-bubble {
+            position: relative;
+        }
+        .msg-bubble:hover .msg-menu-btn {
+            opacity: 1;
+        }
+        .msg-menu-btn {
+            position: absolute;
+            top: 4px;
+            right: 6px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.4);
+            color: #D1D5DB;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.15s, background 0.15s;
+            z-index: 10;
+        }
+        .msg-menu-btn:hover {
+            background: rgba(0,0,0,0.7);
+            color: #FFF;
+        }
+        .msg-quoted-box {
+            background: rgba(0, 0, 0, 0.25);
+            border-left: 3px solid var(--neon-green);
+            border-radius: 6px;
+            padding: 5px 8px;
+            margin-bottom: 6px;
+            cursor: pointer;
+        }
+        .quoted-sender {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--neon-green);
+            margin-bottom: 2px;
+        }
+        .quoted-text {
+            font-size: 12px;
+            color: #CBD5E1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 280px;
+        }
+        .reply-bar {
+            display: none;
+            align-items: center;
+            background: #202C33;
+            border-top: 1px solid var(--border);
+            padding: 8px 16px;
+            gap: 12px;
+            position: relative;
+            z-index: 10;
+        }
+        .reply-bar-border {
+            width: 4px;
+            height: 38px;
+            background: var(--neon-green);
+            border-radius: 2px;
+        }
+        .reply-bar-content {
+            flex: 1;
+            overflow: hidden;
+        }
+        .reply-bar-sender {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--neon-green);
+            margin-bottom: 2px;
+        }
+        .reply-bar-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .reply-bar-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 50%;
+        }
+        .reply-bar-close:hover {
+            color: #FFF;
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Menú Contextual Flotante WhatsApp */
+        .msg-context-menu {
+            position: fixed;
+            background: #233138;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            z-index: 9999;
+            width: 220px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.08);
+            display: none;
+        }
+        .context-reactions {
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 6px;
+            background: #182229;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .context-reaction-btn {
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.15s;
+            padding: 2px 4px;
+        }
+        .context-reaction-btn:hover {
+            transform: scale(1.3);
+        }
+        .context-item {
+            padding: 10px 16px;
+            font-size: 13px;
+            color: #D1D5DB;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.12s;
+        }
+        .context-item:hover {
+            background: rgba(255,255,255,0.08);
+            color: #FFF;
+        }
+        .context-item.danger {
+            color: #EF4444;
+        }
+        .context-item.danger:hover {
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+    
+        /* --- PANEL DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP WINDOWS --- */
+        .emoji-panel {
+            position: absolute;
+            bottom: 64px;
+            left: 12px;
+            width: 380px;
+            height: 420px;
+            background: #202C33;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            display: none;
+            flex-direction: column;
+            z-index: 1000;
+            overflow: hidden;
+            animation: fadeInPanel 0.15s ease-out;
+        }
+        @keyframes fadeInPanel {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .emoji-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: #182229;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            overflow-x: auto;
+            gap: 6px;
+        }
+        .panel-cat-icon {
+            font-size: 16px;
+            color: #8696A0;
+            padding: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.12s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .panel-cat-icon:hover, .panel-cat-icon.active {
+            color: var(--neon-green);
+            background: rgba(0, 168, 132, 0.12);
+        }
+        .emoji-search-box {
+            padding: 8px 12px;
+            background: #202C33;
+        }
+        .emoji-search-input {
+            width: 100%;
+            background: #111B21;
+            border: 1px solid #2A3942;
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: #E9EDEF;
+            font-size: 13px;
+            outline: none;
+        }
+        .emoji-search-input:focus {
+            border-color: var(--neon-green);
+        }
+        .emoji-panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 12px;
+        }
+        .emoji-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #8696A0;
+            margin: 8px 0 6px 0;
+            text-transform: uppercase;
+        }
+        .emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 6px;
+            text-align: center;
+        }
+        .emoji-item {
+            font-size: 24px;
+            padding: 4px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: transform 0.1s, background 0.1s;
+            user-select: none;
+        }
+        .emoji-item:hover {
+            transform: scale(1.25);
+            background: rgba(255,255,255,0.08);
+        }
+        .gif-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        .gif-item {
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            height: 100px;
+            position: relative;
+            background: #111B21;
+        }
+        .gif-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.2s;
+        }
+        .gif-item:hover img {
+            transform: scale(1.05);
+        }
+        .sticker-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            padding: 4px;
+        }
+        .sticker-item {
+            width: 70px;
+            height: 70px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: transform 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.03);
+        }
+        .sticker-item img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .sticker-item:hover {
+            transform: scale(1.15);
+            background: rgba(255,255,255,0.08);
+        }
+        .sticker-create-btn {
+            border: 2px dashed rgba(255,255,255,0.2);
+            color: #8696A0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            gap: 4px;
+            cursor: pointer;
+            border-radius: 8px;
+            height: 70px;
+        }
+        .sticker-create-btn:hover {
+            border-color: var(--neon-green);
+            color: var(--neon-green);
+        }
+
+        /* Barra Inferior Emojis / GIFs / Stickers (Exacta a WhatsApp) */
+        .emoji-panel-footer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 6px;
+            background: #182229;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .panel-mode-tabs {
+            display: flex;
+            background: #111B21;
+            border-radius: 20px;
+            padding: 3px;
+            gap: 4px;
+        }
+        .panel-mode-tab {
+            padding: 5px 16px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #8696A0;
+            cursor: pointer;
+            transition: 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .panel-mode-tab:hover {
+            color: #FFF;
+        }
+        .panel-mode-tab.active {
+            background: #202C33;
+            color: var(--neon-green);
+        }
+
     </style>
 </head>
 <body data-theme="default">
@@ -1920,6 +2960,16 @@
 
                 <div class="messages-scroll" id="messagesList"></div>
 
+                <!-- BARRA DE RESPUESTA / CITA ESTILO WHATSAPP -->
+                <div id="replyBar" class="reply-bar">
+                    <div class="reply-bar-border"></div>
+                    <div class="reply-bar-content">
+                        <div class="reply-bar-sender" id="replyBarSender">Respondiendo a:</div>
+                        <div class="reply-bar-text" id="replyBarText">Texto citado</div>
+                    </div>
+                    <button class="reply-bar-close" onclick="cancelReply()" title="Cancelar cita">✕</button>
+                </div>
+
                 <div class="input-bar" id="chatInputBar" style="position: relative;">
                     <!-- MENÚ EMERGENTE DE ADJUNTOS TIPO WHATSAPP -->
                     <div class="attachment-popup" id="attachmentPopup" style="display: none;">
@@ -1942,7 +2992,42 @@
                     <input type="file" id="docPicker" accept="*/*,.zip,.rar,.7z,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.apk,.exe,.csv,.mp3,.mp4" multiple style="display: none;" onchange="handleDocumentSelected(this)">
 
                     <button class="icon-btn" id="btnAttachment" onclick="toggleAttachmentPopup()" title="Adjuntar archivo o multimedia">📎</button>
-                    <button class="icon-btn" onclick="insertEmoji('😊')" title="Emojis">😊</button>
+                    <button class="icon-btn" onclick="toggleEmojiStickerPanel()" title="Emojis, GIFs y Stickers">😊</button>
+
+                    <!-- PANEL FLOTANTE DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP -->
+                    <div id="emojiStickerPanel" class="emoji-panel">
+                        <!-- HEADER CON CATEGORÍAS -->
+                        <div class="emoji-panel-header" id="panelCategoriesHeader">
+                            <span class="panel-cat-icon active" onclick="switchEmojiCategory('recent')" title="Recientes">🕒</span>
+                            <span class="panel-cat-icon" onclick="switchEmojiCategory('smileys')" title="Emoticonos">😊</span>
+                            <span class="panel-cat-icon" onclick="switchEmojiCategory('animals')" title="Animales">🐶</span>
+                            <span class="panel-cat-icon" onclick="switchEmojiCategory('food')" title="Comida">🍔</span>
+                            <span class="panel-cat-icon" onclick="switchEmojiCategory('activity')" title="Actividades">⚽</span>
+                            <span class="panel-cat-icon" onclick="switchEmojiCategory('travel')" title="Viajes">🚗</span>
+                            <span class="panel-cat-icon" onclick="switchEmojiCategory('objects')" title="Objetos">💡</span>
+                            <span class="panel-cat-icon" onclick="switchEmojiCategory('symbols')" title="Símbolos">🔣</span>
+                        </div>
+
+                        <!-- BUSCADOR -->
+                        <div class="emoji-search-box">
+                            <input type="text" id="emojiSearchInput" class="emoji-search-input" placeholder="🔍 Buscar emoji..." oninput="filterEmojiContent(this.value)">
+                        </div>
+
+                        <!-- CUERPO PRINCIPAL CON SCROLL -->
+                        <div class="emoji-panel-body" id="emojiPanelBody">
+                            <!-- Se renderiza dinámicamente -->
+                        </div>
+
+                        <!-- FOOTER CON SWITCHER EXACTO A WHATSAPP: [😊] [GIF] [STICKERS] -->
+                        <div class="emoji-panel-footer">
+                            <div class="panel-mode-tabs">
+                                <div class="panel-mode-tab active" id="tabModeEmoji" onclick="switchPanelMode('emoji')">😊 Emoji</div>
+                                <div class="panel-mode-tab" id="tabModeGif" onclick="switchPanelMode('gif')">GIF</div>
+                                <div class="panel-mode-tab" id="tabModeSticker" onclick="switchPanelMode('sticker')">📑 Stickers</div>
+                            </div>
+                        </div>
+                    </div>
+
                     
                     <textarea id="messageInput" placeholder="Escribe un mensaje..." oninput="handleMessageInputChange(this)" onkeydown="handleInputKey(event)"></textarea>
                     
@@ -3912,6 +4997,13 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 : '<span style="color:#8696A0; font-weight:bold; font-size:13px; margin-left:4px;" title="Enviado (no leído)">✓</span>';
 
             const deleteAction = `<span class="msg-actions" onclick="deleteSingleMessage('${msg.id}')" title="Eliminar Mensaje">🗑️</span>`;
+            const menuBtnHtml = `<div class="msg-menu-btn" onclick="openMsgMenu(event, '${msg.id}', decodeURIComponent('${encodeURIComponent(msg.senderName || '')}'), decodeURIComponent('${encodeURIComponent(text)}'), ${isMine})" title="Opciones del mensaje">⏷</div>`;
+            const quoteHtml = msg.replyToText ? `
+                <div class="msg-quoted-box" onclick="scrollToMessage('${msg.replyToId || ''}')">
+                    <div class="quoted-sender">${escapeHtml(msg.replyToSender || 'Mensaje')}</div>
+                    <div class="quoted-text">${escapeHtml(msg.replyToText)}</div>
+                </div>
+            ` : '';
 
             // 1. MENSAJES ELIMINADOS ESTILO WHATSAPP WINDOWS EXACTO
             if (text === '[DELETED]' || msg.deleted) {
@@ -3962,7 +5054,9 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
 
                 b.innerHTML = `
                     ${deleteAction}
+                    ${menuBtnHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    ${quoteHtml}
                     <div class="doc-msg-box">
                         <div class="doc-icon">${docIcon}</div>
                         <div class="doc-info">
@@ -4145,6 +5239,12 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 rank: 'PC Desktop',
                 readBy: {}
             };
+            if (activeReply) {
+                msgObj.replyToId = activeReply.id;
+                msgObj.replyToText = activeReply.text;
+                msgObj.replyToSender = activeReply.senderName;
+                cancelReply();
+            }
 
             // 1. Firebase
             newRef.set(msgObj);
@@ -4602,6 +5702,400 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
         }
 
         window.onload = initApp;
+    
+        // ========================================================
+        // GESTIÓN DE RESPUESTAS (REPLY) Y REENVÍO (FORWARD)
+        // ========================================================
+        let activeReply = null;
+        let contextTargetMsg = null;
+
+        function startReply(msgId, senderName, text) {
+            let cleanText = text || '';
+            if (cleanText.startsWith('[Document]|') || cleanText.startsWith('[File]')) {
+                cleanText = '📄 Archivo adjunto';
+            } else if (cleanText.startsWith('[Media]')) {
+                cleanText = '📷 Foto';
+            } else if (cleanText.startsWith('[Video]')) {
+                cleanText = '🎬 Video';
+            } else if (cleanText.startsWith('[Audio]')) {
+                cleanText = '🎵 Nota de voz';
+            }
+            activeReply = {
+                id: msgId,
+                senderName: senderName || 'Contacto',
+                text: cleanText.substring(0, 100)
+            };
+            document.getElementById('replyBarSender').innerText = `Respondiendo a ${activeReply.senderName}`;
+            document.getElementById('replyBarText').innerText = activeReply.text;
+            document.getElementById('replyBar').style.display = 'flex';
+            const msgInput = document.getElementById('messageInput');
+            if (msgInput) msgInput.focus();
+        }
+
+        function cancelReply() {
+            activeReply = null;
+            document.getElementById('replyBar').style.display = 'none';
+        }
+
+        // Menú Contextual
+        function openMsgMenu(e, msgId, senderName, text, isMine) {
+            e.stopPropagation();
+            contextTargetMsg = { id: msgId, senderName: senderName, text: text, isMine: isMine };
+            const menu = document.getElementById('msgContextMenu');
+            const delBtn = document.getElementById('contextDeleteBtn');
+            if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+
+            let x = e.clientX;
+            let y = e.clientY;
+            if (x + 230 > window.innerWidth) x = window.innerWidth - 235;
+            if (y + 260 > window.innerHeight) y = window.innerHeight - 265;
+
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.style.display = 'block';
+        }
+
+        document.addEventListener('click', () => {
+            const menu = document.getElementById('msgContextMenu');
+            if (menu) menu.style.display = 'none';
+        });
+
+        function triggerReplyFromContext() {
+            if (!contextTargetMsg) return;
+            startReply(contextTargetMsg.id, contextTargetMsg.senderName, contextTargetMsg.text);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerCopyFromContext() {
+            if (!contextTargetMsg) return;
+            let t = contextTargetMsg.text;
+            if (t.startsWith('[Document]|') || t.startsWith('[File]')) t = t.split('|')[1] || t;
+            navigator.clipboard.writeText(t).then(() => showToast('📋 Mensaje copiado'));
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerStarFromContext() {
+            if (!contextTargetMsg || !currentChatId) return;
+            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/isStarred`).transaction(v => !v);
+            showToast('⭐ Mensaje destacado');
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerDeleteFromContext() {
+            if (!contextTargetMsg) return;
+            deleteSingleMessage(contextTargetMsg.id);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function reactToContextMsg(emoji) {
+            if (!contextTargetMsg || !currentChatId) return;
+            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/reactions/${myPhone}`).set(emoji);
+            document.getElementById('msgContextMenu').style.display = 'none';
+            showToast(`Reacción ${emoji} enviada`);
+        }
+
+        // Reenviar mensaje
+        function triggerForwardFromContext() {
+            if (!contextTargetMsg) return;
+            const modal = document.getElementById('forwardModal');
+            const list = document.getElementById('forwardContactsList');
+            list.innerHTML = '';
+
+            const contacts = Object.values(cachedChats || {});
+            if (contacts.length === 0) {
+                list.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats recientes</div>';
+            } else {
+                contacts.forEach(c => {
+                    const item = document.createElement('div');
+                    item.className = 'contact-item';
+                    item.style.padding = '10px 14px';
+                    item.style.cursor = 'pointer';
+                    item.innerHTML = `
+                        <div class="avatar" style="width:40px;height:40px;font-size:16px;">${(c.name || 'C')[0]}</div>
+                        <div class="contact-info">
+                            <div class="contact-name">${escapeHtml(c.name || c.phone || 'Contacto')}</div>
+                            <div class="contact-last-msg" style="color:#8696A0;font-size:12px;">${escapeHtml(c.phone || '')}</div>
+                        </div>
+                    `;
+                    item.onclick = () => {
+                        forwardMessageToChat(c.id || c.phone, contextTargetMsg.text);
+                        closeForwardModal();
+                    };
+                    list.appendChild(item);
+                });
+            }
+
+            modal.style.display = 'flex';
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function closeForwardModal() {
+            document.getElementById('forwardModal').style.display = 'none';
+        }
+
+        function forwardMessageToChat(targetId, textPayload) {
+            if (!targetId || !textPayload) return;
+            const targetChatId = targetId.includes('_') ? targetId : [myPhone.replace(/\D/g,''), targetId.replace(/\D/g,'')].sort().join('_');
+            const newRef = db.ref(`chats/${targetChatId}/messages`).push();
+            newRef.set({
+                id: newRef.key,
+                text: textPayload,
+                timestamp: Date.now(),
+                senderId: myPhone,
+                senderName: myName,
+                rank: 'PC Desktop',
+                readBy: {}
+            }).then(() => {
+                showToast('↪ Mensaje reenviado');
+            });
+        }
+
+    
+        // ========================================================
+        // MOTOR COMPLETO DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP
+        // ========================================================
+        let currentPanelMode = 'emoji'; // 'emoji', 'gif', 'sticker'
+        
+        const EMOJI_DATABASE = {
+            recent: ['❤️', '😂', '👍', '🙏', '😍', '😊', '🔥', '🎉', '🥺', '👏', '✨', '💯', '🤔', '😎', '👌', '🙌'],
+            smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'],
+            animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦','🦥','🐁','🐀','🐿️','🦔'],
+            food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🥮','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🥛','🍼','☕','🫖','🍵','🧃','🥤','🧋','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾'],
+            activity: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🎱','🥏','🏓','🏸','🏒','🏑','🥍','🏏','⛳','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🏋️','🤺','🤼','🤸','⛹️','🤺','🤾','🧗','🚵','🚴','🏍️','🏎️','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩'],
+            travel: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛺','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥','🛳️','⛴️','🚢','⚓','⛽','🚧','🚥','🚦','🪧','🛑','🗺️','🗿','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛲','⛱️','🏖️','🏝️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🏠','🏡'],
+            objects: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','⏱️','⏲️','⏰','🕰️','⏳','⌛','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','🪙','💰','💳','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒️','🛠️','⛏️','🪚','🔩','⚙️','🪤','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬','⚰️','🪦','⚱️','🏺','🔮','📿','🧿'],
+            symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🈳','🈂️','🛂','🛃','🛄','🛅','🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
+        };
+
+        const GIF_DATABASE = [
+            { name: 'Risa', url: 'https://media.giphy.com/media/26n6Gx9moCgs1qxxt/giphy.gif' },
+            { name: 'Celebración', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
+            { name: 'OK / Perfecto', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
+            { name: 'Bailando', url: 'https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif' },
+            { name: 'Aplausos', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
+            { name: 'Sorpresa / WOW', url: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif' },
+            { name: 'Amor / Corazón', url: 'https://media.giphy.com/media/26FLdm964upN2ZYPA/giphy.gif' },
+            { name: 'Hola / Saludo', url: 'https://media.giphy.com/media/ASd0Ukj0BC5roG5Lmp/giphy.gif' },
+            { name: 'Dinero / Éxito', url: 'https://media.giphy.com/media/3o6gDWzmAzrpi5DQU8/giphy.gif' },
+            { name: 'Pensativo', url: 'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' }
+        ];
+
+        const STICKER_DATABASE = [
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo1',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo2',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo3',
+            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo4',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Smile',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Cool',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Love',
+            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Wink'
+        ];
+
+        function toggleEmojiStickerPanel() {
+            const p = document.getElementById('emojiStickerPanel');
+            if (p.style.display === 'flex') {
+                p.style.display = 'none';
+            } else {
+                p.style.display = 'flex';
+                renderPanelContent();
+            }
+        }
+
+        function switchPanelMode(mode) {
+            currentPanelMode = mode;
+            document.getElementById('tabModeEmoji').className = `panel-mode-tab ${mode === 'emoji' ? 'active' : ''}`;
+            document.getElementById('tabModeGif').className = `panel-mode-tab ${mode === 'gif' ? 'active' : ''}`;
+            document.getElementById('tabModeSticker').className = `panel-mode-tab ${mode === 'sticker' ? 'active' : ''}`;
+            
+            const header = document.getElementById('panelCategoriesHeader');
+            const search = document.getElementById('emojiSearchInput');
+            if (mode === 'emoji') {
+                header.style.display = 'flex';
+                search.placeholder = '🔍 Buscar emoji...';
+            } else if (mode === 'gif') {
+                header.style.display = 'none';
+                search.placeholder = '🔍 Buscar GIF...';
+            } else {
+                header.style.display = 'none';
+                search.placeholder = '🔍 Buscar en stickers de NeoMessage...';
+            }
+            renderPanelContent();
+        }
+
+        function renderPanelContent(filter = '') {
+            const body = document.getElementById('emojiPanelBody');
+            body.innerHTML = '';
+
+            if (currentPanelMode === 'emoji') {
+                // Render Emojis
+                const query = filter.trim().toLowerCase();
+                for (const [catName, emojis] of Object.entries(EMOJI_DATABASE)) {
+                    const filtered = query ? emojis.filter(e => e.includes(query)) : emojis;
+                    if (filtered.length === 0) continue;
+
+                    const title = document.createElement('div');
+                    title.className = 'emoji-section-title';
+                    title.innerText = catName;
+                    body.appendChild(title);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'emoji-grid';
+                    filtered.forEach(em => {
+                        const it = document.createElement('span');
+                        it.className = 'emoji-item';
+                        it.innerText = em;
+                        it.onclick = () => {
+                            insertEmojiAtCursor(em);
+                        };
+                        grid.appendChild(it);
+                    });
+                    body.appendChild(grid);
+                }
+            } else if (currentPanelMode === 'gif') {
+                // Render GIFs
+                const grid = document.createElement('div');
+                grid.className = 'gif-grid';
+                const query = filter.trim().toLowerCase();
+                const gifs = query ? GIF_DATABASE.filter(g => g.name.toLowerCase().includes(query)) : GIF_DATABASE;
+
+                gifs.forEach(g => {
+                    const it = document.createElement('div');
+                    it.className = 'gif-item';
+                    it.title = g.name;
+                    it.innerHTML = `<img src="${g.url}" loading="lazy"><span style="position:absolute;bottom:4px;left:6px;font-size:10px;background:rgba(0,0,0,0.6);padding:2px 6px;border-radius:4px;color:#FFF;">${g.name}</span>`;
+                    it.onclick = () => {
+                        dispatchMessageObject('[Media] ' + g.url);
+                        toggleEmojiStickerPanel();
+                        showToast(`🎬 GIF '${g.name}' enviado`);
+                    };
+                    grid.appendChild(it);
+                });
+                body.appendChild(grid);
+            } else if (currentPanelMode === 'sticker') {
+                // Render Stickers
+                const grid = document.createElement('div');
+                grid.className = 'sticker-grid';
+
+                // Botón Crear Sticker
+                const createBtn = document.createElement('div');
+                createBtn.className = 'sticker-create-btn';
+                createBtn.innerHTML = '<span style="font-size:20px;">➕</span><span>Crear</span>';
+                createBtn.onclick = () => {
+                    const inp = document.createElement('input');
+                    inp.type = 'file';
+                    inp.accept = 'image/*';
+                    inp.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (re) => {
+                                dispatchMessageObject('[Media] ' + re.target.result);
+                                toggleEmojiStickerPanel();
+                                showToast('✨ Sticker personalizado enviado');
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    };
+                    inp.click();
+                };
+                grid.appendChild(createBtn);
+
+                STICKER_DATABASE.forEach((stUrl, idx) => {
+                    const it = document.createElement('div');
+                    it.className = 'sticker-item';
+                    it.innerHTML = `<img src="${stUrl}" loading="lazy">`;
+                    it.onclick = () => {
+                        dispatchMessageObject('[Media] ' + stUrl);
+                        toggleEmojiStickerPanel();
+                        showToast('✨ Sticker enviado');
+                    };
+                    grid.appendChild(it);
+                });
+                body.appendChild(grid);
+            }
+        }
+
+        function switchEmojiCategory(catKey) {
+            const body = document.getElementById('emojiPanelBody');
+            body.innerHTML = '';
+            const emojis = EMOJI_DATABASE[catKey] || [];
+            const grid = document.createElement('div');
+            grid.className = 'emoji-grid';
+            emojis.forEach(em => {
+                const it = document.createElement('span');
+                it.className = 'emoji-item';
+                it.innerText = em;
+                it.onclick = () => insertEmojiAtCursor(em);
+                grid.appendChild(it);
+            });
+            body.appendChild(grid);
+
+            // update active header
+            document.querySelectorAll('.panel-cat-icon').forEach(icon => icon.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
+        }
+
+        function filterEmojiContent(val) {
+            renderPanelContent(val);
+        }
+
+        function insertEmojiAtCursor(emoji) {
+            const input = document.getElementById('messageInput');
+            if (!input) return;
+            const start = input.selectionStart || input.value.length;
+            const end = input.selectionEnd || input.value.length;
+            const text = input.value;
+            input.value = text.substring(0, start) + emoji + text.substring(end);
+            input.selectionStart = input.selectionEnd = start + emoji.length;
+            input.focus();
+        }
+
     </script>
+
+    <!-- MENÚ CONTEXTUAL ESTILO WHATSAPP -->
+    <div id="msgContextMenu" class="msg-context-menu">
+        <div class="context-reactions">
+            <span class="context-reaction-btn" onclick="reactToContextMsg('👍')">👍</span>
+            <span class="context-reaction-btn" onclick="reactToContextMsg('❤️')">❤️</span>
+            <span class="context-reaction-btn" onclick="reactToContextMsg('😂')">😂</span>
+            <span class="context-reaction-btn" onclick="reactToContextMsg('😮')">😮</span>
+            <span class="context-reaction-btn" onclick="reactToContextMsg('😢')">😢</span>
+            <span class="context-reaction-btn" onclick="reactToContextMsg('🙏')">🙏</span>
+        </div>
+        <div class="context-item" onclick="triggerReplyFromContext()">
+            <span>↩</span>
+            <span>Responder</span>
+        </div>
+        <div class="context-item" onclick="triggerCopyFromContext()">
+            <span>📋</span>
+            <span>Copiar texto</span>
+        </div>
+        <div class="context-item" onclick="triggerForwardFromContext()">
+            <span>↪</span>
+            <span>Reenviar</span>
+        </div>
+        <div class="context-item" onclick="triggerStarFromContext()">
+            <span>⭐</span>
+            <span>Destacar</span>
+        </div>
+        <div class="context-item danger" id="contextDeleteBtn" onclick="triggerDeleteFromContext()">
+            <span>🗑️</span>
+            <span>Eliminar para todos</span>
+        </div>
+    </div>
+
+    <!-- MODAL PARA REENVIAR MENSAJE -->
+    <div class="modal-overlay" id="forwardModal" style="display: none;">
+        <div class="modal" style="max-width: 380px;">
+            <div class="modal-header">
+                <h3>↪ Reenviar mensaje a...</h3>
+                <button class="icon-btn" onclick="closeForwardModal()">✕</button>
+            </div>
+            <div class="modal-body" style="max-height: 350px; overflow-y: auto;" id="forwardContactsList">
+                <!-- Se llena dinámicamente -->
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
