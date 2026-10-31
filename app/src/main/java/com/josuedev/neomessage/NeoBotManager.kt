@@ -41,28 +41,31 @@ object NeoBotManager {
 
     fun isBotEnabled(context: Context): Boolean {
         return try {
-            val sp = getPrefs(context)
-            if (sp.contains("bot_active_switch")) {
-                return sp.getBoolean("bot_active_switch", true)
-            }
-            val byConfig = loadConfig(context).isEnabled
-            if (byConfig) return true
-            // Por defecto para el dueño del negocio: ACTIVO
-            val userSp = context.getSharedPreferences("neomessage_prefs", Context.MODE_PRIVATE)
-            val myPhone = userSp.getString("user_phone", "") ?: ""
-            if (myPhone.contains("9612765041")) {
-                sp.edit().putBoolean("bot_active_switch", true).apply()
-                return true
-            }
-            false
-        } catch (_: Exception) { true }
+            val sp = context.getSharedPreferences("NeoPrefs", Context.MODE_PRIVATE)
+            sp.getBoolean("bot_sales_active", false)
+        } catch (_: Exception) { false }
     }
 
     fun setBotEnabled(context: Context, enabled: Boolean) {
-        val sp = getPrefs(context)
-        sp.edit().putBoolean("bot_active_switch", enabled).apply()
-        val cfg = loadConfig(context).copy(isEnabled = enabled)
-        saveConfig(context, cfg)
+        try {
+            val sp = context.getSharedPreferences("NeoPrefs", Context.MODE_PRIVATE)
+            sp.edit().putBoolean("bot_sales_active", enabled).apply()
+            getPrefs(context).edit().putBoolean("bot_active_switch", enabled).apply()
+            val cfg = loadConfig(context).copy(isEnabled = enabled)
+            saveConfig(context, cfg)
+
+            // Sincronizar estado en Firebase de inmediato
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val cleanPhone = NeoUtils.sanitizeId(cfg.telefono).takeLast(10)
+                    if (cleanPhone.isNotEmpty()) {
+                        val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                        db.getReference("bot_configs").child(cleanPhone).child("isEnabled").setValue(enabled)
+                        db.getReference("users").child(cleanPhone).child("bot_sales_active").setValue(enabled)
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
     }
 
     fun loadConfig(context: Context): BotConfig {
@@ -70,13 +73,17 @@ object NeoBotManager {
         val jsonStr = sp.getString(KEY_CONFIG, null)
         val defaultCatalog = getDefaultCatalog()
 
+        val neoPrefs = context.getSharedPreferences("NeoPrefs", Context.MODE_PRIVATE)
+        val myPhone = neoPrefs.getString("user_phone", "") ?: ""
+        val myName = neoPrefs.getString("user_name", "") ?: ""
+
         if (jsonStr.isNullOrEmpty()) {
             val defaultConfig = BotConfig(
                 isEnabled = false,
-                nombreNegocio = "miscelanea brittany",
-                telefono = "9612765041",
+                nombreNegocio = if (myName.isNotEmpty()) myName else "Mi Negocio",
+                telefono = if (myPhone.isNotEmpty()) myPhone else "9612765041",
                 horario = "Lunes a Sábado de 8:30 AM a 7:00 PM",
-                direccion = "Av. 16 de septiembre 903, B.S., Tuxtla Gutiérrez, Chiapas",
+                direccion = "Tuxtla Gutiérrez, Chiapas",
                 catalogo = defaultCatalog
             )
             saveConfig(context, defaultConfig)
@@ -103,10 +110,10 @@ object NeoBotManager {
 
             BotConfig(
                 isEnabled = obj.optBoolean("isEnabled", false),
-                nombreNegocio = obj.optString("nombreNegocio", "miscelanea brittany").ifEmpty { "miscelanea brittany" },
-                telefono = obj.optString("telefono", "9612765041").ifEmpty { "9612765041" },
+                nombreNegocio = obj.optString("nombreNegocio", if (myName.isNotEmpty()) myName else "Mi Negocio"),
+                telefono = obj.optString("telefono", if (myPhone.isNotEmpty()) myPhone else "9612765041"),
                 horario = obj.optString("horario", "Lunes a Sábado de 8:30 AM a 7:00 PM").ifEmpty { "Lunes a Sábado de 8:30 AM a 7:00 PM" },
-                direccion = obj.optString("direccion", "Av. 16 de septiembre 903, B.S., Tuxtla Gutiérrez, Chiapas").ifEmpty { "Av. 16 de septiembre 903, B.S., Tuxtla Gutiérrez, Chiapas" },
+                direccion = obj.optString("direccion", "Tuxtla Gutiérrez, Chiapas").ifEmpty { "Tuxtla Gutiérrez, Chiapas" },
                 mensajeBienvenida = obj.optString("mensajeBienvenida", ""),
                 catalogo = finalCatalog
             )
@@ -140,6 +147,38 @@ object NeoBotManager {
                 .putString(KEY_CONFIG, obj.toString())
                 .putBoolean("bot_active_switch", config.isEnabled)
                 .apply()
+
+            // Sincronizar en tiempo real con Firebase RTDB para que el guardián 24/7 lo reconozca
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val cleanPhone = NeoUtils.sanitizeId(config.telefono).takeLast(10)
+                    if (cleanPhone.isNotEmpty()) {
+                        val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                        val map = HashMap<String, Any>()
+                        map["isEnabled"] = config.isEnabled
+                        map["nombreNegocio"] = config.nombreNegocio
+                        map["telefono"] = cleanPhone
+                        map["horario"] = config.horario
+                        map["direccion"] = config.direccion
+                        map["mensajeBienvenida"] = config.mensajeBienvenida
+
+                        val catList = config.catalogo.mapIndexed { idx, p ->
+                            mapOf(
+                                "codigo" to if (p.codigo > 0) p.codigo else (idx + 1),
+                                "nombre" to p.nombre,
+                                "precio" to p.precio,
+                                "imagenBase64" to p.imagenBase64
+                            )
+                        }
+                        map["catalogo"] = catList
+
+                        db.getReference("bot_configs").child(cleanPhone).setValue(map)
+                        db.getReference("users").child(cleanPhone).child("bot_sales_active").setValue(config.isEnabled)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("NEO_BOT", "Error syncing bot config to Firebase: ${e.message}")
+                }
+            }
         } catch (ignored: Exception) {}
     }
 
@@ -450,6 +489,50 @@ object NeoBotManager {
         return processMessageWithMedia(context, incomingText, chatId).first
     }
 
+    fun isStoreNumber(phone: String): Boolean {
+        val clean = NeoUtils.sanitizeId(phone).takeLast(10)
+        return clean == "9612765041" || clean == "9614524879"
+    }
+
+    // ==================== AUTO-RESPUESTA INMEDIATA DESDE EL LADO CLIENTE ====================
+    fun dispatchClientBotReply(
+        context: Context,
+        chatId: String,
+        storePhone: String,
+        userMsg: CloudMessage
+    ) {
+        val cleanStore = NeoUtils.sanitizeId(storePhone)
+        val text = userMsg.text.trim()
+        if (text.startsWith("🤖") || text.startsWith("🔍 *CATÁLOGO") || text.startsWith("🧾 *TICKET") || text.startsWith("🛒 *¡Agregado")) return
+
+        val replyKey = "bot_${userMsg.id}"
+        val (replyText, replyMedia) = processMessageWithMedia(context, text, chatId)
+        val cfg = loadConfig(context)
+        val storeName = cfg.nombreNegocio.ifEmpty { "miscelanea brittany" }
+
+        val botMsg = CloudMessage(
+            id = replyKey,
+            text = replyText,
+            timestamp = System.currentTimeMillis() + 200,
+            senderId = cleanStore,
+            senderName = "$storeName 🤖",
+            rank = "Operador Bot",
+            replyToId = userMsg.id,
+            replyToText = userMsg.text.take(80),
+            replyToSender = userMsg.senderName
+        )
+
+        CoroutineScope(Dispatchers.IO).launch {
+            kotlinx.coroutines.delay(400)
+            try {
+                val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                db.getReference("chats").child(chatId).child("messages").child(replyKey).setValue(botMsg)
+            } catch (e: Exception) {
+                android.util.Log.e("NEO_BOT", "Error dispatching client bot reply: ${e.message}")
+            }
+        }
+    }
+
     // ==================== 🚀 AUTO-RESPUESTA DEL BOT DESDE EL TELÉFONO DEL DUEÑO ====================
     fun dispatchAutoReplyIfNeeded(
         context: Context,
@@ -457,7 +540,8 @@ object NeoBotManager {
         senderId: String,
         myId: String,
         incomingText: String,
-        msgTimestamp: Long
+        msgTimestamp: Long,
+        msgId: String = ""
     ) {
         val cleanSender = NeoUtils.sanitizeId(senderId)
         val cleanMe = NeoUtils.sanitizeId(myId)
@@ -469,12 +553,9 @@ object NeoBotManager {
         // 2. Solo responde si el teléfono del dueño tiene encendido el interruptor de Ventas
         if (!isBotEnabled(context)) return
 
-        // 3. Anti-loop: no responder a mensajes generados por un bot
-        if (incomingText.startsWith("🤖") || incomingText.contains("(Bot)") || incomingText.startsWith("🧾") || incomingText.startsWith("📦")) return
-
-        // 4. Solo responder a mensajes de los últimos 30 minutos (para tolerar desfaces de reloj y demoras de red)
+        // 3. Anti-loop: no responder a mensajes generados por un bot ni comandos internos
+        if (incomingText.startsWith("🤖") || incomingText.contains("(Bot)") || incomingText.startsWith("🧾") || incomingText.startsWith("📦") || incomingText.startsWith("[NEO_") || incomingText.startsWith("[SYSTEM]") || msgId.startsWith("bot_")) return
         val now = System.currentTimeMillis()
-        if (Math.abs(now - msgTimestamp) > 60 * 60 * 1000L) return
 
         // 5. Anti-repetición inmediata del mismo mensaje (4 segundos de debounce por cliente)
         val key = "$chatId-$cleanSender"
@@ -493,8 +574,8 @@ object NeoBotManager {
                 val cfg = loadConfig(context)
                 val senderTitle = "${cfg.nombreNegocio} 🤖"
 
-                // Enviar mensaje de respuesta desde la cuenta del dueño al chat con el cliente
-                val textKey = messagesRef.push().key ?: java.util.UUID.randomUUID().toString()
+                // Deterministic reply ID para sincronizar con guardián 24/7 y evitar duplicados
+                val textKey = if (msgId.isNotEmpty()) "bot_$msgId" else "bot_${System.currentTimeMillis()}" 
                 val textMsg = CloudMessage(
                     id = textKey,
                     text = replyText,

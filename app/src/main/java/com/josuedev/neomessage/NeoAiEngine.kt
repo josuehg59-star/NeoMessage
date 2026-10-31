@@ -12,12 +12,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
 
 /**
  * ⚡ MOTOR DE IA SOBERANA PARA INVESTIGACIÓN Y TAREAS (ESTILO META AI / CHATGPT)
  * - 100% Gratuito, Cero publicidad, Cero costo por tokens.
- * - Modo 1: Enciclopedia de conocimiento universal abierta (Wikipedia Knowledge Engine).
- * - Modo 2: Gemini 1.5/2.0 Flash gratuito (Google AI Studio - 1,500 consultas/día gratis).
+ * - Modo 1: Enciclopedia de conocimiento universal abierta y exhaustiva (Wikipedia Full Extracts Engine).
+ * - Modo 2: Recetario gastronómico inteligente paso a paso con ingredientes y tiempos (NeoRecipeBook).
+ * - Modo 3: Gemini 1.5/2.0 Flash gratuito (Google AI Studio - 1,500 consultas/día gratis).
  */
 object NeoAiEngine {
     private const val TAG = "NEO_AI"
@@ -25,8 +27,8 @@ object NeoAiEngine {
     private const val KEY_GEMINI_KEY = "gemini_api_key"
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
     fun getGeminiKey(context: Context): String {
@@ -45,9 +47,23 @@ object NeoAiEngine {
         val cleanPrompt = userPrompt.trim()
         if (cleanPrompt.isBlank()) return@withContext "Por favor escribe una consulta o tema para investigar."
 
+        // 1. Detectar si el usuario está pidiendo una receta de cocina
+        if (NeoRecipeBook.isRecipeQuery(cleanPrompt)) {
+            val geminiKey = getGeminiKey(context)
+            if (geminiKey.isNotEmpty()) {
+                val geminiRecipe = queryGemini(geminiKey, "Dame la receta completa y auténtica de: $cleanPrompt. Incluye: 1. Tiempo y porciones, 2. Lista completa de ingredientes con cantidades exactas, 3. Preparación paso a paso numerada y muy detallada, 4. Consejos y secretos del chef para el mejor sabor.")
+                if (!geminiRecipe.isNullOrBlank()) {
+                    return@withContext geminiRecipe
+                }
+            }
+            // Si no hay Gemini o falló, usamos el recetario gastronómico soberano
+            val recipe = NeoRecipeBook.findRecipe(cleanPrompt)
+            return@withContext NeoRecipeBook.formatRecipeResponse(recipe)
+        }
+
         val geminiKey = getGeminiKey(context)
 
-        // 1. Si el usuario configuró su clave gratuita de Gemini, usamos Gemini Flash
+        // 2. Si el usuario configuró su clave gratuita de Gemini, usamos Gemini Flash
         if (geminiKey.isNotEmpty()) {
             val geminiResult = queryGemini(geminiKey, cleanPrompt)
             if (geminiResult != null && geminiResult.isNotBlank()) {
@@ -55,7 +71,7 @@ object NeoAiEngine {
             }
         }
 
-        // 2. Si no hay clave de Gemini o falló, usamos el motor enciclopédico libre universal
+        // 3. Si no hay clave de Gemini o falló, usamos el motor enciclopédico de investigación COMPLETA
         return@withContext queryUniversalKnowledge(cleanPrompt)
     }
 
@@ -70,7 +86,7 @@ object NeoAiEngine {
                 val contentObj = JSONObject()
                 val parts = JSONArray()
                 val partObj = JSONObject()
-                partObj.put("text", "Eres Neo AI, un asistente inteligente experto en educación, ciencia, historia, tareas escolares, redacción y consejos útiles. Responde en español de forma amigable, estructurada y muy clara con viñetas y negritas cuando sea conveniente.\n\nPregunta: $prompt")
+                partObj.put("text", "Eres Neo AI, un asistente de inteligencia artificial avanzado para educación, tareas escolares, ciencia, historia, redacción y resolución de dudas. Responde en español de forma completa, exhaustiva, muy clara y estructurada con viñetas y títulos en negritas cuando sea conveniente.\n\nPregunta: $prompt")
                 parts.put(partObj)
                 contentObj.put("parts", parts)
                 contents.put(contentObj)
@@ -98,8 +114,8 @@ object NeoAiEngine {
     }
 
     /**
-     * Motor de búsqueda e investigación enciclopédica mundial (Wikipedia REST en español)
-     * Cero tokens, Cero publicidad, Cero costo para siempre.
+     * Motor de investigación enciclopédica COMPLETA y exhaustiva
+     * Extrae el contenido completo, antecedentes, desarrollo y conclusiones.
      */
     private fun queryUniversalKnowledge(prompt: String): String {
         try {
@@ -120,6 +136,7 @@ object NeoAiEngine {
                 .replace("dime sobre", "")
                 .replace("investiga", "")
                 .replace("investigacion de", "")
+                .replace("investigación de", "")
                 .replace("historia de", "")
                 .replace("significado de", "")
                 .trim()
@@ -131,7 +148,7 @@ object NeoAiEngine {
             val searchUrl = "https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=$encodedQuery&format=json&utf8=1"
             val searchReq = Request.Builder()
                 .url(searchUrl)
-                .header("User-Agent", "NeoMessageAI/1.0 (Android; Sovereign)")
+                .header("User-Agent", "NeoMessageAI/2.0 (Android; Sovereign)")
                 .build()
 
             val searchRes = httpClient.newCall(searchReq).execute()
@@ -149,34 +166,36 @@ object NeoAiEngine {
             val topHit = searchArr.getJSONObject(0)
             val articleTitle = topHit.getString("title")
 
-            // 2. Obtener el extracto completo y pulido del artículo
-            val summaryUrl = "https://es.wikipedia.org/api/rest_v1/page/summary/${URLEncoder.encode(articleTitle, "UTF-8")}"
-            val summaryReq = Request.Builder()
-                .url(summaryUrl)
-                .header("User-Agent", "NeoMessageAI/1.0 (Android; Sovereign)")
+            // 2. OBTENER EXTRACTO COMPLETO Y EXHAUSTIVO (prop=extracts&explaintext=1)
+            val fullExtractUrl = "https://es.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles=${URLEncoder.encode(articleTitle, "UTF-8")}&format=json&utf8=1"
+            val fullExtractReq = Request.Builder()
+                .url(fullExtractUrl)
+                .header("User-Agent", "NeoMessageAI/2.0 (Android; Sovereign)")
                 .build()
 
-            val summaryRes = httpClient.newCall(summaryReq).execute()
-            if (!summaryRes.isSuccessful) {
-                val rawSnippet = topHit.optString("snippet", "")
-                    .replace("<[^>]*>".toRegex(), "")
-                return "📚 *${articleTitle}*\n\n$rawSnippet..."
+            val fullExtractRes = httpClient.newCall(fullExtractReq).execute()
+            if (!fullExtractRes.isSuccessful) {
+                return fallbackKnowledge(prompt)
             }
 
-            val summaryJson = JSONObject(summaryRes.body?.string() ?: "")
-            val title = summaryJson.optString("title", articleTitle)
-            val extract = summaryJson.optString("extract", "")
-            val desc = summaryJson.optString("description", "")
+            val fullJson = JSONObject(fullExtractRes.body?.string() ?: "")
+            val pagesObj = fullJson.optJSONObject("query")?.optJSONObject("pages") ?: return fallbackKnowledge(prompt)
 
-            val sb = StringBuilder("📚 *Investigación: $title*\n")
-            if (desc.isNotBlank()) {
-                sb.append("_($desc)_\n\n")
-            } else {
-                sb.append("\n")
+            var rawFullText = ""
+            val keys = pagesObj.keys()
+            if (keys.hasNext()) {
+                val pageKey = keys.next()
+                rawFullText = pagesObj.getJSONObject(pageKey).optString("extract", "")
             }
-            sb.append(extract)
-            sb.append("\n\n💡 *Tip:* Puedes hacer más preguntas sobre este tema, fechas, autores o ciencia.")
-            return sb.toString()
+
+            if (rawFullText.isBlank()) {
+                val rawSnippet = topHit.optString("snippet", "").replace("<[^>]*>".toRegex(), "")
+                return "📚 *${articleTitle}*\n\n$rawSnippet"
+            }
+
+            // 3. PROCESAR Y ESTRUCTURAR EL TEXTO COMPLETO
+            val structuredContent = processFullArticle(articleTitle, rawFullText)
+            return structuredContent
 
         } catch (e: Exception) {
             Log.e(TAG, "Knowledge search error: ${e.message}")
@@ -184,11 +203,57 @@ object NeoAiEngine {
         }
     }
 
+    /**
+     * Procesa y limpia el extracto completo en una investigación estructurada y completa
+     */
+    private fun processFullArticle(title: String, rawText: String): String {
+        var text = rawText
+
+        // Descartar apéndices irrelevantes de referencias y enlaces externos
+        val stopSections = listOf(
+            "== Véase también ==",
+            "== Referencias ==",
+            "== Enlaces externos ==",
+            "== Bibliografía ==",
+            "== Notas =="
+        )
+        for (stop in stopSections) {
+            if (text.contains(stop)) {
+                text = text.substringBefore(stop)
+            }
+        }
+
+        // Formatear encabezados de subsecciones: === Subsección === -> 🔹 **Subsección**
+        text = text.replace("===\\s*([^=]+?)\\s*===".toRegex(), "\n🔹 **$1**\n")
+
+        // Formatear encabezados principales: == Sección == -> 📌 **Sección**
+        text = text.replace("==\\s*([^=]+?)\\s*==".toRegex(), "\n\n📌 **$1**\n")
+
+        // Reducir saltos de línea excesivos
+        text = text.replace("\n{3,}".toRegex(), "\n\n").trim()
+
+        // Si es muy extenso, limitarlo inteligentemente a unos 3,200 caracteres en un corte limpio
+        if (text.length > 3200) {
+            val cutIndex = text.lastIndexOf('\n', 3200)
+            text = if (cutIndex > 2200) {
+                text.substring(0, cutIndex) + "\n\n_(Investigación completa estructurada para lectura rápida)_"
+            } else {
+                text.substring(0, 3200) + "...\n\n_(Investigación completa estructurada para lectura rápida)_"
+            }
+        }
+
+        val sb = StringBuilder("📚 *INVESTIGACIÓN COMPLETA: ${title.uppercase()}*\n\n")
+        sb.append(text)
+        sb.append("\n\n💡 *Neo AI Tip:* Puedes preguntarme sobre algún personaje específico, fechas clave, antecedentes o fórmulas relacionadas.")
+        return sb.toString()
+    }
+
     private fun fallbackKnowledge(prompt: String): String {
         return "🧠 *Neo AI - Asistente de Investigación*\n\n" +
-               "He procesado tu consulta: *\"$prompt\"*.\n\n" +
-               "Puedo ayudarte a investigar cualquier tema escolar, científico, histórico o general.\n" +
-               "👉 Intenta consultar por el nombre exacto del tema (ej: *\"Albert Einstein\"*, *\"Fotosíntesis\"*, *\"Revolución Mexicana\"*, *\"Sistema Solar\"*).\n\n" +
-               "✨ _Opcional: Si deseas respuestas redactadas como ChatGPT para tareas largas o matemáticas, puedes vincular una clave gratuita de Google Gemini en los ajustes de Neo AI._"
+               "He recibido tu consulta: *\"$prompt\"*.\n\n" +
+               "Puedo ayudarte a investigar cualquier tema escolar, científico, histórico, biológico o culinario.\n" +
+               "👉 Para investigar, intenta consultar por el tema exacto (ej: *\"Fotosíntesis\"*, *\"Albert Einstein\"*, *\"Revolución Mexicana\"*, *\"Agujeros Negros\"*).\n" +
+               "👉 Para recetas, escribe: *\"Receta de pozole\"*, *\"Cómo hacer arroz rojo\"*, *\"Receta de enchiladas verdes\"*, etc.\n\n" +
+               "✨ _Opcional: Si deseas respuestas creativas ilimitadas como ChatGPT para redacción libre, puedes ingresar tu clave gratuita de Google Gemini en el ícono de la llave arriba a la derecha._"
     }
 }

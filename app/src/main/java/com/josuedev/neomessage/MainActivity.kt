@@ -392,7 +392,7 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
         val dbInstance = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
         
         // --- DETECTOR GLOBAL DE MENSAJES PARA NOTIFICACIONES ---
-        var lastNotifiedMsgId = ""
+        val notifiedMsgIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
         val chatsRef = db.getReference("chats")
         chatsRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
             override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
@@ -405,8 +405,8 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
                         val lastMsg = messages.children.mapNotNull { it.getValue(CloudMessage::class.java) }.maxByOrNull { it.timestamp }
                         val lastSenderClean = if (lastMsg != null) NeoUtils.sanitizeId(lastMsg.senderId) else ""
                         
-                        if (lastMsg != null && lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && lastMsg.id != lastNotifiedMsgId) {
-                            lastNotifiedMsgId = lastMsg.id
+                        if (lastMsg != null && lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(lastMsg.id)) {
+                            notifiedMsgIds.add(lastMsg.id)
                             // Despachar auto-respuesta con NeoBot si está habilitado ($0 costo)
                             NeoBotManager.dispatchAutoReplyIfNeeded(
                                 context = context,
@@ -414,7 +414,8 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
                                 senderId = lastMsg.senderId,
                                 myId = cleanMyId,
                                 incomingText = lastMsg.text,
-                                msgTimestamp = lastMsg.timestamp
+                                msgTimestamp = lastMsg.timestamp,
+                                msgId = lastMsg.id
                             )
 
                             // Margen de 60 segundos para tolerancia horaria entre dispositivos
@@ -422,7 +423,7 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
                                     // Solo notificar si no estamos viendo ese chat específico y NO es un transeúnte
                                     if (state.currentScreen != Screen.ChatRoom || state.activeChatId != chatId) {
                                         if (!lastMsg.text.contains("TRANSEÚNTE", ignoreCase = true)) {
-                                            lastNotifiedMsgId = lastMsg.id
+                                            notifiedMsgIds.add(lastMsg.id)
                                             NeoNotificationHelper.showNotification(
                                                 context, 
                                                 "Nuevo mensaje de ${lastMsg.senderName}", 
@@ -626,6 +627,9 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
                         textColor = textColor, textSubColor = textSubColor,
                         accentGradient = accentGradient,
                         onBack = { state = state.copy(currentScreen = Screen.ChatsList) },
+                        onNavigateToChat = { targetName, targetId ->
+                            state = state.copy(activeChatName = targetName, activeChatId = targetId, currentScreen = Screen.ChatRoom)
+                        },
                         onNavigateToCalling = { otherId, isVideo -> 
                             val cleanMe = NeoUtils.sanitizeId(state.userId)
                             val cleanOther = NeoUtils.sanitizeId(otherId)

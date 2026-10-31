@@ -41,7 +41,7 @@ fun NeoAiScreen(
     val coroutineScope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<Pair<String, Boolean>>(
-        "¡Hola! 👋 Soy Neo AI, tu asistente inteligente para tareas, estudios, ciencia e investigaciones.\n\nPuedes preguntarme sobre cualquier tema (ej: 'Fotosíntesis', 'Albert Einstein', 'Historia de México') o pedirme que redacte un texto. ¿En qué te ayudo hoy?" to false
+        "¡Hola! 👋 Soy Neo AI, tu asistente inteligente para tareas escolares, ciencia, investigaciones a fondo y recetas de cocina completas.\n\nPuedes preguntarme sobre cualquier tema (ej: 'Fotosíntesis', 'Revolución Mexicana') o pedirme una receta (ej: 'Receta de pozole', 'Cómo hacer enchiladas verdes'). ¿En qué te ayudo hoy?" to false
     ) }
     var isTyping by remember { mutableStateOf(false) }
     var showApiKeyDialog by remember { mutableStateOf(false) }

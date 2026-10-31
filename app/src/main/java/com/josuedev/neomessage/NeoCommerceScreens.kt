@@ -11,6 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FilterList
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -322,16 +326,32 @@ fun CorteDeCajaScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val cfg = remember { NeoBotManager.loadConfig(context) }
     var todaySales by remember { mutableStateOf(NeoCommerceManager.getTodaySales(context)) }
-    val totalAmount = remember(todaySales) { todaySales.sumOf { it.total } }
-    val count = remember(todaySales) { todaySales.size }
-    val avgTicket = remember(todaySales) { if (count > 0) totalAmount / count else 0.0 }
+    
+    var selectedFilter by remember { mutableIntStateOf(0) } // 0: Todos, 1: Por recoger (Pendientes), 2: Entregados
+
+    val deliveredSales = remember(todaySales) { todaySales.filter { it.status == "ENTREGADO" } }
+    val pendingSales = remember(todaySales) { todaySales.filter { it.status != "ENTREGADO" } }
+
+    val filteredSales = remember(todaySales, selectedFilter) {
+        when (selectedFilter) {
+            1 -> pendingSales
+            2 -> deliveredSales
+            else -> todaySales
+        }
+    }
+
+    val deliveredAmount = remember(deliveredSales) { deliveredSales.sumOf { it.total } }
+    val pendingAmount = remember(pendingSales) { pendingSales.sumOf { it.total } }
+    val count = remember(deliveredSales) { deliveredSales.size }
+    val avgTicket = remember(deliveredSales) { if (count > 0) deliveredAmount / count else 0.0 }
     
     var showManualSaleDialog by remember { mutableStateOf(false) }
+    var saleToDelete by remember { mutableStateOf<SaleRecord?>(null) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("💰 Corte de Caja y Ventas", color = Color.White, fontWeight = FontWeight.Bold) },
+                title = { Text("💰 Corte de Caja y Pedidos", color = Color.White, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar", tint = Color.White)
@@ -371,11 +391,11 @@ fun CorteDeCajaScreen(onBack: () -> Unit) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.AccountBalanceWallet, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("TOTAL EN CAJA HOY", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("TOTAL COBRADO EN CAJA HOY", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "$${"%.2f".format(totalAmount)} MXN",
+                            "$${"%.2f".format(deliveredAmount)} MXN",
                             color = Color(0xFF00FF7F),
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Black
@@ -385,12 +405,12 @@ fun CorteDeCajaScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(12.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
-                                Text("Ventas Realizadas", color = Color.Gray, fontSize = 11.sp)
-                                Text("$count tickets", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("⏳ Por Recoger", color = Color(0xFFFFA500), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("$${"%.2f".format(pendingAmount)} MXN (${pendingSales.size})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("Ticket Promedio", color = Color.Gray, fontSize = 11.sp)
-                                Text("$${"%.2f".format(avgTicket)} MXN", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("✅ Cobrados", color = Color(0xFF00FF7F), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("$count tickets", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                         }
                     }
@@ -430,11 +450,49 @@ fun CorteDeCajaScreen(onBack: () -> Unit) {
                 }
             }
 
+            // FILTROS DE ÓRDENES (Todos / Por Recoger / Entregados)
             item {
-                Text("HISTORIAL DE TICKETS DE HOY", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedFilter == 0,
+                        onClick = { selectedFilter = 0 },
+                        label = { Text("Todos (${todaySales.size})", fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF00FF7F),
+                            selectedLabelColor = Color.Black,
+                            containerColor = Color(0xFF1E293B),
+                            labelColor = Color.LightGray
+                        )
+                    )
+                    FilterChip(
+                        selected = selectedFilter == 1,
+                        onClick = { selectedFilter = 1 },
+                        label = { Text("⏳ Por recoger (${pendingSales.size})", fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFFFFA500),
+                            selectedLabelColor = Color.Black,
+                            containerColor = Color(0xFF1E293B),
+                            labelColor = Color.LightGray
+                        )
+                    )
+                    FilterChip(
+                        selected = selectedFilter == 2,
+                        onClick = { selectedFilter = 2 },
+                        label = { Text("✅ Entregados (${deliveredSales.size})", fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF00FF7F),
+                            selectedLabelColor = Color.Black,
+                            containerColor = Color(0xFF1E293B),
+                            labelColor = Color.LightGray
+                        )
+                    )
+                }
             }
 
-            if (todaySales.isEmpty()) {
+            if (filteredSales.isEmpty()) {
                 item {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(0.5f)),
@@ -444,49 +502,134 @@ fun CorteDeCajaScreen(onBack: () -> Unit) {
                         Column(modifier = Modifier.padding(24.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Filled.ReceiptLong, null, tint = Color.Gray, modifier = Modifier.size(40.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("No hay ventas registradas el día de hoy", color = Color.Gray, fontSize = 13.sp)
-                            Text("Las compras confirmadas en el carrito aparecerán aquí.", color = Color.DarkGray, fontSize = 11.sp)
+                            Text(
+                                if (selectedFilter == 1) "No hay pedidos pendientes por recoger"
+                                else if (selectedFilter == 2) "No hay pedidos entregados aún"
+                                else "No hay ventas registradas el día de hoy",
+                                color = Color.Gray,
+                                fontSize = 13.sp
+                            )
                         }
                     }
                 }
             } else {
-                items(todaySales) { sale ->
+                items(filteredSales, key = { it.id }) { sale ->
+                    val isPending = sale.status != "ENTREGADO"
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
                         shape = RoundedCornerShape(12.dp),
+                        border = if (isPending) BorderStroke(1.dp, Color(0xFFFFA500).copy(0.4f)) else null,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp).fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF00FF7F).copy(0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("🧾", fontSize = 18.sp)
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("#${sale.id}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sale.timestamp)), color = Color.Gray, fontSize = 11.sp)
+                        Column(modifier = Modifier.padding(14.dp).fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(36.dp).clip(CircleShape).background(if (isPending) Color(0xFFFFA500).copy(0.15f) else Color(0xFF00FF7F).copy(0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(if (isPending) "⏳" else "🧾", fontSize = 16.sp)
                                 }
-                                val summary = sale.items.joinToString(", ") { "${it.cantidad}x ${it.nombre.take(15)}" }
-                                Text(summary.ifEmpty { "Venta directa mostrador" }, color = Color.LightGray, fontSize = 12.sp, maxLines = 1)
+                                Spacer(Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("#${sale.id}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sale.timestamp)), color = Color.Gray, fontSize = 11.sp)
+                                    }
+                                    val summary = sale.items.joinToString(", ") { "${it.cantidad}x ${it.nombre.take(15)}" }
+                                    Text(summary.ifEmpty { "Venta directa" }, color = Color.LightGray, fontSize = 12.sp, maxLines = 1)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        "$${"%.2f".format(sale.total)} MXN",
+                                        color = if (isPending) Color(0xFFFFA500) else Color(0xFF00FF7F),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(
+                                        if (isPending) "Por recoger" else "Entregado",
+                                        color = if (isPending) Color(0xFFFFA500) else Color(0xFF00FF7F),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
-                            Text(
-                                "$${"%.2f".format(sale.total)} MXN",
-                                color = Color(0xFF00FF7F),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
+
+                            Spacer(Modifier.height(8.dp))
+                            HorizontalDivider(color = Color.White.copy(0.06f))
+                            Spacer(Modifier.height(8.dp))
+
+                            // Botones de acción de la orden (Marcar Entregado / Eliminar si no fueron a traer)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                                if (isPending) {
+                                    Button(
+                                        onClick = {
+                                            NeoCommerceManager.updateSaleStatus(context, sale.id, "ENTREGADO")
+                                            todaySales = NeoCommerceManager.getTodaySales(context)
+                                            Toast.makeText(context, "✅ Pedido #${sale.id} marcado como Entregado y Cobrado", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Text("✅ Entregar", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                }
+
+                                OutlinedButton(
+                                    onClick = { saleToDelete = sale },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252)),
+                                    border = BorderStroke(1.dp, Color(0xFFFF5252).copy(0.5f)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(34.dp)
+                                ) {
+                                    Icon(Icons.Filled.Delete, null, tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(if (isPending) "No vino / Eliminar" else "Eliminar", color = Color(0xFFFF5252), fontSize = 11.sp)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    // Diálogo de confirmación para eliminar orden que no fueron a traer
+    saleToDelete?.let { targetSale ->
+        AlertDialog(
+            onDismissRequest = { saleToDelete = null },
+            containerColor = Color(0xFF0F172A),
+            title = { Text("¿Eliminar Pedido #${targetSale.id}?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Si el cliente no fue a traer este pedido, al eliminarlo se descontará de la lista y no afectará tu corte de caja final.",
+                    color = Color.LightGray,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        NeoCommerceManager.deleteSale(context, targetSale.id)
+                        todaySales = NeoCommerceManager.getTodaySales(context)
+                        saleToDelete = null
+                        Toast.makeText(context, "🗑️ Orden eliminada correctamente", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { saleToDelete = null }) {
+                    Text("Cancelar", color = Color.Gray)
+                }
+            }
+        )
     }
 
     // Diálogo de venta manual rápida
@@ -535,7 +678,8 @@ fun CorteDeCajaScreen(onBack: () -> Unit) {
                                 customerName = "Mostrador",
                                 items = listOf(item),
                                 total = item.subtotal,
-                                metodoPago = "Efectivo"
+                                metodoPago = "Efectivo",
+                                status = "ENTREGADO" // La venta manual en mostrador es cobrada y entregada de inmediato
                             )
                             NeoCommerceManager.recordSale(context, sale)
                             todaySales = NeoCommerceManager.getTodaySales(context)

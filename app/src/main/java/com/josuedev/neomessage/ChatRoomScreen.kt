@@ -16,6 +16,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import android.location.LocationManager
+import android.provider.ContactsContract
+import androidx.compose.foundation.text.ClickableText
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -121,7 +123,8 @@ fun ChatRoomScreen(
     textSubColor: Color,
     accentGradient: Brush,
     onBack: () -> Unit,
-    onNavigateToCalling: (String, Boolean) -> Unit
+    onNavigateToCalling: (String, Boolean) -> Unit,
+    onNavigateToChat: ((String, String) -> Unit)? = null
 ) {
     var messageText by remember { mutableStateOf("") }
     var isRecordingVoice by remember { mutableStateOf(false) }
@@ -234,7 +237,8 @@ fun ChatRoomScreen(
                                 senderId = m.senderId,
                                 myId = cleanMyId,
                                 incomingText = m.text,
-                                msgTimestamp = m.timestamp
+                                msgTimestamp = m.timestamp,
+                                msgId = m.id
                             )
                         }
                     }
@@ -282,7 +286,8 @@ fun ChatRoomScreen(
                             senderId = relMsg.senderId,
                             myId = cleanMyId,
                             incomingText = relMsg.text,
-                            msgTimestamp = relMsg.timestamp
+                            msgTimestamp = relMsg.timestamp,
+                            msgId = relMsg.id
                         )
                     }
                 }
@@ -420,6 +425,8 @@ fun ChatRoomScreen(
                 } catch (e: Exception) {
                     android.util.Log.w("NEO_FIREBASE", "Cloud sync queued: ${e.message}")
                 }
+
+                // 4.1 Entrega de mensajes gestionada de forma soberana por destinatario o guardián 24/7
 
                 // 5. RESPALDO ASÍNCRONO SIN BLOQUEAR
                 PocketBaseManager.sendMessage(chatId, cleanMyId, myName, currentText, {}, {})
@@ -863,7 +870,18 @@ fun ChatRoomScreen(
                                             }
                                         }
                                     }
-                                    MessageContent(msg, textColor, textSubColor, context, isMine = isMine, playingVoiceMsgId = playingVoiceMsgId, onPlayingVoiceChange = { playingVoiceMsgId = it }, onImageClick = { activeZoomBitmap = it })
+                                    MessageContent(
+                                        msg = msg,
+                                        textColor = textColor,
+                                        textSubColor = textSubColor,
+                                        context = context,
+                                        isMine = isMine,
+                                        playingVoiceMsgId = playingVoiceMsgId,
+                                        onPlayingVoiceChange = { playingVoiceMsgId = it },
+                                        onImageClick = { activeZoomBitmap = it },
+                                        userId = userId,
+                                        onNavigateToChat = onNavigateToChat
+                                    )
                                     if (msg.expiryTime != null) {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                                             Icon(Icons.Filled.Timer, null, tint = Color.Red, modifier = Modifier.size(10.dp))
@@ -1666,7 +1684,9 @@ fun MessageContent(
     isMine: Boolean = false,
     playingVoiceMsgId: String? = null,
     onPlayingVoiceChange: ((String?) -> Unit)? = null,
-    onImageClick: ((ImageBitmap) -> Unit)? = null
+    onImageClick: ((ImageBitmap) -> Unit)? = null,
+    userId: String = "",
+    onNavigateToChat: ((String, String) -> Unit)? = null
 ) {
     val text = msg.text
     when {
@@ -2045,7 +2065,134 @@ fun MessageContent(
                 }
             }
         }
-        else -> Text(text = NeoTextFormatter.format(text, textColor), color = textColor, fontSize = 15.sp)
+        else -> {
+            var selectedPhone by remember { mutableStateOf<String?>(null) }
+            val formatted = remember(text, textColor) { NeoTextFormatter.format(text, textColor) }
+
+            ClickableText(
+                text = formatted,
+                style = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 15.sp),
+                onClick = { offset ->
+                    // 1. Detección de Enlaces Web (YouTube, Facebook, Páginas, Descargas, etc.)
+                    formatted.getStringAnnotations(tag = "URL", start = offset, end = offset).firstOrNull()?.let { anim ->
+                        val url = anim.item
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No se pudo abrir el enlace", Toast.LENGTH_SHORT).show()
+                        }
+                        return@ClickableText
+                    }
+
+                    // 2. Detección de Números Telefónicos (WhatsApp Style)
+                    formatted.getStringAnnotations(tag = "PHONE", start = offset, end = offset).firstOrNull()?.let { anim ->
+                        selectedPhone = anim.item
+                        return@ClickableText
+                    }
+                }
+            )
+
+            // Menú interactivo estilo WhatsApp al pinchar un número telefónico
+            selectedPhone?.let { phoneNum ->
+                AlertDialog(
+                    onDismissRequest = { selectedPhone = null },
+                    containerColor = Color(0xFF0F172A),
+                    icon = {
+                        Icon(Icons.Filled.Phone, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(32.dp))
+                    },
+                    title = {
+                        Text(phoneNum, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    },
+                    text = {
+                        Text("¿Qué deseas hacer con este número telefónico?", color = Color.LightGray, fontSize = 13.sp)
+                    },
+                    confirmButton = {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Opción A: Chatear directamente sin necesidad de guardarlo en contactos
+                            Button(
+                                onClick = {
+                                    val cleanMe = NeoUtils.sanitizeId(userId)
+                                    val targetChatId = NeoUtils.getChatId(cleanMe, phoneNum)
+                                    selectedPhone = null
+                                    if (onNavigateToChat != null) {
+                                        onNavigateToChat.invoke(phoneNum, targetChatId)
+                                    } else {
+                                        Toast.makeText(context, "Abriendo chat con $phoneNum...", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().height(42.dp)
+                            ) {
+                                Icon(Icons.Filled.Chat, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Chatear con $phoneNum", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+
+                            // Opción B: Llamada telefónica normal
+                            OutlinedButton(
+                                onClick = {
+                                    selectedPhone = null
+                                    try {
+                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phoneNum")).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFF38BDF8)),
+                                modifier = Modifier.fillMaxWidth().height(42.dp)
+                            ) {
+                                Icon(Icons.Filled.Call, null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Llamar por teléfono", color = Color(0xFF38BDF8), fontSize = 13.sp)
+                            }
+
+                            // Opción C: Guardar en contactos de la agenda
+                            OutlinedButton(
+                                onClick = {
+                                    selectedPhone = null
+                                    try {
+                                        val intent = Intent(Intent.ACTION_INSERT).apply {
+                                            type = ContactsContract.Contacts.CONTENT_TYPE
+                                            putExtra(ContactsContract.Intents.Insert.PHONE, phoneNum)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth().height(42.dp)
+                            ) {
+                                Icon(Icons.Filled.PersonAdd, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Añadir a Contactos", color = Color.White, fontSize = 13.sp)
+                            }
+
+                            // Opción D: Copiar número
+                            TextButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Teléfono", phoneNum)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "📋 Número copiado al portapapeles", Toast.LENGTH_SHORT).show()
+                                    selectedPhone = null
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Copiar número", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                    },
+                    dismissButton = null
+                )
+            }
+        }
     }
 }
 

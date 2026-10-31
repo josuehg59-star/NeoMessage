@@ -247,7 +247,8 @@ class NeoForegroundService : Service() {
                                 senderId = lastMsg.senderId,
                                 myId = cleanMyId,
                                 incomingText = lastMsg.text,
-                                msgTimestamp = lastMsg.timestamp
+                                msgTimestamp = lastMsg.timestamp,
+                                msgId = lastMsg.id
                             )
 
                             if (Math.abs(System.currentTimeMillis() - lastMsg.timestamp) < 30 * 60 * 1000L) {
@@ -272,7 +273,8 @@ class NeoForegroundService : Service() {
                         senderId = relMsg.senderId,
                         myId = cleanMyId,
                         incomingText = relMsg.text,
-                        msgTimestamp = relMsg.timestamp
+                        msgTimestamp = relMsg.timestamp,
+                        msgId = relMsg.id
                     )
                     if (relMsg.timestamp > System.currentTimeMillis() - 60000) {
                         NeoNotificationHelper.showNotification(this@NeoForegroundService, "Nuevo mensaje de ${relMsg.senderName}", relMsg.text, relMsg.id)

@@ -22,7 +22,8 @@ data class SaleRecord(
     val customerName: String = "Cliente",
     val items: List<CartItem> = emptyList(),
     val total: Double = 0.0,
-    val metodoPago: String = "Efectivo"
+    val metodoPago: String = "Efectivo",
+    val status: String = "PENDIENTE" // "PENDIENTE" (por recoger / no fue a traer), "ENTREGADO" (recogido y cobrado)
 )
 
 object NeoCommerceManager {
@@ -124,7 +125,7 @@ object NeoCommerceManager {
         sb.append("\n───────────────────────\n")
         sb.append("💵 *TOTAL A PAGAR: $${"%.2f".format(total)} MXN*\n")
         sb.append("───────────────────────\n\n")
-        sb.append("👉 Escribe *comprar* para confirmar tu pedido.\n")
+        sb.append("👉 Escribe *confirmar pedido* para cerrar tu orden.\n")
         sb.append("👉 Escribe *vaciar carrito* para empezar de nuevo.\n")
         sb.append("👉 Escribe *catalogo* para añadir más productos.")
         return sb.toString()
@@ -133,11 +134,50 @@ object NeoCommerceManager {
     // ==================== 💰 CORTE DE CAJA Y REGISTRO DE VENTAS ====================
 
     fun recordSale(context: Context, sale: SaleRecord) {
-        val sp = getPrefs(context)
         val list = getAllSales(context).toMutableList()
         list.add(0, sale) // La más reciente al principio
-        if (list.size > 200) list.removeAt(list.size - 1) // Mantener las últimas 200 ventas
+        if (list.size > 200) list.removeAt(list.size - 1)
+        saveSalesList(context, list)
 
+        // También sincronizar a Firebase si hay red
+        try {
+            val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+            val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(sale.timestamp))
+            db.getReference("caja_ventas").child(dateKey).child(sale.id).setValue(sale)
+        } catch (_: Exception) {}
+    }
+
+    fun updateSaleStatus(context: Context, saleId: String, newStatus: String) {
+        val list = getAllSales(context).toMutableList()
+        val index = list.indexOfFirst { it.id == saleId }
+        if (index != -1) {
+            val updated = list[index].copy(status = newStatus)
+            list[index] = updated
+            saveSalesList(context, list)
+            try {
+                val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(updated.timestamp))
+                db.getReference("caja_ventas").child(dateKey).child(updated.id).child("status").setValue(newStatus)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun deleteSale(context: Context, saleId: String) {
+        val list = getAllSales(context).toMutableList()
+        val removed = list.firstOrNull { it.id == saleId }
+        list.removeAll { it.id == saleId }
+        saveSalesList(context, list)
+        if (removed != null) {
+            try {
+                val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(removed.timestamp))
+                db.getReference("caja_ventas").child(dateKey).child(removed.id).removeValue()
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun saveSalesList(context: Context, list: List<SaleRecord>) {
+        val sp = getPrefs(context)
         val arr = JSONArray()
         list.forEach { s ->
             val obj = JSONObject()
@@ -147,6 +187,7 @@ object NeoCommerceManager {
             obj.put("customerName", s.customerName)
             obj.put("total", s.total)
             obj.put("metodoPago", s.metodoPago)
+            obj.put("status", s.status)
             val itemsArr = JSONArray()
             s.items.forEach { itm ->
                 val io = JSONObject()
@@ -159,13 +200,6 @@ object NeoCommerceManager {
             arr.put(obj)
         }
         sp.edit().putString(KEY_SALES_HISTORY, arr.toString()).apply()
-
-        // También sincronizar a Firebase si hay red
-        try {
-            val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-            val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(sale.timestamp))
-            db.getReference("caja_ventas").child(dateKey).child(sale.id).setValue(sale)
-        } catch (_: Exception) {}
     }
 
     fun getAllSales(context: Context): List<SaleRecord> {
@@ -190,7 +224,8 @@ object NeoCommerceManager {
                         customerName = obj.optString("customerName", "Cliente"),
                         items = itemsList,
                         total = obj.getDouble("total"),
-                        metodoPago = obj.optString("metodoPago", "Efectivo")
+                        metodoPago = obj.optString("metodoPago", "Efectivo"),
+                        status = obj.optString("status", "PENDIENTE")
                     )
                 )
             }
@@ -219,12 +254,13 @@ object NeoCommerceManager {
             customerName = customerName.ifEmpty { "Cliente" },
             items = cart.toList(),
             total = total,
-            metodoPago = "Efectivo"
+            metodoPago = "Efectivo",
+            status = "PENDIENTE" // Inicia como pendiente hasta que vayan a recogerlo
         )
         recordSale(context, sale)
         clearCart(context, chatId)
 
-        val sb = StringBuilder("🎉 *¡VENTA CONFIRMADA Y REGISTRADA EN CAJA!*\n\n")
+        val sb = StringBuilder("🎉 *¡PEDIDO CONFIRMADO Y REGISTRADO!*\n\n")
         sb.append("🧾 *Ticket de Venta #NEO-${sale.id}*\n")
         sb.append("🏪 $negocio\n")
         sb.append("👤 Cliente: ${sale.customerName}\n")
@@ -234,26 +270,31 @@ object NeoCommerceManager {
             sb.append("• ${it.nombre} (${it.cantidad}x $${"%.2f".format(it.precio)}) = $${"%.2f".format(it.subtotal)}\n")
         }
         sb.append("───────────────────────\n")
-        sb.append("💰 *TOTAL COBRADO: $${"%.2f".format(total)} MXN*\n")
-        sb.append("💵 Método: Efectivo\n\n")
-        sb.append("✅ Venta sumada al *Corte de Caja* del día.\n")
+        sb.append("💰 *TOTAL A PAGAR: $${"%.2f".format(total)} MXN*\n")
+        sb.append("💵 Método: Efectivo al recoger\n\n")
+        sb.append("⏳ *Estado:* Pendiente de recolección en mostrador.\n")
         sb.append("¡Gracias por su compra en *$negocio*! 🌟")
         return true to sb.toString()
     }
 
     fun formatCorteDeCajaReport(context: Context, negocio: String): String {
         val todaySales = getTodaySales(context)
-        val totalAmount = todaySales.sumOf { it.total }
-        val count = todaySales.size
-        val avgTicket = if (count > 0) totalAmount / count else 0.0
+        val deliveredSales = todaySales.filter { it.status == "ENTREGADO" }
+        val pendingSales = todaySales.filter { it.status != "ENTREGADO" }
+
+        val totalDelivered = deliveredSales.sumOf { it.total }
+        val totalPending = pendingSales.sumOf { it.total }
+        val count = deliveredSales.size
+        val avgTicket = if (count > 0) totalDelivered / count else 0.0
         val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
 
         val sb = StringBuilder("📊 *CORTE DE CAJA DEL DÍA*\n")
         sb.append("🏪 *$negocio*\n")
         sb.append("📅 Fecha de Cierre: $dateStr\n")
         sb.append("═══════════════════════\n")
-        sb.append("💰 *TOTAL EN CAJA: $${"%.2f".format(totalAmount)} MXN*\n")
-        sb.append("🧾 *Ventas Realizadas:* $count transacciones\n")
+        sb.append("💰 *TOTAL COBRADO (Entregados): $${"%.2f".format(totalDelivered)} MXN*\n")
+        sb.append("⏳ *Pendientes de Recoger: $${"%.2f".format(totalPending)} MXN (${pendingSales.size} pedidos)*\n")
+        sb.append("🧾 *Ventas Entregadas:* $count transacciones\n")
         sb.append("📈 *Ticket Promedio:* $${"%.2f".format(avgTicket)} MXN\n")
         sb.append("═══════════════════════\n\n")
 
@@ -261,16 +302,16 @@ object NeoCommerceManager {
             sb.append("_No se han registrado ventas el día de hoy._\n")
             sb.append("Las ventas se registran automáticamente cuando los clientes confirman su compra en el carrito.")
         } else {
-            sb.append("📋 *Últimas Ventas Registradas:*\n")
+            sb.append("📋 *Resumen de Órdenes:*\n")
             todaySales.take(10).forEach { s ->
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.timestamp))
+                val icon = if (s.status == "ENTREGADO") "✅" else "⏳"
                 val prods = s.items.joinToString(", ") { "${it.cantidad}x ${it.nombre.take(12)}" }
-                sb.append("• [$time] *#${s.id}*: $${"%.2f".format(s.total)} MXN\n  _${prods}_\n")
+                sb.append("$icon [$time] *#${s.id}* (${s.status}): $${"%.2f".format(s.total)} MXN\n  _${prods}_\n")
             }
             if (todaySales.size > 10) {
                 sb.append("_...y ${todaySales.size - 10} ventas más hoy._\n")
             }
-            sb.append("\n✅ *Balance de caja: Cuadrado al 100%*")
         }
         return sb.toString()
     }

@@ -151,7 +151,7 @@ def main():
         'versionName': version_name,
         'apkUrl': f'https://github.com/{owner}/{repo}/releases/download/{tag_name}/{apk_file}',
         'pcUrl': f'https://github.com/{owner}/{repo}/releases/download/{tag_name}/NeoMessage-PC-Windows.zip',
-        'changelog': '• Actualizacion oficial con mejoras de rendimiento\n• Pegado de tablas Excel a imagen\n• Llamadas y videollamadas HD\n• Soporte total PC Desktop y Movil',
+        'changelog': '• Bot de Ventas 100% automático en segundo plano para clientes\n• Neo AI: Investigaciones completas y exhaustivas estructuradas\n• Recetario gastronómico inteligente con ingredientes y preparación paso a paso\n• Rendimiento ultra-fluido y llamadas HD',
         'isMandatory': False,
         'timestamp': 1793402000000
     }

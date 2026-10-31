@@ -422,16 +422,14 @@ fun ChatsListScreen(
                                             val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
                                             val cleanMe = NeoUtils.sanitizeId(myCleanId)
                                             if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
-                                                if (Math.abs(System.currentTimeMillis() - lastMsgObj.timestamp) < 30 * 60 * 1000L) {
-                                                    NeoBotManager.dispatchAutoReplyIfNeeded(
-                                                        context = context,
-                                                        chatId = chatId,
-                                                        senderId = lastMsgObj.senderId,
-                                                        myId = cleanMe,
-                                                        incomingText = lastMsgObj.text,
-                                                        msgTimestamp = lastMsgObj.timestamp
-                                                    )
-                                                }
+                                                NeoBotManager.dispatchAutoReplyIfNeeded(
+                                                    context = context,
+                                                    chatId = chatId,
+                                                    senderId = lastMsgObj.senderId,
+                                                    myId = cleanMe,
+                                                    incomingText = lastMsgObj.text,
+                                                    msgTimestamp = lastMsgObj.timestamp
+                                                )
                                             }
                                             val lastMsgText = lastMsgObj.text
                                             val lastMsgTime = lastMsgObj.timestamp
@@ -947,61 +945,6 @@ fun ChatsListScreen(
         }
         
         Column(Modifier.padding(padding).fillMaxSize()) {
-            // --- 🤖 BANNER VISIBLE DE BOT DE VENTAS (PUNTO DE VENTA) ---
-            var botActiveState by remember { mutableStateOf(NeoBotManager.isBotEnabled(context)) }
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                colors = CardDefaults.cardColors(containerColor = if (botActiveState) Color(0xFF0F382A) else Color(0xFF1E293B)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.SmartToy,
-                        contentDescription = null,
-                        tint = if (botActiveState) Color(0xFF00FF7F) else Color.Gray,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            if (botActiveState) "🤖 Bot Ventas: ACTIVO" else "🤖 Bot Ventas: APAGADO",
-                            color = if (botActiveState) Color(0xFF00FF7F) else Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            if (botActiveState) "Contestando catálogo y pedidos a clientes" else "Toca para activar auto-respuestas",
-                            color = Color.LightGray,
-                            fontSize = 11.sp
-                        )
-                    }
-                    Switch(
-                        checked = botActiveState,
-                        onCheckedChange = {
-                            botActiveState = it
-                            NeoBotManager.setBotEnabled(context, it)
-                            Toast.makeText(context, if (it) "🤖 Bot de Ventas ACTIVADO" else "🤖 Bot de Ventas APAGADO", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00FF7F), checkedTrackColor = Color(0xFF005C4B))
-                    )
-                }
-            }
-
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).horizontalScroll(rememberScrollState())) {
-                listOf("Todos", "No leídos", "Favoritos", "Grupos").forEach { filter ->
-                    Surface(
-                        Modifier.padding(end = 8.dp).clickable { selectedFilter = filter },
-                        color = if (filter == selectedFilter) NeoTheme.Green.copy(0.2f) else NeoTheme.Card,
-                        shape = RoundedCornerShape(16.dp),
-                        border = if (filter == selectedFilter) BorderStroke(1.dp, NeoTheme.Green) else null
-                    ) {
-                        Text(filter, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = if (filter == selectedFilter) NeoTheme.Green else Color.Gray, fontSize = 13.sp)
-                    }
-                }
-            }
 
             val archivedCount = found.count { archivedIds.contains(it.chatId) }
             if (archivedCount > 0 && selectedFilter == "Todos") {
