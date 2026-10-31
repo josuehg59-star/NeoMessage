@@ -386,8 +386,8 @@ fun ChatRoomScreen(
             }
 
             // AUTO-RESPUESTA INMEDIATA DEL CHATBOT EN 0ms (SI SE ESCRIBE AL BOT O EN CHAT OFICIAL)
-            val isBotChat = otherCleanId == "neobot" || 
-                            chatName.contains("Bot", ignoreCase = true) || chatName.contains("Brittany", ignoreCase = true)
+            val isBotChat = otherCleanId == "neobot" || chatId.contains("neobot") ||
+                            chatName.contains("Bot", ignoreCase = true) || chatName.contains("Brittany", ignoreCase = true) || chatName.contains("Ventas", ignoreCase = true)
             if (isBotChat && NeoBotManager.isBotEnabled(context)) {
                 val (replyText, replyMedia) = NeoBotManager.processMessageWithMedia(context, currentText)
                 val botMid = database.push().key ?: UUID.randomUUID().toString()

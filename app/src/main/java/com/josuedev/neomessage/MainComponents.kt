@@ -334,6 +334,10 @@ fun ChatsListScreen(
                             selfLastMsgText = display
                             updateEntry(NeoChatEntry("Mis Notas Personales (Tú)", selfChatId, display, timestamp))
                         }
+                        if (NeoBotManager.isBotEnabled(context)) {
+                            val botChatId = "private_${myCleanId}_neobot"
+                            updateEntry(NeoChatEntry("🤖 Chatbot de Ventas (Punto de Venta)", botChatId, "🤖 Asistente activo - Escribe 'catalogo', 'coca', 'corte'", System.currentTimeMillis()))
+                        }
                     }
                     override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
                 })
@@ -341,6 +345,11 @@ fun ChatsListScreen(
 
         val spArchived = context.getSharedPreferences("NeoArchived", Context.MODE_PRIVATE)
         spArchived.all.keys.forEach { if (!archivedIds.contains(it)) archivedIds.add(it) }
+
+        if (NeoBotManager.isBotEnabled(context)) {
+            val botChatId = "private_${myCleanId}_neobot"
+            updateEntry(NeoChatEntry("🤖 Chatbot de Ventas (Punto de Venta)", botChatId, "🤖 Asistente activo - Escribe 'catalogo', 'coca', etc.", System.currentTimeMillis()))
+        }
 
         // B) Mensajes locales guardados en SQLite Room
         launch(Dispatchers.IO) {

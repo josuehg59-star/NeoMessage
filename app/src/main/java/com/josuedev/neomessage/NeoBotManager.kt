@@ -42,7 +42,7 @@ object NeoBotManager {
         if (sp.contains("bot_active_switch")) {
             return sp.getBoolean("bot_active_switch", false)
         }
-        return false
+        return try { loadConfig(context).isEnabled } catch (_: Exception) { false }
     }
 
     fun setBotEnabled(context: Context, enabled: Boolean) {
@@ -121,7 +121,10 @@ object NeoBotManager {
             }
             obj.put("catalogo", catArray)
 
-            getPrefs(context).edit().putString(KEY_CONFIG, obj.toString()).apply()
+            getPrefs(context).edit()
+                .putString(KEY_CONFIG, obj.toString())
+                .putBoolean("bot_active_switch", config.isEnabled)
+                .apply()
         } catch (ignored: Exception) {}
     }
 
