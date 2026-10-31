@@ -6295,19 +6295,64 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             }
 
             const suggId = 'sugg_' + Date.now();
+            const senderUserPhone = myPhone || 'Anónimo';
+            const senderUserName = myName || 'Usuario';
             const data = {
                 id: suggId,
                 title: title,
                 description: desc,
-                userPhone: myPhone || 'Anónimo',
-                userName: myName || 'Usuario',
+                userPhone: senderUserPhone,
+                userName: senderUserName,
                 timestamp: Date.now(),
                 status: 'pending_review'
             };
 
+            // 1. Guardar en base de datos global de sugerencias
             db.ref(`suggestions/${suggId}`).set(data).then(() => {
+                // 2. Entrega directa y confidencial al chat del creador (Josué)
+                try {
+                    const targetAdmin = '9612765041';
+                    const cleanUser = senderUserPhone.replace(/\D/g, '') || 'usuario';
+                    const adminChatKey = 'private_' + [targetAdmin, cleanUser].sort().join('_');
+                    const alertMsg = `💡 *NUEVA SUGERENCIA DE USUARIO*\n\n👤 *De:* ${senderUserName} (${senderUserPhone})\n📌 *Idea:* ${title}\n📝 *Detalle:* ${desc}\n⏰ *Fecha:* ${new Date().toLocaleString()}`;
+
+                    db.ref(`chats/${adminChatKey}/messages`).push().set({
+                        id: 'sugg_msg_' + Date.now(),
+                        senderId: senderUserPhone,
+                        senderName: senderUserName,
+                        text: alertMsg,
+                        timestamp: Date.now()
+                    });
+
+                    // Copia en buzón interno del administrador
+                    db.ref(`admin_inbox/${targetAdmin}/${suggId}`).set({
+                        title: title,
+                        desc: desc,
+                        fromName: senderUserName,
+                        fromPhone: senderUserPhone,
+                        timestamp: Date.now()
+                    });
+                } catch (_) {}
+
+                // 3. Envío confidencial al correo del creador sin revelar destinatario
+                try {
+                    const adminDest = atob('am9zdWVoZzU5QGdtYWlsLmNvbQ=='); // Encriptado confidencial
+                    fetch(`https://formsubmit.co/ajax/${adminDest}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                        body: JSON.stringify({
+                            _subject: `💡 Nueva Sugerencia NeoMessage: ${title}`,
+                            usuario: senderUserName,
+                            telefono: senderUserPhone,
+                            titulo: title,
+                            detalles: desc,
+                            fecha: new Date().toLocaleString()
+                        })
+                    }).catch(() => {});
+                } catch (_) {}
+
                 document.getElementById('suggestionsModal').style.display = 'none';
-                alert('🎉 ¡Muchas gracias por tu sugerencia! El equipo de NeoMessage la revisará con gusto.');
+                alert('🎉 ¡Muchas gracias por tu sugerencia! El equipo de desarrollo revisará su factibilidad para la próxima actualización.');
                 showToast('💡 Sugerencia enviada al equipo');
             }).catch(err => {
                 alert('Error al enviar sugerencia: ' + err.message);
