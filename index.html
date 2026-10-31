@@ -16,750 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%2300A884'/><text x='50' y='65' font-size='45' font-weight='900' text-anchor='middle' fill='%23FFF'>N</text></svg>">
 
     <!-- Firebase Compat SDK (Realtime Database Gratuita) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js">
-        // ========================================================
-        // GESTIÓN DE RESPUESTAS (REPLY) Y REENVÍO (FORWARD)
-        // ========================================================
-        let activeReply = null;
-        let contextTargetMsg = null;
-
-        function startReply(msgId, senderName, text) {
-            let cleanText = text || '';
-            if (cleanText.startsWith('[Document]|') || cleanText.startsWith('[File]')) {
-                cleanText = '📄 Archivo adjunto';
-            } else if (cleanText.startsWith('[Media]')) {
-                cleanText = '📷 Foto';
-            } else if (cleanText.startsWith('[Video]')) {
-                cleanText = '🎬 Video';
-            } else if (cleanText.startsWith('[Audio]')) {
-                cleanText = '🎵 Nota de voz';
-            }
-            activeReply = {
-                id: msgId,
-                senderName: senderName || 'Contacto',
-                text: cleanText.substring(0, 100)
-            };
-            document.getElementById('replyBarSender').innerText = `Respondiendo a ${activeReply.senderName}`;
-            document.getElementById('replyBarText').innerText = activeReply.text;
-            document.getElementById('replyBar').style.display = 'flex';
-            const msgInput = document.getElementById('messageInput');
-            if (msgInput) msgInput.focus();
-        }
-
-        function cancelReply() {
-            activeReply = null;
-            document.getElementById('replyBar').style.display = 'none';
-        }
-
-        // Menú Contextual
-        function openMsgMenu(e, msgId, senderName, text, isMine) {
-            e.stopPropagation();
-            contextTargetMsg = { id: msgId, senderName: senderName, text: text, isMine: isMine };
-            const menu = document.getElementById('msgContextMenu');
-            const delBtn = document.getElementById('contextDeleteBtn');
-            if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
-            const editBtn = document.getElementById('contextEditBtn');
-            if (editBtn) editBtn.style.display = isMine ? 'flex' : 'none';
-
-            let x = e.clientX;
-            let y = e.clientY;
-            if (x + 230 > window.innerWidth) x = window.innerWidth - 235;
-            if (y + 260 > window.innerHeight) y = window.innerHeight - 265;
-
-            menu.style.left = `${x}px`;
-            menu.style.top = `${y}px`;
-            menu.style.display = 'block';
-        }
-
-        document.addEventListener('click', () => {
-            const menu = document.getElementById('msgContextMenu');
-            if (menu) menu.style.display = 'none';
-        });
-
-        function triggerEditFromContext() {
-            if (!contextTargetMsg || !currentChatId) return;
-            const currentText = contextTargetMsg.text;
-            if (currentText.startsWith('[Document]|') || currentText.startsWith('[File]') || currentText.startsWith('[Media]') || currentText.startsWith('[Audio]') || currentText.startsWith('[Video]')) {
-                showToast('Solo se pueden editar mensajes de texto');
-                document.getElementById('msgContextMenu').style.display = 'none';
-                return;
-            }
-            const newText = prompt("Editar mensaje:", currentText);
-            if (newText !== null && newText.trim() !== "" && newText.trim() !== currentText) {
-                db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}`).update({
-                    text: newText.trim(),
-                    isEdited: true,
-                    editedAt: Date.now()
-                }).then(() => {
-                    showToast('✏️ Mensaje editado');
-                });
-            }
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerReplyFromContext() {
-            if (!contextTargetMsg) return;
-            startReply(contextTargetMsg.id, contextTargetMsg.senderName, contextTargetMsg.text);
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerCopyFromContext() {
-            if (!contextTargetMsg) return;
-            let t = contextTargetMsg.text;
-            if (t.startsWith('[Document]|') || t.startsWith('[File]')) t = t.split('|')[1] || t;
-            navigator.clipboard.writeText(t).then(() => showToast('📋 Mensaje copiado'));
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerStarFromContext() {
-            if (!contextTargetMsg || !currentChatId) return;
-            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/isStarred`).transaction(v => !v);
-            showToast('⭐ Mensaje destacado');
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerDeleteFromContext() {
-            if (!contextTargetMsg) return;
-            deleteSingleMessage(contextTargetMsg.id);
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function reactToContextMsg(emoji) {
-            if (!contextTargetMsg || !currentChatId) return;
-            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/reactions/${myPhone}`).set(emoji);
-            document.getElementById('msgContextMenu').style.display = 'none';
-            showToast(`Reacción ${emoji} enviada`);
-        }
-
-        // Reenviar mensaje
-        function triggerForwardFromContext() {
-            if (!contextTargetMsg) return;
-            const modal = document.getElementById('forwardModal');
-            const list = document.getElementById('forwardContactsList');
-            list.innerHTML = '';
-
-            const contacts = Object.values(cachedChats || {});
-            if (contacts.length === 0) {
-                list.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats recientes</div>';
-            } else {
-                contacts.forEach(c => {
-                    const item = document.createElement('div');
-                    item.className = 'contact-item';
-                    item.style.padding = '10px 14px';
-                    item.style.cursor = 'pointer';
-                    item.innerHTML = `
-                        <div class="avatar" style="width:40px;height:40px;font-size:16px;">${(c.name || 'C')[0]}</div>
-                        <div class="contact-info">
-                            <div class="contact-name">${escapeHtml(c.name || c.phone || 'Contacto')}</div>
-                            <div class="contact-last-msg" style="color:#8696A0;font-size:12px;">${escapeHtml(c.phone || '')}</div>
-                        </div>
-                    `;
-                    item.onclick = () => {
-                        forwardMessageToChat(c.id || c.phone, contextTargetMsg.text);
-                        closeForwardModal();
-                    };
-                    list.appendChild(item);
-                });
-            }
-
-            modal.style.display = 'flex';
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function closeForwardModal() {
-            document.getElementById('forwardModal').style.display = 'none';
-        }
-
-        function forwardMessageToChat(targetId, textPayload) {
-            if (!targetId || !textPayload) return;
-            const targetChatId = targetId.includes('_') ? targetId : [myPhone.replace(/\D/g,''), targetId.replace(/\D/g,'')].sort().join('_');
-            const newRef = db.ref(`chats/${targetChatId}/messages`).push();
-            newRef.set({
-                id: newRef.key,
-                text: textPayload,
-                timestamp: Date.now(),
-                senderId: myPhone,
-                senderName: myName,
-                rank: 'PC Desktop',
-                readBy: {}
-            }).then(() => {
-                showToast('↪ Mensaje reenviado');
-            });
-        }
-
-    
-        // ========================================================
-        // MOTOR COMPLETO DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP
-        // ========================================================
-        let currentPanelMode = 'emoji'; // 'emoji', 'gif', 'sticker'
-        
-        const EMOJI_DATABASE = {
-            recent: ['❤️', '😂', '👍', '🙏', '😍', '😊', '🔥', '🎉', '🥺', '👏', '✨', '💯', '🤔', '😎', '👌', '🙌'],
-            smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'],
-            animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦','🦥','🐁','🐀','🐿️','🦔'],
-            food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🥮','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🥛','🍼','☕','🫖','🍵','🧃','🥤','🧋','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾'],
-            activity: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🎱','🥏','🏓','🏸','🏒','🏑','🥍','🏏','⛳','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🏋️','🤺','🤼','🤸','⛹️','🤺','🤾','🧗','🚵','🚴','🏍️','🏎️','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩'],
-            travel: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛺','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥','🛳️','⛴️','🚢','⚓','⛽','🚧','🚥','🚦','🪧','🛑','🗺️','🗿','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛲','⛱️','🏖️','🏝️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🏠','🏡'],
-            objects: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','⏱️','⏲️','⏰','🕰️','⏳','⌛','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','🪙','💰','💳','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒️','🛠️','⛏️','🪚','🔩','⚙️','🪤','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬','⚰️','🪦','⚱️','🏺','🔮','📿','🧿'],
-            symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🈳','🈂️','🛂','🛃','🛄','🛅','🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
-        };
-
-        const GIF_DATABASE = [
-            { name: 'Risa', url: 'https://media.giphy.com/media/26n6Gx9moCgs1qxxt/giphy.gif' },
-            { name: 'Celebración', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
-            { name: 'OK / Perfecto', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
-            { name: 'Bailando', url: 'https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif' },
-            { name: 'Aplausos', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
-            { name: 'Sorpresa / WOW', url: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif' },
-            { name: 'Amor / Corazón', url: 'https://media.giphy.com/media/26FLdm964upN2ZYPA/giphy.gif' },
-            { name: 'Hola / Saludo', url: 'https://media.giphy.com/media/ASd0Ukj0BC5roG5Lmp/giphy.gif' },
-            { name: 'Dinero / Éxito', url: 'https://media.giphy.com/media/3o6gDWzmAzrpi5DQU8/giphy.gif' },
-            { name: 'Pensativo', url: 'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' }
-        ];
-
-        const STICKER_DATABASE = [
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo1',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo2',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo3',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo4',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Smile',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Cool',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Love',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Wink'
-        ];
-
-        function toggleEmojiStickerPanel() {
-            const p = document.getElementById('emojiStickerPanel');
-            if (p.style.display === 'flex') {
-                p.style.display = 'none';
-            } else {
-                p.style.display = 'flex';
-                renderPanelContent();
-            }
-        }
-
-        function switchPanelMode(mode) {
-            currentPanelMode = mode;
-            document.getElementById('tabModeEmoji').className = `panel-mode-tab ${mode === 'emoji' ? 'active' : ''}`;
-            document.getElementById('tabModeGif').className = `panel-mode-tab ${mode === 'gif' ? 'active' : ''}`;
-            document.getElementById('tabModeSticker').className = `panel-mode-tab ${mode === 'sticker' ? 'active' : ''}`;
-            
-            const header = document.getElementById('panelCategoriesHeader');
-            const search = document.getElementById('emojiSearchInput');
-            if (mode === 'emoji') {
-                header.style.display = 'flex';
-                search.placeholder = '🔍 Buscar emoji...';
-            } else if (mode === 'gif') {
-                header.style.display = 'none';
-                search.placeholder = '🔍 Buscar GIF...';
-            } else {
-                header.style.display = 'none';
-                search.placeholder = '🔍 Buscar en stickers de NeoMessage...';
-            }
-            renderPanelContent();
-        }
-
-        function renderPanelContent(filter = '') {
-            const body = document.getElementById('emojiPanelBody');
-            body.innerHTML = '';
-
-            if (currentPanelMode === 'emoji') {
-                // Render Emojis
-                const query = filter.trim().toLowerCase();
-                for (const [catName, emojis] of Object.entries(EMOJI_DATABASE)) {
-                    const filtered = query ? emojis.filter(e => e.includes(query)) : emojis;
-                    if (filtered.length === 0) continue;
-
-                    const title = document.createElement('div');
-                    title.className = 'emoji-section-title';
-                    title.innerText = catName;
-                    body.appendChild(title);
-
-                    const grid = document.createElement('div');
-                    grid.className = 'emoji-grid';
-                    filtered.forEach(em => {
-                        const it = document.createElement('span');
-                        it.className = 'emoji-item';
-                        it.innerText = em;
-                        it.onclick = () => {
-                            insertEmojiAtCursor(em);
-                        };
-                        grid.appendChild(it);
-                    });
-                    body.appendChild(grid);
-                }
-            } else if (currentPanelMode === 'gif') {
-                // Render GIFs
-                const grid = document.createElement('div');
-                grid.className = 'gif-grid';
-                const query = filter.trim().toLowerCase();
-                const gifs = query ? GIF_DATABASE.filter(g => g.name.toLowerCase().includes(query)) : GIF_DATABASE;
-
-                gifs.forEach(g => {
-                    const it = document.createElement('div');
-                    it.className = 'gif-item';
-                    it.title = g.name;
-                    it.innerHTML = `<img src="${g.url}" loading="lazy"><span style="position:absolute;bottom:4px;left:6px;font-size:10px;background:rgba(0,0,0,0.6);padding:2px 6px;border-radius:4px;color:#FFF;">${g.name}</span>`;
-                    it.onclick = () => {
-                        dispatchMessageObject('[Media] ' + g.url);
-                        toggleEmojiStickerPanel();
-                        showToast(`🎬 GIF '${g.name}' enviado`);
-                    };
-                    grid.appendChild(it);
-                });
-                body.appendChild(grid);
-            } else if (currentPanelMode === 'sticker') {
-                // Render Stickers
-                const grid = document.createElement('div');
-                grid.className = 'sticker-grid';
-
-                // Botón Crear Sticker
-                const createBtn = document.createElement('div');
-                createBtn.className = 'sticker-create-btn';
-                createBtn.innerHTML = '<span style="font-size:20px;">➕</span><span>Crear</span>';
-                createBtn.onclick = () => {
-                    const inp = document.createElement('input');
-                    inp.type = 'file';
-                    inp.accept = 'image/*';
-                    inp.onchange = (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (re) => {
-                                dispatchMessageObject('[Media] ' + re.target.result);
-                                toggleEmojiStickerPanel();
-                                showToast('✨ Sticker personalizado enviado');
-                            };
-                            reader.readAsDataURL(file);
-                        }
-                    };
-                    inp.click();
-                };
-                grid.appendChild(createBtn);
-
-                STICKER_DATABASE.forEach((stUrl, idx) => {
-                    const it = document.createElement('div');
-                    it.className = 'sticker-item';
-                    it.innerHTML = `<img src="${stUrl}" loading="lazy">`;
-                    it.onclick = () => {
-                        dispatchMessageObject('[Media] ' + stUrl);
-                        toggleEmojiStickerPanel();
-                        showToast('✨ Sticker enviado');
-                    };
-                    grid.appendChild(it);
-                });
-                body.appendChild(grid);
-            }
-        }
-
-        function switchEmojiCategory(catKey) {
-            const body = document.getElementById('emojiPanelBody');
-            body.innerHTML = '';
-            const emojis = EMOJI_DATABASE[catKey] || [];
-            const grid = document.createElement('div');
-            grid.className = 'emoji-grid';
-            emojis.forEach(em => {
-                const it = document.createElement('span');
-                it.className = 'emoji-item';
-                it.innerText = em;
-                it.onclick = () => insertEmojiAtCursor(em);
-                grid.appendChild(it);
-            });
-            body.appendChild(grid);
-
-            // update active header
-            document.querySelectorAll('.panel-cat-icon').forEach(icon => icon.classList.remove('active'));
-            if (event && event.target) event.target.classList.add('active');
-        }
-
-        function filterEmojiContent(val) {
-            renderPanelContent(val);
-        }
-
-        function insertEmojiAtCursor(emoji) {
-            const input = document.getElementById('messageInput');
-            if (!input) return;
-            const start = input.selectionStart || input.value.length;
-            const end = input.selectionEnd || input.value.length;
-            const text = input.value;
-            input.value = text.substring(0, start) + emoji + text.substring(end);
-            input.selectionStart = input.selectionEnd = start + emoji.length;
-            input.focus();
-        }
-
-    </script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js">
-        // ========================================================
-        // GESTIÓN DE RESPUESTAS (REPLY) Y REENVÍO (FORWARD)
-        // ========================================================
-        let activeReply = null;
-        let contextTargetMsg = null;
-
-        function startReply(msgId, senderName, text) {
-            let cleanText = text || '';
-            if (cleanText.startsWith('[Document]|') || cleanText.startsWith('[File]')) {
-                cleanText = '📄 Archivo adjunto';
-            } else if (cleanText.startsWith('[Media]')) {
-                cleanText = '📷 Foto';
-            } else if (cleanText.startsWith('[Video]')) {
-                cleanText = '🎬 Video';
-            } else if (cleanText.startsWith('[Audio]')) {
-                cleanText = '🎵 Nota de voz';
-            }
-            activeReply = {
-                id: msgId,
-                senderName: senderName || 'Contacto',
-                text: cleanText.substring(0, 100)
-            };
-            document.getElementById('replyBarSender').innerText = `Respondiendo a ${activeReply.senderName}`;
-            document.getElementById('replyBarText').innerText = activeReply.text;
-            document.getElementById('replyBar').style.display = 'flex';
-            const msgInput = document.getElementById('messageInput');
-            if (msgInput) msgInput.focus();
-        }
-
-        function cancelReply() {
-            activeReply = null;
-            document.getElementById('replyBar').style.display = 'none';
-        }
-
-        // Menú Contextual
-        function openMsgMenu(e, msgId, senderName, text, isMine) {
-            e.stopPropagation();
-            contextTargetMsg = { id: msgId, senderName: senderName, text: text, isMine: isMine };
-            const menu = document.getElementById('msgContextMenu');
-            const delBtn = document.getElementById('contextDeleteBtn');
-            if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
-            const editBtn = document.getElementById('contextEditBtn');
-            if (editBtn) editBtn.style.display = isMine ? 'flex' : 'none';
-
-            let x = e.clientX;
-            let y = e.clientY;
-            if (x + 230 > window.innerWidth) x = window.innerWidth - 235;
-            if (y + 260 > window.innerHeight) y = window.innerHeight - 265;
-
-            menu.style.left = `${x}px`;
-            menu.style.top = `${y}px`;
-            menu.style.display = 'block';
-        }
-
-        document.addEventListener('click', () => {
-            const menu = document.getElementById('msgContextMenu');
-            if (menu) menu.style.display = 'none';
-        });
-
-        function triggerEditFromContext() {
-            if (!contextTargetMsg || !currentChatId) return;
-            const currentText = contextTargetMsg.text;
-            if (currentText.startsWith('[Document]|') || currentText.startsWith('[File]') || currentText.startsWith('[Media]') || currentText.startsWith('[Audio]') || currentText.startsWith('[Video]')) {
-                showToast('Solo se pueden editar mensajes de texto');
-                document.getElementById('msgContextMenu').style.display = 'none';
-                return;
-            }
-            const newText = prompt("Editar mensaje:", currentText);
-            if (newText !== null && newText.trim() !== "" && newText.trim() !== currentText) {
-                db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}`).update({
-                    text: newText.trim(),
-                    isEdited: true,
-                    editedAt: Date.now()
-                }).then(() => {
-                    showToast('✏️ Mensaje editado');
-                });
-            }
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerReplyFromContext() {
-            if (!contextTargetMsg) return;
-            startReply(contextTargetMsg.id, contextTargetMsg.senderName, contextTargetMsg.text);
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerCopyFromContext() {
-            if (!contextTargetMsg) return;
-            let t = contextTargetMsg.text;
-            if (t.startsWith('[Document]|') || t.startsWith('[File]')) t = t.split('|')[1] || t;
-            navigator.clipboard.writeText(t).then(() => showToast('📋 Mensaje copiado'));
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerStarFromContext() {
-            if (!contextTargetMsg || !currentChatId) return;
-            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/isStarred`).transaction(v => !v);
-            showToast('⭐ Mensaje destacado');
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function triggerDeleteFromContext() {
-            if (!contextTargetMsg) return;
-            deleteSingleMessage(contextTargetMsg.id);
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function reactToContextMsg(emoji) {
-            if (!contextTargetMsg || !currentChatId) return;
-            db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/reactions/${myPhone}`).set(emoji);
-            document.getElementById('msgContextMenu').style.display = 'none';
-            showToast(`Reacción ${emoji} enviada`);
-        }
-
-        // Reenviar mensaje
-        function triggerForwardFromContext() {
-            if (!contextTargetMsg) return;
-            const modal = document.getElementById('forwardModal');
-            const list = document.getElementById('forwardContactsList');
-            list.innerHTML = '';
-
-            const contacts = Object.values(cachedChats || {});
-            if (contacts.length === 0) {
-                list.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats recientes</div>';
-            } else {
-                contacts.forEach(c => {
-                    const item = document.createElement('div');
-                    item.className = 'contact-item';
-                    item.style.padding = '10px 14px';
-                    item.style.cursor = 'pointer';
-                    item.innerHTML = `
-                        <div class="avatar" style="width:40px;height:40px;font-size:16px;">${(c.name || 'C')[0]}</div>
-                        <div class="contact-info">
-                            <div class="contact-name">${escapeHtml(c.name || c.phone || 'Contacto')}</div>
-                            <div class="contact-last-msg" style="color:#8696A0;font-size:12px;">${escapeHtml(c.phone || '')}</div>
-                        </div>
-                    `;
-                    item.onclick = () => {
-                        forwardMessageToChat(c.id || c.phone, contextTargetMsg.text);
-                        closeForwardModal();
-                    };
-                    list.appendChild(item);
-                });
-            }
-
-            modal.style.display = 'flex';
-            document.getElementById('msgContextMenu').style.display = 'none';
-        }
-
-        function closeForwardModal() {
-            document.getElementById('forwardModal').style.display = 'none';
-        }
-
-        function forwardMessageToChat(targetId, textPayload) {
-            if (!targetId || !textPayload) return;
-            const targetChatId = targetId.includes('_') ? targetId : [myPhone.replace(/\D/g,''), targetId.replace(/\D/g,'')].sort().join('_');
-            const newRef = db.ref(`chats/${targetChatId}/messages`).push();
-            newRef.set({
-                id: newRef.key,
-                text: textPayload,
-                timestamp: Date.now(),
-                senderId: myPhone,
-                senderName: myName,
-                rank: 'PC Desktop',
-                readBy: {}
-            }).then(() => {
-                showToast('↪ Mensaje reenviado');
-            });
-        }
-
-    
-        // ========================================================
-        // MOTOR COMPLETO DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP
-        // ========================================================
-        let currentPanelMode = 'emoji'; // 'emoji', 'gif', 'sticker'
-        
-        const EMOJI_DATABASE = {
-            recent: ['❤️', '😂', '👍', '🙏', '😍', '😊', '🔥', '🎉', '🥺', '👏', '✨', '💯', '🤔', '😎', '👌', '🙌'],
-            smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'],
-            animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦','🦥','🐁','🐀','🐿️','🦔'],
-            food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🥮','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🥛','🍼','☕','🫖','🍵','🧃','🥤','🧋','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾'],
-            activity: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🎱','🥏','🏓','🏸','🏒','🏑','🥍','🏏','⛳','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🏋️','🤺','🤼','🤸','⛹️','🤺','🤾','🧗','🚵','🚴','🏍️','🏎️','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩'],
-            travel: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛺','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥','🛳️','⛴️','🚢','⚓','⛽','🚧','🚥','🚦','🪧','🛑','🗺️','🗿','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛲','⛱️','🏖️','🏝️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🏠','🏡'],
-            objects: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','⏱️','⏲️','⏰','🕰️','⏳','⌛','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','🪙','💰','💳','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒️','🛠️','⛏️','🪚','🔩','⚙️','🪤','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬','⚰️','🪦','⚱️','🏺','🔮','📿','🧿'],
-            symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🈳','🈂️','🛂','🛃','🛄','🛅','🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
-        };
-
-        const GIF_DATABASE = [
-            { name: 'Risa', url: 'https://media.giphy.com/media/26n6Gx9moCgs1qxxt/giphy.gif' },
-            { name: 'Celebración', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
-            { name: 'OK / Perfecto', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
-            { name: 'Bailando', url: 'https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif' },
-            { name: 'Aplausos', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
-            { name: 'Sorpresa / WOW', url: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif' },
-            { name: 'Amor / Corazón', url: 'https://media.giphy.com/media/26FLdm964upN2ZYPA/giphy.gif' },
-            { name: 'Hola / Saludo', url: 'https://media.giphy.com/media/ASd0Ukj0BC5roG5Lmp/giphy.gif' },
-            { name: 'Dinero / Éxito', url: 'https://media.giphy.com/media/3o6gDWzmAzrpi5DQU8/giphy.gif' },
-            { name: 'Pensativo', url: 'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' }
-        ];
-
-        const STICKER_DATABASE = [
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo1',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo2',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo3',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo4',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Smile',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Cool',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Love',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Wink'
-        ];
-
-        function toggleEmojiStickerPanel() {
-            const p = document.getElementById('emojiStickerPanel');
-            if (p.style.display === 'flex') {
-                p.style.display = 'none';
-            } else {
-                p.style.display = 'flex';
-                renderPanelContent();
-            }
-        }
-
-        function switchPanelMode(mode) {
-            currentPanelMode = mode;
-            document.getElementById('tabModeEmoji').className = `panel-mode-tab ${mode === 'emoji' ? 'active' : ''}`;
-            document.getElementById('tabModeGif').className = `panel-mode-tab ${mode === 'gif' ? 'active' : ''}`;
-            document.getElementById('tabModeSticker').className = `panel-mode-tab ${mode === 'sticker' ? 'active' : ''}`;
-            
-            const header = document.getElementById('panelCategoriesHeader');
-            const search = document.getElementById('emojiSearchInput');
-            if (mode === 'emoji') {
-                header.style.display = 'flex';
-                search.placeholder = '🔍 Buscar emoji...';
-            } else if (mode === 'gif') {
-                header.style.display = 'none';
-                search.placeholder = '🔍 Buscar GIF...';
-            } else {
-                header.style.display = 'none';
-                search.placeholder = '🔍 Buscar en stickers de NeoMessage...';
-            }
-            renderPanelContent();
-        }
-
-        function renderPanelContent(filter = '') {
-            const body = document.getElementById('emojiPanelBody');
-            body.innerHTML = '';
-
-            if (currentPanelMode === 'emoji') {
-                // Render Emojis
-                const query = filter.trim().toLowerCase();
-                for (const [catName, emojis] of Object.entries(EMOJI_DATABASE)) {
-                    const filtered = query ? emojis.filter(e => e.includes(query)) : emojis;
-                    if (filtered.length === 0) continue;
-
-                    const title = document.createElement('div');
-                    title.className = 'emoji-section-title';
-                    title.innerText = catName;
-                    body.appendChild(title);
-
-                    const grid = document.createElement('div');
-                    grid.className = 'emoji-grid';
-                    filtered.forEach(em => {
-                        const it = document.createElement('span');
-                        it.className = 'emoji-item';
-                        it.innerText = em;
-                        it.onclick = () => {
-                            insertEmojiAtCursor(em);
-                        };
-                        grid.appendChild(it);
-                    });
-                    body.appendChild(grid);
-                }
-            } else if (currentPanelMode === 'gif') {
-                // Render GIFs
-                const grid = document.createElement('div');
-                grid.className = 'gif-grid';
-                const query = filter.trim().toLowerCase();
-                const gifs = query ? GIF_DATABASE.filter(g => g.name.toLowerCase().includes(query)) : GIF_DATABASE;
-
-                gifs.forEach(g => {
-                    const it = document.createElement('div');
-                    it.className = 'gif-item';
-                    it.title = g.name;
-                    it.innerHTML = `<img src="${g.url}" loading="lazy"><span style="position:absolute;bottom:4px;left:6px;font-size:10px;background:rgba(0,0,0,0.6);padding:2px 6px;border-radius:4px;color:#FFF;">${g.name}</span>`;
-                    it.onclick = () => {
-                        dispatchMessageObject('[Media] ' + g.url);
-                        toggleEmojiStickerPanel();
-                        showToast(`🎬 GIF '${g.name}' enviado`);
-                    };
-                    grid.appendChild(it);
-                });
-                body.appendChild(grid);
-            } else if (currentPanelMode === 'sticker') {
-                // Render Stickers
-                const grid = document.createElement('div');
-                grid.className = 'sticker-grid';
-
-                // Botón Crear Sticker
-                const createBtn = document.createElement('div');
-                createBtn.className = 'sticker-create-btn';
-                createBtn.innerHTML = '<span style="font-size:20px;">➕</span><span>Crear</span>';
-                createBtn.onclick = () => {
-                    const inp = document.createElement('input');
-                    inp.type = 'file';
-                    inp.accept = 'image/*';
-                    inp.onchange = (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (re) => {
-                                dispatchMessageObject('[Media] ' + re.target.result);
-                                toggleEmojiStickerPanel();
-                                showToast('✨ Sticker personalizado enviado');
-                            };
-                            reader.readAsDataURL(file);
-                        }
-                    };
-                    inp.click();
-                };
-                grid.appendChild(createBtn);
-
-                STICKER_DATABASE.forEach((stUrl, idx) => {
-                    const it = document.createElement('div');
-                    it.className = 'sticker-item';
-                    it.innerHTML = `<img src="${stUrl}" loading="lazy">`;
-                    it.onclick = () => {
-                        dispatchMessageObject('[Media] ' + stUrl);
-                        toggleEmojiStickerPanel();
-                        showToast('✨ Sticker enviado');
-                    };
-                    grid.appendChild(it);
-                });
-                body.appendChild(grid);
-            }
-        }
-
-        function switchEmojiCategory(catKey) {
-            const body = document.getElementById('emojiPanelBody');
-            body.innerHTML = '';
-            const emojis = EMOJI_DATABASE[catKey] || [];
-            const grid = document.createElement('div');
-            grid.className = 'emoji-grid';
-            emojis.forEach(em => {
-                const it = document.createElement('span');
-                it.className = 'emoji-item';
-                it.innerText = em;
-                it.onclick = () => insertEmojiAtCursor(em);
-                grid.appendChild(it);
-            });
-            body.appendChild(grid);
-
-            // update active header
-            document.querySelectorAll('.panel-cat-icon').forEach(icon => icon.classList.remove('active'));
-            if (event && event.target) event.target.classList.add('active');
-        }
-
-        function filterEmojiContent(val) {
-            renderPanelContent(val);
-        }
-
-        function insertEmojiAtCursor(emoji) {
-            const input = document.getElementById('messageInput');
-            if (!input) return;
-            const start = input.selectionStart || input.value.length;
-            const end = input.selectionEnd || input.value.length;
-            const text = input.value;
-            input.value = text.substring(0, start) + emoji + text.substring(end);
-            input.selectionStart = input.selectionEnd = start + emoji.length;
-            input.focus();
-        }
-
-    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -2217,6 +1475,44 @@
         }
 
         /* Menú Contextual Flotante WhatsApp */
+        
+        /* Reacciones flotantes estilo WhatsApp */
+        .msg-reaction-badge {
+            position: absolute;
+            bottom: -8px;
+            right: 8px;
+            background: #202C33;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 1px 6px;
+            font-size: 13px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            z-index: 5;
+            cursor: pointer;
+        }
+        .msg-reaction-badge:hover {
+            transform: scale(1.1);
+        }
+        /* Stickers estilo WhatsApp transparente */
+        .msg-bubble.sticker-bubble {
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 2px !important;
+        }
+        .msg-sticker-img {
+            width: 140px;
+            height: 140px;
+            object-fit: contain;
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+        .msg-sticker-img:hover {
+            transform: scale(1.05);
+        }
+
         .msg-context-menu {
             position: fixed;
             background: #233138;
@@ -5030,20 +4326,31 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             
             const isMine = (msg.senderId || '').replace(/\D/g, '') === myPhone.replace(/\D/g, '');
             b.className = `msg-bubble ${isMine ? 'me' : 'other'}`;
+            b.id = 'msg_' + (msg.id || '');
 
             const text = msg.text || '';
             const timeStr = formatTime(msg.timestamp || Date.now());
 
-            // REGLA EXACTA DE PALOMITAS:
-            // 1 palomita gris mientras no lo lea
-            // 2 palomitas azules cuando lo lea
+            // Doble clic para responder (WhatsApp Web / Mobile)
+            b.ondblclick = () => {
+                startReply(msg.id, msg.senderName || '', text);
+            };
+
+            // Clic derecho abre menú contextual WhatsApp
+            b.oncontextmenu = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openMsgMenu(e, msg.id, msg.senderName || '', text, isMine);
+            };
+
+            // Palomitas
             const isReadByOther = msg.readBy && Object.keys(msg.readBy).some(k => k.replace(/\D/g, '') !== myPhone);
             const checkmarksHtml = isReadByOther 
                 ? '<span style="color:#53BDEB; font-weight:bold; font-size:13px; margin-left:4px;" title="Leído">✓✓</span>' 
                 : '<span style="color:#8696A0; font-weight:bold; font-size:13px; margin-left:4px;" title="Enviado (no leído)">✓</span>';
 
-            const deleteAction = `<span class="msg-actions" onclick="deleteSingleMessage('${msg.id}')" title="Eliminar Mensaje">🗑️</span>`;
             const menuBtnHtml = `<div class="msg-menu-btn" onclick="openMsgMenu(event, '${msg.id}', decodeURIComponent('${encodeURIComponent(msg.senderName || '')}'), decodeURIComponent('${encodeURIComponent(text)}'), ${isMine})" title="Opciones del mensaje">⏷</div>`;
+            
             const quoteHtml = msg.replyToText ? `
                 <div class="msg-quoted-box" onclick="scrollToMessage('${msg.replyToId || ''}')">
                     <div class="quoted-sender">${escapeHtml(msg.replyToSender || 'Mensaje')}</div>
@@ -5051,9 +4358,19 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 </div>
             ` : '';
 
-            // 1. MENSAJES ELIMINADOS ESTILO WHATSAPP WINDOWS EXACTO
+            // Reacciones
+            let reactionsHtml = '';
+            if (msg.reactions && typeof msg.reactions === 'object') {
+                const rxList = Object.values(msg.reactions);
+                if (rxList.length > 0) {
+                    reactionsHtml = `<div class="msg-reaction-badge" title="${rxList.length} reacción(es)">${rxList.slice(0, 3).join('')}${rxList.length > 1 ? ` <span style="font-size:10px; color:#8696A0;">${rxList.length}</span>` : ''}</div>`;
+                }
+            }
+
+            // 1. MENSAJES ELIMINADOS
             if (text === '[DELETED]' || msg.deleted) {
                 b.innerHTML = `
+                    ${menuBtnHtml}
                     <div class="msg-deleted">
                         <span style="font-size:14px;">🚫</span>
                         <span>${isMine ? 'Eliminaste este mensaje.' : 'Este mensaje fue eliminado.'}</span>
@@ -5063,8 +4380,22 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
+            } else if (text.startsWith('[Sticker] ')) {
+                // 2. STICKER TRANSPARENTE ESTILO WHATSAPP
+                const src = text.replace('[Sticker] ', '').trim();
+                b.classList.add('sticker-bubble');
+                b.innerHTML = `
+                    ${menuBtnHtml}
+                    ${quoteHtml}
+                    <img src="${src}" class="msg-sticker-img" loading="lazy">
+                    <div class="msg-footer" style="background:rgba(0,0,0,0.5); border-radius:10px; padding:2px 6px; display:inline-flex; width:fit-content; margin-left:auto;">
+                        ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                    ${reactionsHtml}
+                `;
             } else if (text.startsWith('[Document]|') || text.startsWith('[File]')) {
-                // 2. ARCHIVOS ADJUNTOS (ZIP, RAR, PDF, WORD, EXCEL, PPT, APK, ETC.)
+                // 3. ARCHIVOS ADJUNTOS
                 let docName = 'Documento';
                 let docSize = '';
                 let docUrl = '';
@@ -5099,10 +4430,9 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 const safeDocUrl = encodeURIComponent(docUrl);
 
                 b.innerHTML = `
-                    ${deleteAction}
                     ${menuBtnHtml}
-                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     ${quoteHtml}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <div class="doc-msg-box">
                         <div class="doc-icon">${docIcon}</div>
                         <div class="doc-info">
@@ -5115,13 +4445,15 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
+                    ${reactionsHtml}
                 `;
             } else if (text.startsWith('[Audio] ')) {
-                // 3. NOTAS DE VOZ CON REPRODUCTOR INTERACTIVO
+                // 4. NOTAS DE VOZ
                 const audioSrc = text.replace('[Audio] ', '').trim();
                 const aId = 'audio_' + (msg.id || Math.random().toString(36).substring(7));
                 b.innerHTML = `
-                    ${deleteAction}
+                    ${menuBtnHtml}
+                    ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <div class="audio-msg-box">
                         <button class="audio-play-btn" id="btn_${aId}" onclick="toggleAudioMsgPlayback('${aId}')">▶</button>
@@ -5135,12 +4467,14 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
+                    ${reactionsHtml}
                 `;
             } else if (text.startsWith('[Video] ')) {
-                // 4. VIDEO EN CHAT
+                // 5. VIDEO
                 const vidSrc = text.replace('[Video] ', '').trim();
                 b.innerHTML = `
-                    ${deleteAction}
+                    ${menuBtnHtml}
+                    ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <div style="max-width:320px; border-radius:10px; overflow:hidden; margin-top:4px;">
                         <video src="${vidSrc}" controls playsinline style="width:100%; border-radius:10px; max-height:260px; background:#000;"></video>
@@ -5149,8 +4483,10 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
+                    ${reactionsHtml}
                 `;
             } else if (text.startsWith('[NEO_QUOTE]|')) {
+                // 6. COTIZACIÓN
                 const p = text.replace('[NEO_QUOTE]|', '').split('|');
                 const folio = p[1] || 'FOLIO #000';
                 const oficio = (p[2] || 'TRABAJO').toUpperCase();
@@ -5165,7 +4501,8 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 const copyText = `📋 COTIZACIÓN NEOMESSAGE\nFolio: ${folio} | ${oficio}\nTrabajo: ${concept}\n• Materiales: $${mat.toFixed(2)}\n• Mano de Obra: $${lab.toFixed(2)}\nTOTAL: $${total.toFixed(2)}\nAnticipo: $${adv.toFixed(2)}\nSaldo restante: $${bal.toFixed(2)}\nNotas: ${notes}`;
 
                 b.innerHTML = `
-                    ${deleteAction}
+                    ${menuBtnHtml}
+                    ${quoteHtml}
                     <div class="quote-box">
                         <div class="quote-badge-row">
                             <span class="quote-badge">${oficio}</span>
@@ -5183,31 +4520,50 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
+                    ${reactionsHtml}
                 `;
             } else if (text.startsWith('[Media]')) {
+                // 7. FOTO ADJUNTA
                 const src = text.replace('[Media] ', '').trim();
                 b.innerHTML = `
-                    ${deleteAction}
-                    <div>📷 Foto adjunta:</div>
+                    ${menuBtnHtml}
+                    ${quoteHtml}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     <img src="${src}" class="msg-photo" onclick="window.open('${src}')">
                     <div class="msg-footer">
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
+                    ${reactionsHtml}
                 `;
             } else {
+                // 8. TEXTO ESTÁNDAR
                 b.innerHTML = `
-                    ${deleteAction}
+                    ${menuBtnHtml}
+                    ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
-                    <div>${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+                    <div class="msg-text-content">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
                     <div class="msg-footer">
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
                     </div>
+                    ${reactionsHtml}
                 `;
             }
 
             container.appendChild(b);
+        }
+
+        function scrollToMessage(msgId) {
+            if (!msgId) return;
+            const el = document.getElementById('msg_' + msgId);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.style.transition = 'all 0.3s';
+                const origOutline = el.style.outline;
+                el.style.outline = '2px solid var(--neon-green)';
+                setTimeout(() => { el.style.outline = origOutline; }, 1500);
+            }
         }
 
         
@@ -5949,15 +5305,23 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             { name: 'Pensativo', url: 'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' }
         ];
 
-        const STICKER_DATABASE = [
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo1',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo2',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo3',
-            'https://api.dicebear.com/7.x/bottts/svg?seed=Neo4',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Smile',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Cool',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Love',
-            'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Wink'
+                const STICKER_DATABASE = [
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Grinning%20Face%20with%20Big%20Eyes.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Rolling%20on%20the%20Floor%20Laughing.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Face%20with%20Tears%20of%20Joy.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Smiling%20Face%20with%20Heart-Eyes.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Star-Struck.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Partying%20Face.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Smiling%20Face%20with%20Sunglasses.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Money-Mouth%20Face.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Thinking%20Face.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Exploding%20Head.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Fire.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Thumbs%20Up.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Folded%20Hands.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Clapping%20Hands.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Heart%20with%20Arrow.png',
+            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Activities/Party%20Popper.png'
         ];
 
         function toggleEmojiStickerPanel() {
@@ -6058,7 +5422,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         if (file) {
                             const reader = new FileReader();
                             reader.onload = (re) => {
-                                dispatchMessageObject('[Media] ' + re.target.result);
+                                dispatchMessageObject('[Sticker] ' + re.target.result);
                                 toggleEmojiStickerPanel();
                                 showToast('✨ Sticker personalizado enviado');
                             };
@@ -6074,7 +5438,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     it.className = 'sticker-item';
                     it.innerHTML = `<img src="${stUrl}" loading="lazy">`;
                     it.onclick = () => {
-                        dispatchMessageObject('[Media] ' + stUrl);
+                        dispatchMessageObject('[Sticker] ' + stUrl);
                         toggleEmojiStickerPanel();
                         showToast('✨ Sticker enviado');
                     };
