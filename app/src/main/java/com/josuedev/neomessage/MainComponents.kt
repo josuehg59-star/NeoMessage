@@ -365,13 +365,13 @@ fun LoginView(
                         )
                     } else {
                         Spacer(Modifier.height(8.dp))
-                        Text("🔒 Protege tu número en este celular creando tu PIN de 6 dígitos:", color = Color.LightGray, fontSize = 11.sp)
+                        Text("🔒 Si deseas proteger tu cuenta con PIN, créalo aquí (Opcional):", color = Color.LightGray, fontSize = 11.sp)
                         Spacer(Modifier.height(4.dp))
                         OutlinedTextField(
                             value = pin,
                             onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pin = it },
-                            label = { Text("Crear PIN de Seguridad (6 dígitos)") },
-                            placeholder = { Text("••••••", color = Color.Gray) },
+                            label = { Text("PIN de Seguridad (Opcional)") },
+                            placeholder = { Text("Opcional (déjalo vacío si no deseas PIN)", color = Color.Gray) },
                             modifier = Modifier.fillMaxWidth(),
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
                             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
@@ -456,11 +456,13 @@ fun LoginView(
 
                     Spacer(Modifier.height(8.dp))
 
+                    Text("🔒 Si deseas proteger tu cuenta, puedes crear un PIN (Opcional):", color = Color.LightGray, fontSize = 11.sp)
+                    Spacer(Modifier.height(4.dp))
                     OutlinedTextField(
                         value = pin,
                         onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pin = it },
-                        label = { Text("Crea tu PIN de Seguridad (6 dígitos)") },
-                        placeholder = { Text("••••••", color = Color.Gray) },
+                        label = { Text("PIN de Seguridad (Opcional - 6 dígitos)") },
+                        placeholder = { Text("Opcional (déjalo vacío si no deseas PIN)", color = Color.Gray) },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
@@ -476,27 +478,28 @@ fun LoginView(
                         singleLine = true
                     )
 
-                    Spacer(Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = confirmPin,
-                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) confirmPin = it },
-                        label = { Text("Confirmar PIN de Seguridad (6 dígitos)") },
-                        placeholder = { Text("••••••", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedLabelColor = NeoTheme.Green,
-                            unfocusedLabelColor = Color.Gray,
-                            focusedBorderColor = NeoTheme.Green,
-                            unfocusedBorderColor = Color.DarkGray,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        ),
-                        singleLine = true
-                    )
+                    if (pin.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = confirmPin,
+                            onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) confirmPin = it },
+                            label = { Text("Confirmar PIN de Seguridad") },
+                            placeholder = { Text("••••••", color = Color.Gray) },
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedLabelColor = NeoTheme.Green,
+                                unfocusedLabelColor = Color.Gray,
+                                focusedBorderColor = NeoTheme.Green,
+                                unfocusedBorderColor = Color.DarkGray,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            singleLine = true
+                        )
+                    }
 
                     Button(
                         onClick = {
@@ -504,13 +507,15 @@ fun LoginView(
                                 android.widget.Toast.makeText(context, "Ingresa tu nombre completo.", android.widget.Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
-                            if (pin.length != 6) {
-                                android.widget.Toast.makeText(context, "El PIN debe tener exactamente 6 dígitos.", android.widget.Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            if (pin != confirmPin) {
-                                android.widget.Toast.makeText(context, "Los PIN ingresados no coinciden.", android.widget.Toast.LENGTH_SHORT).show()
-                                return@Button
+                            if (pin.isNotBlank()) {
+                                if (pin.length != 6) {
+                                    android.widget.Toast.makeText(context, "Si deseas configurar un PIN, debe tener 6 dígitos (o déjalo vacío).", android.widget.Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                if (confirmPin.isNotBlank() && pin != confirmPin) {
+                                    android.widget.Toast.makeText(context, "Los PIN ingresados no coinciden.", android.widget.Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
                             }
                             val clean = NeoUtils.sanitizeId(phone)
                             onLogin(name.trim(), clean, pin)
@@ -737,56 +742,57 @@ fun ChatsListScreen(
                 override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
             })
 
-            // B) USUARIOS INDIVIDUALES (OPTIMIZADO SIN FUGAS DE MEMORIA PARA QUE EL CELULAR NO SE ALIENTE)
-            userIdsRef.addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    val seenPhones = mutableSetOf<String>()
-                    snapshot.children.forEach { child ->
-                        val otherId = child.key ?: ""
-                        val otherCleanId = NeoUtils.sanitizeId(otherId)
-                        val canonicalPhone = otherCleanId.takeLast(10)
-                        
-                        if (canonicalPhone.isNotEmpty() && canonicalPhone != myCleanId.takeLast(10)) {
-                            if (seenPhones.contains(canonicalPhone)) return@forEach
-                            seenPhones.add(canonicalPhone)
-
-                            val name = child.child("name").getValue(String::class.java) ?: "Neo"
-                            val chatId = NeoUtils.getChatId(myCleanId, canonicalPhone)
-                            
-                            if (!listenedChatIds.contains(chatId)) {
-                                listenedChatIds.add(chatId)
-                                db.getReference("chats").child(chatId).child("messages").limitToLast(1)
-                                    .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                                        override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
-                                            val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
-                                            if (lastMsgObj != null) {
-                                                val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
-                                                val cleanMe = NeoUtils.sanitizeId(myCleanId)
-                                                if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
-                                                    NeoBotManager.dispatchAutoReplyIfNeeded(
-                                                        context = context,
-                                                        chatId = chatId,
-                                                        senderId = lastMsgObj.senderId,
-                                                        myId = cleanMe,
-                                                        incomingText = lastMsgObj.text,
-                                                        msgTimestamp = lastMsgObj.timestamp
-                                                    )
-                                                }
-                                                val lastMsgText = lastMsgObj.text
-                                                val lastMsgTime = lastMsgObj.timestamp
-                                                updateEntry(NeoChatEntry(name, chatId, lastMsgText, lastMsgTime))
-                                            } else {
-                                                if (found.any { it.chatId == chatId }) { found.removeAll { it.chatId == chatId } }
-                                            }
-                                        }
-                                        override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
-                                    })
-                            }
-                        }
-                    }
+            // B) USUARIOS INDIVIDUALES: SOLO CONTACTOS REGISTRADOS EN TU AGENDA O CONVERSACIONES EXISTENTES
+            // Ningún usuario extraño de la base de datos es escuchado ni agregado a la pantalla.
+            val contactsToListen = mutableSetOf<String>()
+            spContacts.all.forEach { (phone, _) ->
+                val clean = NeoUtils.sanitizeId(phone).takeLast(10)
+                if (clean.isNotEmpty() && clean != myCleanId.takeLast(10)) {
+                    contactsToListen.add(clean)
                 }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
-            })
+            }
+
+            contactsToListen.forEach { canonicalPhone ->
+                val name = spContacts.getString(canonicalPhone, null) ?: "Contacto ($canonicalPhone)"
+                val chatId = NeoUtils.getChatId(myCleanId, canonicalPhone)
+                if (!listenedChatIds.contains(chatId)) {
+                    listenedChatIds.add(chatId)
+                    db.getReference("chats").child(chatId).child("messages").limitToLast(1)
+                        .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                            override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
+                                val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
+                                if (lastMsgObj != null) {
+                                    val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
+                                    val cleanMe = NeoUtils.sanitizeId(myCleanId)
+                                    if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
+                                        NeoBotManager.dispatchAutoReplyIfNeeded(
+                                            context = context,
+                                            chatId = chatId,
+                                            senderId = lastMsgObj.senderId,
+                                            myId = cleanMe,
+                                            incomingText = lastMsgObj.text,
+                                            msgTimestamp = lastMsgObj.timestamp
+                                        )
+                                    }
+                                    // ULTRA-OPTIMIZADO: NUNCA pasar Base64 al motor de texto de Compose
+                                    val previewText = when {
+                                        lastMsgObj.text.startsWith("[Media]") -> "📷 Foto"
+                                        lastMsgObj.text.startsWith("[Document]|") || lastMsgObj.text.startsWith("[File]") -> "📄 Archivo"
+                                        lastMsgObj.text.startsWith("[Voice]") || lastMsgObj.text.startsWith("[Audio]") -> "🎤 Mensaje de voz"
+                                        lastMsgObj.text.startsWith("[Presupuesto]") -> "📄 Presupuesto"
+                                        lastMsgObj.text.length > 60 -> lastMsgObj.text.take(60) + "..."
+                                        else -> lastMsgObj.text
+                                    }
+                                    val lastMsgTime = lastMsgObj.timestamp
+                                    updateEntry(NeoChatEntry(name, chatId, previewText, lastMsgTime))
+                                } else {
+                                    if (found.any { it.chatId == chatId }) { found.removeAll { it.chatId == chatId } }
+                                }
+                            }
+                            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                        })
+                }
+            }
         } catch (_: Exception) {}
     }
 

@@ -428,30 +428,34 @@ fun ContactsScreen(
                 }
             }
 
-                        // 3. REUNIR TODOS LOS USUARIOS CON CUENTA NEOMESSAGE INSTALADA
-            // Se muestran todos los usuarios registrados en la red, priorizando el nombre que tú le diste en tu agenda
-            val allNeoUsers = users.map { regUser ->
+                        // 3. REGLA ESTRICTA DE PRIVACIDAD ESTILO WHATSAPP:
+            // CADA USUARIO SOLO DEBE VER SUS PROPIOS CONTACTOS REGISTRADOS EN SU TELÉFONO.
+            // Ningún usuario extraño o desconocido de la base de datos debe aparecer jamás.
+            val myContactsOnNeo = mutableListOf<Map<String, String>>()
+            users.forEach { regUser ->
                 val regId = regUser["id"] ?: ""
                 val phone10 = NeoUtils.sanitizeId(regId).takeLast(10)
-                val localInfo = myDeviceContacts[phone10]
-                val displayName = localInfo?.get("name") ?: regUser["name"] ?: phone10
-                mapOf(
-                    "id" to regId,
-                    "phone10" to phone10,
-                    "name" to displayName,
-                    "photoUrl" to (regUser["photoUrl"] ?: ""),
-                    "status" to (regUser["status"] ?: "En línea"),
-                    "isSaved" to (localInfo != null).toString()
-                )
-            }.distinctBy { it["id"] }
+                if (phone10.isNotEmpty() && phone10 != cleanMyId.takeLast(10) && myDeviceContacts.containsKey(phone10)) {
+                    val localInfo = myDeviceContacts[phone10]
+                    val displayName = localInfo?.get("name") ?: regUser["name"] ?: phone10
+                    myContactsOnNeo.add(mapOf(
+                        "id" to regId,
+                        "phone10" to phone10,
+                        "name" to displayName,
+                        "photoUrl" to (regUser["photoUrl"] ?: ""),
+                        "status" to (regUser["status"] ?: "En línea"),
+                        "isSaved" to "true"
+                    ))
+                }
+            }
 
             val filtered = if (searchQuery.isEmpty()) {
-                allNeoUsers
+                myContactsOnNeo.sortedBy { (it["name"] ?: "").lowercase() }
             } else {
-                allNeoUsers.filter {
+                myContactsOnNeo.filter {
                     (it["name"] ?: "").contains(searchQuery, ignoreCase = true) ||
                     (it["id"] ?: "").contains(searchQuery)
-                }
+                }.sortedBy { (it["name"] ?: "").lowercase() }
             }
 
             // SECCIÓN: CONTACTOS EN NEOMESSAGE
@@ -471,7 +475,7 @@ fun ContactsScreen(
                     
                     ContactItem(
                         name = user["name"] ?: "Neo",
-                        subtitle = "Tel: $otherId ${if (isSaved) "• Guardado" else "• En Red"}",
+                        subtitle = "Tel: $otherId",
                         photoUrl = user["photoUrl"],
                         gradient = accentGradient,
                         textColor = textColor, 
@@ -505,36 +509,45 @@ fun ContactsScreen(
                 }
             }
 
-            // SECCIÓN: CONTACTOS LOCALES DE LA AGENDA DEL TELÉFONO
-            if (localContacts.isNotEmpty()) {
-                val filteredLocal = if (searchQuery.isEmpty()) {
-                    localContacts
+            // SECCIÓN: INVITAR A CONTACTOS DE TU AGENDA QUE AÚN NO TIENEN LA APP
+            val inviteContacts = localContacts.filter { loc ->
+                val p10 = NeoUtils.sanitizeId(loc["id"] ?: "").takeLast(10)
+                p10.isNotEmpty() && p10 != cleanMyId.takeLast(10) && myContactsOnNeo.none { it["phone10"] == p10 }
+            }
+
+            if (inviteContacts.isNotEmpty()) {
+                val filteredInvite = if (searchQuery.isEmpty()) {
+                    inviteContacts
                 } else {
-                    localContacts.filter {
+                    inviteContacts.filter {
                         (it["name"] ?: "").contains(searchQuery, ignoreCase = true) ||
                         (it["id"] ?: "").contains(searchQuery)
                     }
                 }
 
-                if (filteredLocal.isNotEmpty()) {
+                if (filteredInvite.isNotEmpty()) {
                     item {
                         Text(
-                            "DE TU AGENDA TELEFÓNICA (${filteredLocal.size})",
+                            "INVITAR A NEOMESSAGE (${filteredInvite.size})",
                             color = Color(0xFF64B5F6),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
                             modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 8.dp)
                         )
                     }
-                    items(filteredLocal.take(50)) { loc ->
+                    items(filteredInvite.take(50)) { loc ->
                         val locId = loc["id"] ?: ""
                         val locName = loc["name"] ?: "Contacto"
                         
                         Row(
                             Modifier.fillMaxWidth().clickable {
-                                inputContactName = locName
-                                inputContactPhone = locId
-                                showAddContactDialog = true
+                                try {
+                                    val sendIntent = Intent(Intent.ACTION_VIEW).apply {
+                                        data = android.net.Uri.parse("sms:$locId")
+                                        putExtra("sms_body", "¡Hola! Te invito a comunicarte conmigo en NeoMessage. Descárgala aquí: https://josuehg59-star.github.io/NeoMessage/")
+                                    }
+                                    context.startActivity(sendIntent)
+                                } catch (_: Exception) {}
                             }.padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -548,15 +561,19 @@ fun ContactsScreen(
                             }
                             Button(
                                 onClick = {
-                                    inputContactName = locName
-                                    inputContactPhone = locId
-                                    showAddContactDialog = true
+                                    try {
+                                        val sendIntent = Intent(Intent.ACTION_VIEW).apply {
+                                            data = android.net.Uri.parse("sms:$locId")
+                                            putExtra("sms_body", "¡Hola! Te invito a comunicarte conmigo en NeoMessage. Descárgala aquí: https://josuehg59-star.github.io/NeoMessage/")
+                                        }
+                                        context.startActivity(sendIntent)
+                                    } catch (_: Exception) {}
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                 modifier = Modifier.height(30.dp)
                             ) {
-                                Text("Añadir", color = Color(0xFF00FF7F), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Invitar", color = Color(0xFF00FF7F), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
