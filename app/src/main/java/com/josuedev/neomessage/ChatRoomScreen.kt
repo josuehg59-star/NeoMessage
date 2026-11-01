@@ -201,6 +201,7 @@ fun ChatRoomScreen(
                 dao?.getMessagesForChat(chatId)?.collect { entities ->
                     withContext(Dispatchers.Main) {
                         for (e in entities) {
+                            if (NeoDeletedMessagesManager.isDeletedForMe(context, e.id)) continue
                             val cloud = e.toCloud()
                             val idx = firebaseMessages.indexOfFirst { it.id == cloud.id }
                             if (idx == -1) {
@@ -221,6 +222,7 @@ fun ChatRoomScreen(
                 override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                     val m = snapshot.getValue(CloudMessage::class.java)
                     if (m != null) {
+                        if (NeoDeletedMessagesManager.isDeletedForMe(context, m.id)) return
                         val idx = firebaseMessages.indexOfFirst { it.id == m.id }
                         if (idx == -1) {
                             firebaseMessages.add(m)
@@ -260,8 +262,12 @@ fun ChatRoomScreen(
                 }
                 override fun onChildRemoved(snapshot: DataSnapshot) {
                     val m = snapshot.getValue(CloudMessage::class.java)
-                    if (m != null) {
-                        firebaseMessages.removeAll { it.id == m.id }
+                    val mid = m?.id ?: snapshot.key
+                    if (mid != null) {
+                        firebaseMessages.removeAll { it.id == mid }
+                        coroutineScope.launch(Dispatchers.IO) {
+                            try { dao?.deleteMessageById(mid) } catch (_: Exception) {}
+                        }
                     }
                 }
                 override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
@@ -656,6 +662,26 @@ fun ChatRoomScreen(
         })
     }
 
+    var otherIsOnline by remember { mutableStateOf(false) }
+    var otherLastSeen by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(otherCleanId) {
+        if (!isGroup) {
+            val userRef = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("users").child(otherCleanId)
+            userRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
+                    val online = s.child("online").getValue(Boolean::class.java) ?: false
+                    val status = s.child("status").getValue(String::class.java) ?: ""
+                    val last = s.child("lastSeen").getValue(Long::class.java)
+                    val isRecent = last != null && (System.currentTimeMillis() - last < 120_000L)
+                    otherIsOnline = (online || status == "Conectado" || status == "Online") && isRecent
+                    otherLastSeen = last
+                }
+                override fun onCancelled(ignored: com.google.firebase.database.DatabaseError) {}
+            })
+        }
+    }
+
     // ---- UI ----
     Scaffold(
         topBar = {
@@ -674,7 +700,37 @@ fun ChatRoomScreen(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(chatName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (typingUser.value != null && typingUser.value != myName) "✍️ Escribiendo..." else "En línea", color = Color(0xFF00FF9C), fontSize = 11.sp)
+                            
+                            val subtitleText = when {
+                                typingUser.value != null && typingUser.value != myName -> {
+                                    if (isGroup) "✍️ ${typingUser.value} está escribiendo..." else "✍️ escribiendo..."
+                                }
+                                isGroup -> "Grupo"
+                                otherIsOnline -> "en línea"
+                                otherLastSeen != null && otherLastSeen!! > 0L -> {
+                                    val date = java.util.Date(otherLastSeen!!)
+                                    val calMsg = java.util.Calendar.getInstance().apply { time = date }
+                                    val calNow = java.util.Calendar.getInstance()
+                                    val isToday = calMsg.get(java.util.Calendar.YEAR) == calNow.get(java.util.Calendar.YEAR) && calMsg.get(java.util.Calendar.DAY_OF_YEAR) == calNow.get(java.util.Calendar.DAY_OF_YEAR)
+                                    calNow.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                                    val isYesterday = calMsg.get(java.util.Calendar.YEAR) == calNow.get(java.util.Calendar.YEAR) && calMsg.get(java.util.Calendar.DAY_OF_YEAR) == calNow.get(java.util.Calendar.DAY_OF_YEAR)
+                                    val timeStr = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(date)
+                                    when {
+                                        isToday -> "últ. vez hoy a las $timeStr"
+                                        isYesterday -> "últ. vez ayer a las $timeStr"
+                                        else -> "últ. vez el " + java.text.SimpleDateFormat("dd/MM/yy", java.util.Locale.getDefault()).format(date) + " a las " + timeStr
+                                    }
+                                }
+                                else -> ""
+                            }
+                            val subtitleColor = when {
+                                typingUser.value != null -> Color(0xFF00FF7F)
+                                otherIsOnline -> Color(0xFF00FF7F)
+                                else -> Color(0xFF94A3B8)
+                            }
+                            if (subtitleText.isNotEmpty()) {
+                                Text(subtitleText, color = subtitleColor, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 },
@@ -937,7 +993,8 @@ fun ChatRoomScreen(
                                         modifier = Modifier.padding(bottom = 3.dp)
                                     )
                                 }
-                                if (msg.isDeletedForEveryone) {
+                                val isMsgDeleted = msg.isDeletedForEveryone || msg.text == "[DELETED]" || msg.text.contains("Este mensaje fue eliminado")
+                                if (isMsgDeleted) {
                                     Text("🚫 Este mensaje fue eliminado", color = textSubColor.copy(0.6f), fontSize = 14.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                                 } else if (msg.expiryTime != null && msg.expiryTime < System.currentTimeMillis()) {
                                     Text("🔥 Contenido autodestruido", color = Color.Red.copy(0.7f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -968,7 +1025,8 @@ fun ChatRoomScreen(
                                         onPlayingVoiceChange = { playingVoiceMsgId = it },
                                         onImageClick = { activeZoomBitmap = it },
                                         userId = userId,
-                                        onNavigateToChat = onNavigateToChat
+                                        onNavigateToChat = onNavigateToChat,
+                                        onMessageLongClick = { selectedMessage = msg }
                                     )
                                     if (msg.expiryTime != null) {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
@@ -1484,7 +1542,10 @@ fun ChatRoomScreen(
                 }
             },
             text = { 
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     // BARRA DE REACCIONES RÁPIDAS
                     Row(
                         modifier = Modifier
@@ -1622,15 +1683,19 @@ fun ChatRoomScreen(
                         Text("Copiar contenido")
                     }
 
-                    // 4. ELIMINAR PARA MÍ
+                    HorizontalDivider(color = Color.White.copy(0.15f))
+                    Text("GESTIÓN Y ELIMINACIÓN DE MENSAJE", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                    // 4. ELIMINAR PARA MÍ (Soberano permanente)
                     Button(
                         onClick = {
                             val mid = targetMsg.id
+                            NeoDeletedMessagesManager.markDeletedForMe(context, mid)
                             firebaseMessages.removeAll { it.id == mid }
                             coroutineScope.launch(Dispatchers.IO) {
                                 try { dao?.deleteMessageById(mid) } catch (_: Exception) {}
                             }
-                            Toast.makeText(context, "🗑️ Eliminado para ti", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "🗑️ Mensaje eliminado para ti", Toast.LENGTH_SHORT).show()
                             selectedMessage = null
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -1638,20 +1703,30 @@ fun ChatRoomScreen(
                     ) {
                         Icon(Icons.Filled.Delete, null, tint = Color.White, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Eliminar para mí", color = Color.White)
+                        Text("Eliminar para mí", color = Color.White, fontWeight = FontWeight.Bold)
                     }
 
-                    // 5. ELIMINAR PARA TODOS (Si el mensaje fue enviado por mí)
+                    // 5. ELIMINAR PARA TODOS (Estilo WhatsApp oficial)
                     if (isTargetMine) {
                         Button(
                             onClick = {
                                 val mid = targetMsg.id
-                                firebaseMessages.removeAll { it.id == mid }
+                                val updatedMsg = targetMsg.copy(isDeletedForEveryone = true, text = "🚫 Este mensaje fue eliminado")
+                                val idx = firebaseMessages.indexOfFirst { it.id == mid }
+                                if (idx != -1) firebaseMessages[idx] = updatedMsg
                                 coroutineScope.launch(Dispatchers.IO) {
-                                    try { dao?.deleteMessageById(mid) } catch (_: Exception) {}
-                                    try { database.child(mid).removeValue() } catch (_: Exception) {}
+                                    try { dao?.insertMessage(updatedMsg.toEntity(chatId)) } catch (_: Exception) {}
+                                    try {
+                                        val updates = mapOf<String, Any>(
+                                            "isDeletedForEveryone" to true,
+                                            "deleted" to true,
+                                            "text" to "🚫 Este mensaje fue eliminado",
+                                            "reactions" to emptyMap<String, String>()
+                                        )
+                                        database.child(mid).updateChildren(updates)
+                                    } catch (_: Exception) {}
                                 }
-                                Toast.makeText(context, "🚨 Eliminado para todos", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "🚫 Mensaje eliminado para todos", Toast.LENGTH_SHORT).show()
                                 selectedMessage = null
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -1808,6 +1883,7 @@ fun openDocumentFile(context: Context, file: File) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageContent(
     msg: CloudMessage, 
@@ -1819,7 +1895,8 @@ fun MessageContent(
     onPlayingVoiceChange: ((String?) -> Unit)? = null,
     onImageClick: ((ImageBitmap) -> Unit)? = null,
     userId: String = "",
-    onNavigateToChat: ((String, String) -> Unit)? = null
+    onNavigateToChat: ((String, String) -> Unit)? = null,
+    onMessageLongClick: (() -> Unit)? = null
 ) {
     val text = msg.text
     when {
@@ -1875,38 +1952,17 @@ fun MessageContent(
             } else {
                 rawMedia to ""
             }
-            var decodedBitmap by remember(mediaContent) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-            var isDecoding by remember(mediaContent) { mutableStateOf(mediaContent.startsWith("data:image")) }
+            val cacheKey = msg.id.ifEmpty { mediaContent.hashCode().toString() }
+            var decodedBitmap by remember(cacheKey) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(NeoMediaBitmapCache.get(cacheKey)) }
+            var isDecoding by remember(cacheKey) { mutableStateOf(decodedBitmap == null && mediaContent.startsWith("data:image")) }
 
-            LaunchedEffect(mediaContent) {
-                if (mediaContent.startsWith("data:image")) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            val base64Data = mediaContent.substringAfter("base64,")
-                            val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-                            
-                            val boundsOptions = android.graphics.BitmapFactory.Options().apply {
-                                inJustDecodeBounds = true
-                            }
-                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
-
-                            var sampleSize = 1
-                            val maxDimension = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
-                            while (maxDimension / sampleSize > 1200) {
-                                sampleSize *= 2
-                            }
-
-                            val decodeOptions = android.graphics.BitmapFactory.Options().apply {
-                                inSampleSize = sampleSize
-                                inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                            }
-                            val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
-                            if (bmp != null) {
-                                decodedBitmap = bmp.asImageBitmap()
-                            }
-                        } catch (_: Exception) {}
-                        isDecoding = false
+            LaunchedEffect(cacheKey) {
+                if (decodedBitmap == null && mediaContent.startsWith("data:image")) {
+                    val bmp = NeoMediaBitmapCache.decodeBase64Safe(cacheKey, mediaContent, maxDim = 1024)
+                    if (bmp != null) {
+                        decodedBitmap = bmp
                     }
+                    isDecoding = false
                 } else {
                     isDecoding = false
                 }
@@ -1921,7 +1977,10 @@ fun MessageContent(
                         .heightIn(min = 160.dp, max = 340.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF1E293B))
-                        .clickable { onImageClick?.invoke(decodedBitmap!!) },
+                        .combinedClickable(
+                            onClick = { onImageClick?.invoke(decodedBitmap!!) },
+                            onLongClick = { onMessageLongClick?.invoke() }
+                        ),
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit
                 )
                 if (caption.isNotEmpty()) {
@@ -1947,7 +2006,11 @@ fun MessageContent(
                         .fillMaxWidth()
                         .heightIn(min = 160.dp, max = 340.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF1E293B)),
+                        .background(Color(0xFF1E293B))
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = { onMessageLongClick?.invoke() }
+                        ),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
             }
@@ -1995,16 +2058,22 @@ fun MessageContent(
                 else -> "📄"
             }
 
-            // Decodificar Base64 automáticamente
+            // Decodificar Base64 en segundo plano sin congelar el hilo principal
             LaunchedEffect(url) {
                 if (url.startsWith("data:") && downloadedFile == null) {
-                    try {
-                        val base64Data = url.substringAfter("base64,")
-                        val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-                        val cacheFile = File(context.cacheDir, name)
-                        FileOutputStream(cacheFile).use { it.write(bytes) }
-                        downloadedFile = cacheFile
-                    } catch (_: Exception) {}
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val cacheFile = File(context.cacheDir, name)
+                            if (cacheFile.exists() && cacheFile.length() > 0) {
+                                downloadedFile = cacheFile
+                            } else {
+                                val base64Data = url.substringAfter("base64,")
+                                val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                                FileOutputStream(cacheFile).use { it.write(bytes) }
+                                downloadedFile = cacheFile
+                            }
+                        } catch (_: Exception) {}
+                    }
                 }
             }
 
@@ -2012,7 +2081,17 @@ fun MessageContent(
                 color = Color(0xFF1E293B),
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, Color(0xFF00FF7F).copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .combinedClickable(
+                        onClick = {
+                            if (downloadedFile != null) {
+                                openDocumentFile(context, downloadedFile!!)
+                            }
+                        },
+                        onLongClick = { onMessageLongClick?.invoke() }
+                    )
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2101,7 +2180,13 @@ fun MessageContent(
             Card(
                 colors = CardDefaults.cardColors(containerColor = if (isMine) Color(0xFF004D40) else Color(0xFF1E293B)),
                 shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.widthIn(min = 180.dp, max = 260.dp).padding(vertical = 2.dp)
+                modifier = Modifier
+                    .widthIn(min = 180.dp, max = 260.dp)
+                    .padding(vertical = 2.dp)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { onMessageLongClick?.invoke() }
+                    )
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),

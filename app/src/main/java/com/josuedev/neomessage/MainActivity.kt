@@ -769,18 +769,29 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
         
 
         val userData = mapOf(
-
             "id" to state.userId, 
-
             "name" to state.myName, 
-
+            "online" to true,
             "lastSeen" to com.google.firebase.database.ServerValue.TIMESTAMP, 
-
             "status" to "Conectado"
-
         )
-
         userRef.updateChildren(userData)
+
+        db.getReference(".info/connected").addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                val connected = snapshot.getValue(Boolean::class.java) ?: false
+                if (connected) {
+                    userRef.child("online").setValue(true)
+                    userRef.child("status").setValue("Conectado")
+                    userRef.child("lastSeen").setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
+
+                    userRef.child("online").onDisconnect().setValue(false)
+                    userRef.child("status").onDisconnect().setValue("Desconectado")
+                    userRef.child("lastSeen").onDisconnect().setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
+                }
+            }
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+        })
 
 
 
@@ -1055,19 +1066,20 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
     DisposableEffect(lifecycleOwner) {
 
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
-
-                // MANTENER ONLINE: Para que las notificaciones de RTDB lleguen en segundo plano
-
-                // com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).goOffline()
-
-            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-
-                com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).goOnline()
-
+            val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+            if (state.userId.isNotBlank()) {
+                val uRef = db.getReference("users").child(state.userId)
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                    uRef.child("online").setValue(false)
+                    uRef.child("status").setValue("Desconectado")
+                    uRef.child("lastSeen").setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
+                } else if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                    com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).goOnline()
+                    uRef.child("online").setValue(true)
+                    uRef.child("status").setValue("Conectado")
+                    uRef.child("lastSeen").setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
+                }
             }
-
         }
 
         lifecycleOwner.lifecycle.addObserver(observer)

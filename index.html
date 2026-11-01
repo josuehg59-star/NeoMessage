@@ -2499,23 +2499,72 @@
             });
         }
 
+        
+                let pcTypingTimeout = null;
+        function handleTypingEvent() {
+            if (!currentChatId || !myPhone) return;
+            db.ref(`typing/${currentChatId}`).set({
+                user: myName || myPhone,
+                time: firebase.database.ServerValue.TIMESTAMP
+            });
+            if (pcTypingTimeout) clearTimeout(pcTypingTimeout);
+            pcTypingTimeout = setTimeout(() => {
+                db.ref(`typing/${currentChatId}`).remove();
+            }, 3000);
+        }
+
+        let activeTypingRef = null;
+        function listenActiveChatTyping(chatId) {
+            if (activeTypingRef) activeTypingRef.off();
+            activeTypingRef = db.ref(`typing/${chatId}`);
+            activeTypingRef.on('value', snap => {
+                const data = snap.val();
+                const subEl = document.getElementById('activeChatSubtitle');
+                if (!subEl) return;
+                if (data && data.user && data.user !== myName) {
+                    const isRecent = !data.time || (Date.now() - data.time < 5000);
+                    if (isRecent) {
+                        const isGrp = chatId.startsWith('group_');
+                        subEl.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">✍️ ${isGrp ? (data.user + ' está escribiendo...') : 'escribiendo...'}</span>`;
+                        return;
+                    }
+                }
+                // Si nadie está escribiendo, restaurar estado online / última vez
+                if (window.currentActiveContactPhone) {
+                    updateActiveContactPresenceUI();
+                } else if (currentChatId && currentChatId.startsWith('group_')) {
+                    subEl.innerText = 'Grupo • Miembros ilimitados';
+                }
+            });
+        }
+
+        let lastActiveContactData = null;
+
+        function updateActiveContactPresenceUI() {
+            const subEl = document.getElementById('activeChatSubtitle');
+            if (!subEl) return;
+            const u = lastActiveContactData;
+            if (u && (u.online === true || u.status === 'Conectado' || u.status === 'Online')) {
+                subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">en línea</span>';
+            } else if (u && u.lastSeen) {
+                subEl.innerText = formatLastSeenText(u.lastSeen);
+            } else {
+                subEl.innerText = '';
+            }
+        }
+
         function listenActiveContactPresence(phone) {
             if (activeContactPresenceRef) activeContactPresenceRef.off();
+            window.currentActiveContactPhone = phone;
+            lastActiveContactData = null;
             if (!phone || phone === myPhone) return;
 
             activeContactPresenceRef = db.ref(`users/${phone}`);
             activeContactPresenceRef.on('value', snap => {
-                const u = snap.val();
+                lastActiveContactData = snap.val();
                 const subEl = document.getElementById('activeChatSubtitle');
-                if (!subEl) return;
-
-                if (u && (u.online === true || u.status === 'Conectado' || u.status === 'Online')) {
-                    subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">en línea</span>';
-                } else if (u && u.lastSeen) {
-                    subEl.innerText = formatLastSeenText(u.lastSeen);
-                } else {
-                    subEl.innerText = 'desconectado';
-                }
+                if (subEl && subEl.innerText.includes('escribiendo...')) return;
+                updateActiveContactPresenceUI();
             });
         }
 
@@ -3068,7 +3117,7 @@
                             const canvas = document.createElement('canvas');
                             let w = img.width;
                             let h = img.height;
-                            const maxDim = 1280;
+                            const maxDim = 900;
                             if (w > maxDim || h > maxDim) {
                                 if (w > h) {
                                     h = Math.round((h * maxDim) / w);
@@ -3082,7 +3131,7 @@
                             canvas.height = h;
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0, w, h);
-                            const compressedB64 = canvas.toDataURL('image/jpeg', 0.72);
+                            const compressedB64 = canvas.toDataURL('image/jpeg', 0.58);
                             setTimeout(() => {
                                 dispatchMessageObject('[Media] ' + compressedB64);
                                 showToast(`✅ Foto optimizada enviada (${index + 1}/${total})`);
@@ -3510,7 +3559,8 @@
                     const canvas = document.createElement('canvas');
                     let w = img.width;
                     let h = img.height;
-                    const maxDim = 1200;
+                    // ULTRA-OPTIMIZADO (15KB - 25KB MÁXIMO PARA CERO LAG EN CELULARES)
+                    const maxDim = 850;
                     if (w > maxDim || h > maxDim) {
                         if (w > h) {
                             h = Math.round((h * maxDim) / w);
@@ -3526,7 +3576,7 @@
                     ctx.fillStyle = '#FFFFFF';
                     ctx.fillRect(0, 0, w, h);
                     ctx.drawImage(img, 0, 0, w, h);
-                    const compressedB64 = canvas.toDataURL('image/jpeg', 0.72);
+                    const compressedB64 = canvas.toDataURL('image/jpeg', 0.55);
                     const sizeKb = Math.round((compressedB64.length * 0.75) / 1024);
                     callback(compressedB64, sizeKb);
                 };
@@ -3538,7 +3588,7 @@
             reader.readAsDataURL(blob);
         }
 
-        function convertExcelDataToImage(htmlString, plainTextString) {
+                function convertExcelDataToImage(htmlString, plainTextString) {
             let rows = [];
             if (htmlString && htmlString.includes('<table')) {
                 try {
@@ -3568,7 +3618,6 @@
             const colCount = Math.max(...rows.map(r => r.length));
             if (colCount <= 1 && rows.length <= 1) return null;
 
-            // Normalizar columnas
             rows = rows.map(r => {
                 while (r.length < colCount) r.push('');
                 return r;
@@ -3576,74 +3625,79 @@
 
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            const scale = 1.25; // Óptimo para nitidez HD sin inflar peso
-            const fontSize = 13;
+            const fontSize = 11;
             ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 
-            // Medir ancho óptimo por columna
-            const colWidths = new Array(colCount).fill(70);
-            const paddingX = 16;
-            const rowHeight = 34;
+            const colWidths = new Array(colCount).fill(55);
+            const paddingX = 10;
+            const rowHeight = 24;
 
             rows.forEach((r, rowIdx) => {
                 if (rowIdx === 0) ctx.font = `bold ${fontSize}px sans-serif`;
                 else ctx.font = `500 ${fontSize}px sans-serif`;
                 r.forEach((cell, colIdx) => {
                     const w = ctx.measureText(cell).width + paddingX * 2;
-                    if (w > colWidths[colIdx]) colWidths[colIdx] = Math.min(360, Math.ceil(w));
+                    if (w > colWidths[colIdx]) colWidths[colIdx] = Math.min(260, Math.ceil(w));
                 });
             });
 
-            const headerHeight = 42;
-            const bannerHeight = 36;
-            const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
-            const totalHeight = bannerHeight + headerHeight + (rows.length - 1) * rowHeight + 12;
+            const headerHeight = 32;
+            const bannerHeight = 28;
+            const rawTableWidth = colWidths.reduce((a, b) => a + b, 0);
 
-            canvas.width = totalTableWidth * scale;
-            canvas.height = totalHeight * scale;
+            // Escala adaptativa para que no exceda 750px y pese menos de 20 KB
+            let scale = 1.0;
+            if (rawTableWidth > 750) {
+                scale = 750 / rawTableWidth;
+            }
+
+            const totalTableWidth = rawTableWidth;
+            const totalHeight = bannerHeight + headerHeight + (rows.length - 1) * rowHeight + 8;
+
+            canvas.width = Math.round(totalTableWidth * scale);
+            canvas.height = Math.round(totalHeight * scale);
             ctx.scale(scale, scale);
 
-            // Fondo general blanco puro
+            // Fondo blanco
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(0, 0, totalTableWidth, totalHeight);
 
-            // Banner superior verde oficial de Microsoft Excel
+            // Banner superior verde oficial de Excel
             ctx.fillStyle = '#107C41';
             ctx.fillRect(0, 0, totalTableWidth, bannerHeight);
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px sans-serif';
-            ctx.fillText('📊 HOJA DE CÁLCULO / TABLA EXCEL', 16, 23);
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText('📊 HOJA DE CÁLCULO / TABLA EXCEL', 12, 18);
 
-            // Cabecera de la tabla
+            // Cabecera
             let currentY = bannerHeight;
             ctx.fillStyle = '#0B532E';
             ctx.fillRect(0, currentY, totalTableWidth, headerHeight);
 
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px sans-serif';
+            ctx.font = 'bold 11px sans-serif';
             let currentX = 0;
             rows[0].forEach((headerText, colIdx) => {
                 const isNum = !isNaN(parseFloat(headerText)) && isFinite(headerText);
                 if (isNum) {
                     ctx.textAlign = 'right';
-                    ctx.fillText(headerText, currentX + colWidths[colIdx] - paddingX, currentY + 26);
+                    ctx.fillText(headerText, currentX + colWidths[colIdx] - paddingX, currentY + 20);
                 } else {
                     ctx.textAlign = 'left';
-                    ctx.fillText(headerText, currentX + paddingX, currentY + 26);
+                    ctx.fillText(headerText, currentX + paddingX, currentY + 20);
                 }
                 currentX += colWidths[colIdx];
             });
 
-            // Filas de datos
+            // Filas
             currentY += headerHeight;
-            ctx.font = '500 12px sans-serif';
+            ctx.font = '500 11px sans-serif';
 
             for (let i = 1; i < rows.length; i++) {
                 const isEven = i % 2 === 0;
                 ctx.fillStyle = isEven ? '#F4F9F6' : '#FFFFFF';
                 ctx.fillRect(0, currentY, totalTableWidth, rowHeight);
 
-                // Línea inferior de fila
                 ctx.strokeStyle = '#E2E8F0';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
@@ -3657,13 +3711,12 @@
                     const isNum = !isNaN(parseFloat(cellText.replace(/[$,]/g, ''))) && cellText.trim() !== '';
                     if (isNum) {
                         ctx.textAlign = 'right';
-                        ctx.fillText(cellText, currentX + colWidths[colIdx] - paddingX, currentY + 22);
+                        ctx.fillText(cellText, currentX + colWidths[colIdx] - paddingX, currentY + 17);
                     } else {
                         ctx.textAlign = 'left';
-                        ctx.fillText(cellText, currentX + paddingX, currentY + 22);
+                        ctx.fillText(cellText, currentX + paddingX, currentY + 17);
                     }
 
-                    // Línea divisoria vertical
                     ctx.strokeStyle = '#E2E8F0';
                     ctx.beginPath();
                     ctx.moveTo(currentX + colWidths[colIdx], currentY);
@@ -3676,7 +3729,7 @@
                 currentY += rowHeight;
             }
 
-            return canvas.toDataURL('image/jpeg', 0.80);
+            return canvas.toDataURL('image/jpeg', 0.50);
         }
 
         window.addEventListener('paste', (e) => {
@@ -3759,9 +3812,11 @@
             if (val.length > 0) {
                 btnSend.style.display = 'flex';
                 btnVoice.style.display = 'none';
+                handleTypingEvent();
             } else {
                 btnSend.style.display = 'none';
                 btnVoice.style.display = 'flex';
+                if (currentChatId) db.ref(`typing/${currentChatId}`).remove();
             }
         }
 
@@ -4013,6 +4068,26 @@
 
         // INICIALIZACIÓN DE LA APLICACIÓN
         function initApp() {
+        // CONEXIÓN Y DESCONEXIÓN AUTOMÁTICA EN PC
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true && myPhone) {
+                const uRef = db.ref(`users/${myPhone}`);
+                uRef.update({ online: true, status: 'Conectado', lastSeen: firebase.database.ServerValue.TIMESTAMP });
+                uRef.child('online').onDisconnect().set(false);
+                uRef.child('status').onDisconnect().set('Desconectado');
+                uRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+            }
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (!myPhone) return;
+            const uRef = db.ref(`users/${myPhone}`);
+            if (document.visibilityState === 'visible') {
+                uRef.update({ online: true, status: 'Conectado', lastSeen: Date.now() });
+            } else {
+                uRef.update({ online: false, status: 'Desconectado', lastSeen: Date.now() });
+            }
+        });
+
             const savedTheme = localStorage.getItem('neo_theme') || 'default';
             setAppTheme(savedTheme, false);
 
@@ -4449,7 +4524,7 @@
 
                 const selfChatId = `private_${myPhone}_${myPhone}`;
                 let selfLastText = 'Notas y archivos personales';
-                let selfTime = Date.now();
+                let selfTime = 0;
 
                 if (raw[selfChatId] && raw[selfChatId].messages) {
                     const mList = Object.values(raw[selfChatId].messages);
@@ -4469,21 +4544,26 @@
                     isSelf: true
                 });
 
+                const myCleanPhone = String(myPhone || '').replace(/\D/g, '').slice(-10);
+
                 Object.keys(raw).forEach(cId => {
                     if (cId === selfChatId) return;
-                    if (cId.includes(myPhone)) {
+                    const cleanCId = cId.replace(/\D/g, '');
+                    if (cleanCId.includes(myCleanPhone)) {
                         const parts = cId.replace('private_', '').split('_');
-                        const otherPhone = parts[0] === myPhone ? parts[1] : parts[0];
+                        const p0Clean = parts[0] ? parts[0].replace(/\D/g, '').slice(-10) : '';
+                        const otherPhone = p0Clean === myCleanPhone ? parts[1] : parts[0];
                         if (!otherPhone) return;
 
                         const msgs = raw[cId].messages ? Object.values(raw[cId].messages) : [];
                         let lastText = 'Conversación abierta';
-                        let time = Date.now();
+                        let time = 0;
 
                         if (msgs.length > 0) {
+                            msgs.sort((m1, m2) => (m1.timestamp || 0) - (m2.timestamp || 0));
                             const lastM = msgs[msgs.length - 1];
                             lastText = formatPreviewText(lastM.text);
-                            time = lastM.timestamp || Date.now();
+                            time = lastM.timestamp || 0;
                         }
 
                         const saved = mySavedContacts.find(c => c.id === otherPhone);
@@ -4509,7 +4589,7 @@
                             const grpChatId = g.id;
                             const msgs = (raw[grpChatId] && raw[grpChatId].messages) ? Object.values(raw[grpChatId].messages) : [];
                             let lastText = g.description || 'Grupo masivo';
-                            let time = g.createdAt || Date.now();
+                            let time = g.createdAt || 0;
                             if (msgs.length > 0) {
                                 const lastM = msgs[msgs.length - 1];
                                 lastText = formatPreviewText(lastM.text);
@@ -4530,10 +4610,9 @@
                         }
                     });
 
+                    // ORDENAR DINÁMICAMENTE: EL CHAT CON EL MENSAJE MÁS RECIENTE QUEDA EN PRIMER LUGAR (#1)
                     list.sort((a, b) => {
-                        if (a.isSelf) return -1;
-                        if (b.isSelf) return 1;
-                        return b.timestamp - a.timestamp;
+                        return (b.timestamp || 0) - (a.timestamp || 0);
                     });
 
                     conversations = list;
@@ -4981,8 +5060,10 @@
                 document.getElementById('activeChatSubtitle').innerText = 'Espacio personal cifrado';
             } else if (item.isGroup || item.recipientPhone.startsWith('group_')) {
                 document.getElementById('activeChatSubtitle').innerText = 'Grupo • Miembros ilimitados';
+                listenActiveChatTyping(currentChatId);
             } else {
                 listenActiveContactPresence(item.recipientPhone);
+                listenActiveChatTyping(currentChatId);
             }
 
             updateBlockedStatusUI();
@@ -5502,6 +5583,7 @@
 
         // ENVIAR MENSAJE
         function sendMessage() {
+            if (currentChatId) db.ref(`typing/${currentChatId}`).remove();
             const input = document.getElementById('messageInput');
             const txt = input.value.trim();
             if (!txt || !currentChatId) return;
