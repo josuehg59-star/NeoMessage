@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <script>
+        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
+        (function() {
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
+                window.location.replace('ios.html');
+            }
+        })();
+    </script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>NeoMessage Desktop</title>
@@ -3840,7 +3850,17 @@
                 }
                 const doc = printIframe.contentWindow.document;
                 doc.open();
-                doc.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
+                doc.write('<!DOCTYPE html><html><head>
+    <script>
+        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
+        (function() {
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
+                window.location.replace('ios.html');
+            }
+        })();
+    </script>
+<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
         // DETECCIÓN INTELIGENTE DE IPHONE (iOS)
         window.addEventListener('DOMContentLoaded', () => {
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -3912,7 +3932,17 @@
                 return;
             }
 
-            printWin.document.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
+            printWin.document.write('<!DOCTYPE html><html><head>
+    <script>
+        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
+        (function() {
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
+                window.location.replace('ios.html');
+            }
+        })();
+    </script>
+<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
         // DETECCIÓN INTELIGENTE DE IPHONE (iOS)
         window.addEventListener('DOMContentLoaded', () => {
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -4008,7 +4038,17 @@
             } else if (lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/) || (fileUrl && fileUrl.startsWith('data:image/'))) {
                 const win = window.open('', '_blank');
                 if (win) {
-                    win.document.write('<!DOCTYPE html><html><head><title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
+                    win.document.write('<!DOCTYPE html><html><head>
+    <script>
+        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
+        (function() {
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
+                window.location.replace('ios.html');
+            }
+        })();
+    </script>
+<title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
         // DETECCIÓN INTELIGENTE DE IPHONE (iOS)
         window.addEventListener('DOMContentLoaded', () => {
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -5450,7 +5490,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
         function triggerPwaInstall() {
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
             if (isIOS) {
-                openIosInstallModal();
+                window.location.href = 'ios.html';
                 return;
             }
             if (deferredPrompt) {

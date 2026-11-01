@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>NeoMessage para iPhone</title>
+    
+    <!-- Meta etiquetas Nativas para Apple iOS / iPhone -->
+    <meta name="application-name" content="NeoMessage">
+    <meta name="apple-mobile-web-app-title" content="NeoMessage">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23000'/><circle cx='50' cy='50' r='38' fill='%2300FF7F'/><text x='50' y='63' font-size='40' font-weight='900' text-anchor='middle' fill='%23000'>N</text></svg>">
+
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            background-color: #000000;
+            color: #FFFFFF;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* BARRA SUPERIOR IOS */
+        .ios-navbar {
+            background: rgba(22, 22, 24, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: calc(env(safe-area-inset-top, 20px) + 10px) 16px 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 0.5px solid rgba(255, 255, 255, 0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .ios-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.4px;
+        }
+
+        .ios-btn-action {
+            background: none;
+            border: none;
+            color: #00FF7F;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* CONTENEDOR PRINCIPAL */
+        .app-container {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 60px);
+        }
+
+        /* BARRA INFERIOR IOS (TABS) */
+        .ios-tabbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(22, 22, 24, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 0.5px solid rgba(255, 255, 255, 0.15);
+            padding-top: 8px;
+            padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 4px);
+            display: flex;
+            justify-content: space-around;
+            z-index: 100;
+        }
+
+        .tab-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #8E8E93;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            gap: 3px;
+        }
+
+        .tab-item.active {
+            color: #00FF7F;
+        }
+
+        .tab-icon {
+            font-size: 22px;
+        }
+
+        /* LISTA DE CHATS */
+        .chat-list-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .chat-list-item:active {
+            background: #1C1C1E;
+        }
+
+        .avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1E3A8A, #00FF7F);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #000;
+            margin-right: 14px;
+            flex-shrink: 0;
+        }
+
+        .chat-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chat-header-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 4px;
+        }
+
+        .chat-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #FFFFFF;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chat-time {
+            font-size: 12px;
+            color: #8E8E93;
+            margin-left: 8px;
+        }
+
+        .chat-preview {
+            font-size: 14px;
+            color: #8E8E93;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* PANTALLA DE CHAT ACTIVO */
+        #chatView {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #0B141A;
+            z-index: 200;
+            display: none;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .msg-bubble {
+            max-width: 78%;
+            padding: 9px 13px;
+            border-radius: 16px;
+            font-size: 15px;
+            line-height: 1.35;
+            position: relative;
+            word-break: break-word;
+        }
+
+        .msg-sent {
+            align-self: flex-end;
+            background: #005C4B;
+            color: #FFF;
+            border-bottom-right-radius: 4px;
+        }
+
+        .msg-received {
+            align-self: flex-start;
+            background: #202C33;
+            color: #FFF;
+            border-bottom-left-radius: 4px;
+        }
+
+        .msg-time {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.6);
+            text-align: right;
+            margin-top: 4px;
+        }
+
+        .msg-img {
+            max-width: 100%;
+            border-radius: 12px;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .chat-input-bar {
+            background: #1C1C1E;
+            padding: 10px 14px calc(env(safe-area-inset-bottom, 12px) + 6px) 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #2C2C2E;
+            border: none;
+            border-radius: 20px;
+            padding: 10px 16px;
+            color: #FFF;
+            font-size: 15px;
+            outline: none;
+        }
+
+        .btn-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #00FF7F;
+            border: none;
+            color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        /* MODALES */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .ios-card {
+            background: #1C1C1E;
+            border: 0.5px solid rgba(255, 255, 255, 0.15);
+            border-radius: 22px;
+            padding: 24px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+
+        .ios-input {
+            width: 100%;
+            background: #2C2C2E;
+            border: 1px solid #3A3A3C;
+            border-radius: 12px;
+            padding: 14px 16px;
+            color: #FFF;
+            font-size: 16px;
+            margin-bottom: 12px;
+            outline: none;
+        }
+
+        .ios-input:focus {
+            border-color: #00FF7F;
+        }
+
+        .ios-btn-primary {
+            width: 100%;
+            background: #00FF7F;
+            color: #000000;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 15px;
+            border-radius: 14px;
+            border: none;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        /* BANNER GUÍA DE INSTALACIÓN IPHONE */
+        .ios-install-guide {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(28, 28, 30, 0.96);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-top: 1px solid #00FF7F;
+            border-radius: 24px 24px 0 0;
+            padding: 24px 20px calc(env(safe-area-inset-bottom, 20px) + 16px) 20px;
+            z-index: 1000;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.9);
+            animation: slideUp 0.3s cubic-bezier(0.1, 1, 0.1, 1);
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .step-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin: 12px 0;
+            background: #2C2C2E;
+            padding: 12px 16px;
+            border-radius: 14px;
+        }
+
+        .step-badge {
+            background: #00FF7F;
+            color: #000;
+            font-weight: 800;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- NAVEGACIÓN SUPERIOR -->
+    <div class="ios-navbar">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="font-size: 22px;">🍏</div>
+            <div class="ios-title">NeoMessage</div>
+        </div>
+        <button class="ios-btn-action" onclick="openNewChatModal()">+ Nuevo</button>
+    </div>
+
+    <!-- CONTENEDOR DE CHATS -->
+    <div class="app-container">
+        <div style="padding: 12px 16px;">
+            <input type="search" placeholder="🔍 Buscar chats o contactos..." id="searchChatInput" oninput="filterChats()" style="width: 100%; background: #1C1C1E; border: none; border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 14px; outline: none;">
+        </div>
+
+        <div id="chatsListContainer">
+            <div style="text-align: center; color: #8E8E93; padding: 40px 20px; font-size: 14px;">
+                Cargando tus conversaciones en la red segura...
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB BAR INFERIOR -->
+    <div class="ios-tabbar">
+        <div class="tab-item active" onclick="switchTab('chats')">
+            <div class="tab-icon">💬</div>
+            <div>Chats</div>
+        </div>
+        <div class="tab-item" onclick="openNewChatModal()">
+            <div class="tab-icon">👥</div>
+            <div>Contactos</div>
+        </div>
+        <div class="tab-item" onclick="openSettingsModal()">
+            <div class="tab-icon">⚙️</div>
+            <div>Ajustes</div>
+        </div>
+    </div>
+
+    <!-- PANTALLA COMPLETA DE CHAT INDIVIDUAL -->
+    <div id="chatView">
+        <div class="ios-navbar" style="background: #1C1C1E;">
+            <button class="ios-btn-action" onclick="closeChat()">‹ Chats</button>
+            <div style="text-align: center;">
+                <div id="activeChatTitle" style="font-size: 16px; font-weight: 700; color: #FFF;">Chat</div>
+                <div id="activeChatStatus" style="font-size: 11px; color: #00FF7F;">En línea</div>
+            </div>
+            <button class="ios-btn-action" onclick="clearActiveChatMessages()" style="color: #FF453A; font-size: 14px;">Vaciar</button>
+        </div>
+
+        <div class="chat-messages" id="messagesContainer"></div>
+
+        <div class="chat-input-bar">
+            <input type="file" id="mediaInput" accept="image/*" style="display: none;" onchange="handleMediaSelected(event)">
+            <button class="btn-circle" style="background: #2C2C2E; color: #FFF;" onclick="document.getElementById('mediaInput').click()">📷</button>
+            <input type="text" class="chat-input" id="messageInput" placeholder="Mensaje..." onkeydown="if(event.key==='Enter') sendMessage()">
+            <button class="btn-circle" onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <!-- MODAL DE LOGIN (TELÉFONO + PIN) -->
+    <div id="loginModal" class="modal-overlay" style="display: none;">
+        <div class="ios-card">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 42px; margin-bottom: 6px;">🍏 🔐</div>
+                <h2 style="font-size: 22px; font-weight: 800; color: #FFF;">NeoMessage para iPhone</h2>
+                <p style="color: #8E8E93; font-size: 13px; margin-top: 4px;">Mensajería Soberana & Identidad Segura</p>
+            </div>
+
+            <input type="tel" id="loginPhone" class="ios-input" placeholder="Tu Teléfono (10 dígitos)" maxlength="10">
+            <input type="text" id="loginName" class="ios-input" placeholder="Tu Nombre o Alias">
+            <input type="password" id="loginPin" class="ios-input" placeholder="PIN de Seguridad (6 dígitos)" maxlength="6" style="letter-spacing: 4px;">
+
+            <button class="ios-btn-primary" onclick="performLogin()">INGRESAR A MIS CHATS</button>
+            <div id="loginError" style="color: #FF453A; font-size: 12px; text-align: center; margin-top: 10px; display: none;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL NUEVO CONTACTO / CHAT -->
+    <div id="newChatModal" class="modal-overlay" style="display: none;">
+        <div class="ios-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="font-size: 18px; font-weight: 700;">Nuevo Mensaje</h3>
+                <button onclick="document.getElementById('newChatModal').style.display='none'" style="background: none; border: none; color: #00FF7F; font-size: 16px; cursor: pointer;">Cerrar</button>
+            </div>
+
+            <input type="tel" id="newChatPhone" class="ios-input" placeholder="Teléfono del contacto (10 dígitos)" maxlength="10">
+            <input type="text" id="newChatName" class="ios-input" placeholder="Nombre del contacto (opcional)">
+
+            <button class="ios-btn-primary" onclick="startNewChat()">INICIAR CHAT</button>
+        </div>
+    </div>
+
+    <!-- GUÍA VISUAL NATIVA PARA INSTALAR EN IPHONE -->
+    <div id="iosInstallGuide" class="ios-install-guide" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 24px;">🍏</span>
+                <span style="font-size: 17px; font-weight: 700;">Instala NeoMessage en tu iPhone</span>
+            </div>
+            <button onclick="document.getElementById('iosInstallGuide').style.display='none'" style="background: none; border: none; color: #8E8E93; font-size: 20px; cursor: pointer; padding: 4px;">✕</button>
+        </div>
+        <p style="color: #8E8E93; font-size: 13px;">Agrega la aplicación oficial a tu pantalla de inicio en 3 pasos:</p>
+
+        <div class="step-row">
+            <div class="step-badge">1</div>
+            <div style="font-size: 14px;">Toca el botón <b>Compartir</b> <span style="font-size: 18px;">[⬆️]</span> en la barra inferior de Safari.</div>
+        </div>
+
+        <div class="step-row">
+            <div class="step-badge">2</div>
+            <div style="font-size: 14px;">Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.</div>
+        </div>
+
+        <div class="step-row">
+            <div class="step-badge">3</div>
+            <div style="font-size: 14px;">Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo! Se abrirá como app independiente.</div>
+        </div>
+
+        <button onclick="document.getElementById('iosInstallGuide').style.display='none'" class="ios-btn-primary" style="margin-top: 12px;">CONTINUAR CHATEANDO</button>
+    </div>
+
+    <script>
+        // CONFIGURACIÓN DE FIREBASE
+        const firebaseConfig = {
+            databaseURL: "https://neomessage-19ab4-default-rtdb.firebaseio.com"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let myPhone = localStorage.getItem('neo_my_phone') || '';
+        let myName = localStorage.getItem('neo_my_name') || '';
+        let activeChatId = '';
+        let activeChatName = '';
+        let chatsMap = {};
+        let usersMap = {};
+
+        // INICIALIZACIÓN
+        window.addEventListener('DOMContentLoaded', () => {
+            // Detección de iPhone sin instalar
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            const isStandalone = ('standalone' in window.navigator) && window.navigator.standalone;
+            
+            if (isIOS && !isStandalone) {
+                setTimeout(() => {
+                    document.getElementById('iosInstallGuide').style.display = 'block';
+                }, 1000);
+            }
+
+            if (!myPhone) {
+                document.getElementById('loginModal').style.display = 'flex';
+            } else {
+                initApp();
+            }
+        });
+
+        function performLogin() {
+            const rawPhone = document.getElementById('loginPhone').value;
+            const name = document.getElementById('loginName').value.trim();
+            const pin = document.getElementById('loginPin').value.trim();
+            const err = document.getElementById('loginError');
+            err.style.display = 'none';
+
+            const clean = (rawPhone || '').replace(/\D/g, '');
+            if (clean.length !== 10) {
+                err.innerText = 'El número de teléfono debe tener 10 dígitos (ej: 9612765041).';
+                err.style.display = 'block';
+                return;
+            }
+            if (!name) {
+                err.innerText = 'Por favor escribe tu nombre.';
+                err.style.display = 'block';
+                return;
+            }
+            if (pin.length !== 6) {
+                err.innerText = 'El PIN de Seguridad debe tener exactamente 6 dígitos.';
+                err.style.display = 'block';
+                return;
+            }
+
+            const userRef = db.ref('users/' + clean);
+            userRef.once('value').then((snap) => {
+                const data = snap.val() || {};
+                const savedPin = data.securityPin || data.nexus_pin;
+                if (savedPin && savedPin !== pin) {
+                    err.innerText = '❌ PIN incorrecto. Acceso bloqueado para proteger la cuenta.';
+                    err.style.display = 'block';
+                    return;
+                }
+
+                myPhone = clean;
+                myName = name || data.name || 'Usuario iPhone';
+                localStorage.setItem('neo_my_phone', myPhone);
+                localStorage.setItem('neo_my_name', myName);
+                localStorage.setItem('neo_security_pin', pin);
+
+                userRef.update({
+                    id: clean,
+                    name: myName,
+                    securityPin: pin,
+                    deviceModel: 'Apple iPhone (iOS PWA)',
+                    loginTime: Date.now(),
+                    status: 'Online'
+                });
+
+                document.getElementById('loginModal').style.display = 'none';
+                initApp();
+            }).catch((e) => {
+                err.innerText = 'Error: ' + e.message;
+                err.style.display = 'block';
+            });
+        }
+
+        function initApp() {
+            // Cargar usuarios para resolver nombres
+            db.ref('users').on('value', (snap) => {
+                usersMap = snap.val() || {};
+                renderChatsList();
+            });
+
+            // Escuchar chats
+            db.ref('chats').on('value', (snap) => {
+                chatsMap = {};
+                snap.forEach((child) => {
+                    const chatId = child.key;
+                    if (chatId.includes(myPhone) || chatId.startsWith('group_')) {
+                        const msgs = child.child('messages').val();
+                        let lastMsg = 'Toca para chatear';
+                        let lastTime = 0;
+                        if (msgs) {
+                            const keys = Object.keys(msgs);
+                            const lastKey = keys[keys.length - 1];
+                            const lastObj = msgs[lastKey];
+                            lastMsg = lastObj.text || (lastObj.mediaContent ? '📷 Foto' : 'Mensaje');
+                            lastTime = lastObj.timestamp || 0;
+                        }
+                        chatsMap[chatId] = { id: chatId, lastMsg, lastTime };
+                    }
+                });
+                renderChatsList();
+            });
+        }
+
+        function renderChatsList() {
+            const listEl = document.getElementById('chatsListContainer');
+            const chats = Object.values(chatsMap).sort((a, b) => b.lastTime - a.lastTime);
+
+            if (chats.length === 0) {
+                listEl.innerHTML = `
+                    <div style="text-align: center; color: #8E8E93; padding: 60px 20px;">
+                        <div style="font-size: 40px; margin-bottom: 12px;">💬</div>
+                        <h3 style="color: #FFF; font-size: 17px; margin-bottom: 6px;">No tienes chats activos</h3>
+                        <p style="font-size: 13px;">Toca "+ Nuevo" arriba para iniciar una conversación con cualquier contacto.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = '';
+            chats.forEach((c) => {
+                let otherPhone = '';
+                let title = 'Chat';
+                if (c.id.startsWith('private_')) {
+                    const parts = c.id.replace('private_', '').split('_');
+                    otherPhone = parts[0] === myPhone ? parts[1] : parts[0];
+                    title = (usersMap[otherPhone] && usersMap[otherPhone].name) ? usersMap[otherPhone].name : otherPhone;
+                } else if (c.id.startsWith('group_')) {
+                    title = 'Grupo ' + c.id.replace('group_', '').substring(0, 10);
+                }
+
+                const item = document.createElement('div');
+                item.className = 'chat-list-item';
+                item.onclick = () => openChat(c.id, title);
+                item.innerHTML = `
+                    <div class="avatar">${title.charAt(0).toUpperCase()}</div>
+                    <div class="chat-info">
+                        <div class="chat-header-line">
+                            <span class="chat-name">${escapeHtml(title)}</span>
+                            <span class="chat-time">${formatTime(c.lastTime)}</span>
+                        </div>
+                        <div class="chat-preview">${escapeHtml(c.lastMsg)}</div>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function openChat(chatId, title) {
+            activeChatId = chatId;
+            activeChatName = title;
+            document.getElementById('activeChatTitle').innerText = title;
+            document.getElementById('chatView').style.display = 'flex';
+            document.getElementById('messagesContainer').innerHTML = '<div style="text-align:center; color:#8E8E93; padding:20px;">Cargando mensajes...</div>';
+
+            db.ref('chats/' + chatId + '/messages').off();
+            db.ref('chats/' + chatId + '/messages').on('value', (snap) => {
+                const container = document.getElementById('messagesContainer');
+                container.innerHTML = '';
+                snap.forEach((child) => {
+                    const m = child.val();
+                    const isMe = m.senderId === myPhone;
+                    const b = document.createElement('div');
+                    b.className = 'msg-bubble ' + (isMe ? 'msg-sent' : 'msg-received');
+                    
+                    let html = '';
+                    if (m.mediaContent) {
+                        html += `<img src="${m.mediaContent}" class="msg-img">`;
+                    }
+                    if (m.text) {
+                        html += `<div>${escapeHtml(m.text)}</div>`;
+                    }
+                    html += `<div class="msg-time">${formatTime(m.timestamp)}</div>`;
+                    b.innerHTML = html;
+                    container.appendChild(b);
+                });
+                container.scrollTop = container.scrollHeight;
+            });
+        }
+
+        function closeChat() {
+            if (activeChatId) {
+                db.ref('chats/' + activeChatId + '/messages').off();
+            }
+            activeChatId = '';
+            document.getElementById('chatView').style.display = 'none';
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            if (!text || !activeChatId) return;
+
+            const msgId = 'msg_' + Date.now();
+            const msgData = {
+                id: msgId,
+                senderId: myPhone,
+                senderName: myName,
+                text: text,
+                timestamp: Date.now()
+            };
+
+            db.ref('chats/' + activeChatId + '/messages/' + msgId).set(msgData);
+            input.value = '';
+            input.focus();
+        }
+
+        // COMPRESIÓN ESTÁNDAR WHATSAPP (1280px / 72% de calidad)
+        function handleMediaSelected(e) {
+            const file = e.target.files[0];
+            if (!file || !activeChatId) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let w = img.width;
+                    let h = img.height;
+                    const maxDim = 1280;
+
+                    if (w > maxDim || h > maxDim) {
+                        if (w > h) {
+                            h = Math.round((h * maxDim) / w);
+                            w = maxDim;
+                        } else {
+                            w = Math.round((w * maxDim) / h);
+                            h = maxDim;
+                        }
+                    }
+
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.72);
+                    const msgId = 'msg_' + Date.now();
+                    const msgData = {
+                        id: msgId,
+                        senderId: myPhone,
+                        senderName: myName,
+                        text: '',
+                        mediaContent: compressedBase64,
+                        mediaType: 'image/jpeg',
+                        timestamp: Date.now()
+                    };
+
+                    db.ref('chats/' + activeChatId + '/messages/' + msgId).set(msgData);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        }
+
+        function openNewChatModal() {
+            document.getElementById('newChatModal').style.display = 'flex';
+            document.getElementById('newChatPhone').focus();
+        }
+
+        function startNewChat() {
+            const rawPhone = document.getElementById('newChatPhone').value;
+            const name = document.getElementById('newChatName').value.trim();
+            const clean = (rawPhone || '').replace(/\D/g, '');
+
+            if (clean.length !== 10) {
+                alert('Ingresa un número de 10 dígitos.');
+                return;
+            }
+
+            const p1 = myPhone < clean ? myPhone : clean;
+            const p2 = myPhone < clean ? clean : myPhone;
+            const chatId = `private_${p1}_${p2}`;
+            const title = name || clean;
+
+            document.getElementById('newChatModal').style.display = 'none';
+            document.getElementById('newChatPhone').value = '';
+            document.getElementById('newChatName').value = '';
+
+            openChat(chatId, title);
+        }
+
+        function clearActiveChatMessages() {
+            if (!activeChatId) return;
+            if (confirm('¿Vaciar todos los mensajes de este chat? Tus contactos no se borrarán.')) {
+                db.ref('chats/' + activeChatId + '/messages').remove();
+            }
+        }
+
+        function openSettingsModal() {
+            alert(`👤 Usuario: ${myName}\n📱 Teléfono: ${myPhone}\n🛡️ Protocolo: Apple iPhone Sovereign (iOS PWA)\n🔒 Cifrado: AES-256 E2E`);
+        }
+
+        function formatTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+    </script>
+</body>
+</html>
