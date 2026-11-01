@@ -158,16 +158,29 @@ fun ChatRoomScreen(
     }
     
     var otherPhotoUrl by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(otherCleanId) {
+    var resolvedHeaderName by remember(chatName) { mutableStateOf(chatName) }
+    LaunchedEffect(otherCleanId, chatName) {
         if (otherCleanId.isNotEmpty() && !chatId.startsWith("group_")) {
+            val p10 = NeoUtils.sanitizeId(otherCleanId).takeLast(10)
+            val spNames = context.getSharedPreferences("NeoUserNames", Context.MODE_PRIVATE)
+            val spCont = context.getSharedPreferences("NeoContacts", Context.MODE_PRIVATE)
+            val cached = spNames.getString(p10, null) ?: spCont.getString(p10, null)
+            if (!cached.isNullOrBlank() && cached.any { it.isLetter() } && !resolvedHeaderName.any { it.isLetter() }) {
+                resolvedHeaderName = cached
+            }
             try {
                 com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-                    .getReference("users").child(otherCleanId)
+                    .getReference("users").child(p10)
                     .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
                         override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                             val p = snapshot.child("photoUrl").getValue(String::class.java)
                                 ?: snapshot.child("profilePhoto").getValue(String::class.java)
                             if (!p.isNullOrBlank()) otherPhotoUrl = p
+                            val regName = snapshot.child("name").getValue(String::class.java)?.trim()
+                            if (!regName.isNullOrBlank() && regName.any { it.isLetter() } && regName.lowercase() != "neo") {
+                                resolvedHeaderName = regName
+                                spNames.edit().putString(p10, regName).apply()
+                            }
                         }
                         override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
                     })
@@ -699,7 +712,10 @@ fun ChatRoomScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(chatName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val headerTitle = if (!isGroup && otherCleanId.isNotBlank() && !resolvedHeaderName.contains(otherCleanId.takeLast(10))) {
+                                "$resolvedHeaderName • ${otherCleanId.takeLast(10)}"
+                            } else resolvedHeaderName
+                            Text(headerTitle, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             
                             val subtitleText = when {
                                 typingUser.value != null && typingUser.value != myName -> {

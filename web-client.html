@@ -2702,7 +2702,7 @@
             try {
                 // Solicitar micrófono y opcionalmente cámara
                 const constraints = {
-                    audio: true,
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                     video: callType === 'video' ? { width: 1280, height: 720 } : false
                 };
                 localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -2830,7 +2830,7 @@
 
             try {
                 const constraints = {
-                    audio: true,
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                     video: currentCall.type === 'video' ? { width: 1280, height: 720 } : false
                 };
                 localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -4537,19 +4537,53 @@
             }
         };
 
+        // HELPER: VALIDAR NOMBRE REAL DE PERSONA Y RESOLVER POR 10 DÍGITOS
+        function isValidPersonNameWeb(n) {
+            if (!n || typeof n !== 'string') return false;
+            const t = n.trim();
+            if (!t) return false;
+            const low = t.toLowerCase();
+            if (low === 'neo' || low === 'contacto' || low === 'chat' || low === 'usuario' || low === 'usuario neomessage' || low.startsWith('contacto (') || low.startsWith('usuario ')) return false;
+            return /[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(t);
+        }
+
+        function findUserInMapByPhone(phone) {
+            const p10 = String(phone || '').replace(/\D/g, '').slice(-10);
+            if (!p10) return null;
+            if (usersMap[phone]) return usersMap[phone];
+            if (usersMap[p10]) return usersMap[p10];
+            const matchKey = Object.keys(usersMap).find(k => String(k).replace(/\D/g, '').slice(-10) === p10);
+            return matchKey ? usersMap[matchKey] : null;
+        }
+
+        function resolveContactNameWeb(phone, fallbackName) {
+            const p10 = String(phone || '').replace(/\D/g, '').slice(-10);
+            const u = findUserInMapByPhone(p10);
+            const saved = mySavedContacts.find(c => String(c.id || '').replace(/\D/g, '').slice(-10) === p10);
+            const regName = (u && isValidPersonNameWeb(u.name)) ? u.name.trim() : null;
+            const savedName = (saved && isValidPersonNameWeb(saved.name)) ? saved.name.trim() : null;
+            const fbName = isValidPersonNameWeb(fallbackName) ? fallbackName.trim() : null;
+            if (regName && savedName && regName.toLowerCase() !== savedName.toLowerCase()) {
+                return `${regName} (${savedName})`;
+            }
+            return regName || savedName || fbName || p10 || String(phone || '');
+        }
+
         // ESCUCHAR CONTACTOS GUARDADOS
         function listenToUserContacts() {
             db.ref(`users/${myPhone}/contacts`).on('value', snap => {
                 const raw = snap.val() || {};
                 const list = [];
+                const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
                 Object.keys(raw).forEach(k => {
                     const c = raw[k];
-                    const clean = (c.id || k).replace(/\D/g, '');
-                    if (clean && clean !== myPhone) {
-                        list.push({ id: clean, name: c.name || `Contacto (${clean})` });
+                    const clean = String((c && c.id) || k).replace(/\D/g, '').slice(-10);
+                    if (clean && clean !== myP10) {
+                        list.push({ id: clean, name: (c && c.name) ? c.name : clean });
                     }
                 });
                 mySavedContacts = list;
+                renderChatsList();
                 renderContactsList();
             });
         }
@@ -4590,28 +4624,36 @@
                     if (cleanCId.includes(myCleanPhone)) {
                         const parts = cId.replace('private_', '').split('_');
                         const p0Clean = parts[0] ? parts[0].replace(/\D/g, '').slice(-10) : '';
-                        const otherPhone = p0Clean === myCleanPhone ? parts[1] : parts[0];
+                        const rawOther = p0Clean === myCleanPhone ? parts[1] : parts[0];
+                        const otherPhone = rawOther ? rawOther.replace(/\D/g, '').slice(-10) : '';
                         if (!otherPhone) return;
 
                         const msgs = raw[cId].messages ? Object.values(raw[cId].messages) : [];
                         let lastText = 'Conversación abierta';
                         let time = 0;
+                        let peerSenderName = null;
 
                         if (msgs.length > 0) {
                             msgs.sort((m1, m2) => (m1.timestamp || 0) - (m2.timestamp || 0));
                             const lastM = msgs[msgs.length - 1];
                             lastText = formatPreviewText(lastM.text);
                             time = lastM.timestamp || 0;
+                            for (let i = msgs.length - 1; i >= 0; i--) {
+                                const sId = String(msgs[i].senderId || '').replace(/\D/g, '').slice(-10);
+                                if (sId && sId !== myCleanPhone && isValidPersonNameWeb(msgs[i].senderName)) {
+                                    peerSenderName = msgs[i].senderName.trim();
+                                    break;
+                                }
+                            }
                         }
 
-                        const saved = mySavedContacts.find(c => c.id === otherPhone);
-                        const userEntry = usersMap[otherPhone];
-                        const contactName = saved ? saved.name : (userEntry && userEntry.name ? userEntry.name : otherPhone);
+                        const contactName = resolveContactNameWeb(otherPhone, peerSenderName);
 
                         list.push({
                             chatId: cId,
                             recipientPhone: otherPhone,
                             name: contactName,
+                            peerSenderName: peerSenderName,
                             lastText: lastText,
                             timestamp: time,
                             isSelf: false
@@ -4633,7 +4675,6 @@
                                 lastText = formatPreviewText(lastM.text);
                                 time = lastM.timestamp || time;
                             }
-                            // Evitar duplicados
                             if (!list.some(item => item.chatId === grpChatId)) {
                                 list.push({
                                     chatId: grpChatId,
@@ -4648,26 +4689,30 @@
                         }
                     });
 
-                    // ORDENAR DINÁMICAMENTE: EL CHAT CON EL MENSAJE MÁS RECIENTE QUEDA EN PRIMER LUGAR (#1)
-                    list.sort((a, b) => {
-                        return (b.timestamp || 0) - (a.timestamp || 0);
-                    });
-
+                    list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                     conversations = list;
                     renderChatsList();
+                    renderContactsList();
                 });
             });
         }
 
-        // RENDERIZAR CHATS CON BOTÓN PARA ELIMINAR RASTRO
+        // RENDERIZAR CHATS CON NOMBRE Y NÚMERO SIEMPRE VISIBLES
         function renderChatsList(filterQuery = '') {
             const container = document.getElementById('tabChats');
             if (!container) return;
             container.innerHTML = '';
 
+            // Actualizar dinámicamente los nombres con usersMap y mySavedContacts antes de filtrar/mostrar
+            conversations.forEach(item => {
+                if (!item.isSelf && !item.isGroup) {
+                    item.name = resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
+                }
+            });
+
             const q = filterQuery.toLowerCase().trim();
             let filtered = conversations.filter(c => 
-                c.name.toLowerCase().includes(q) || c.recipientPhone.includes(q) || c.lastText.toLowerCase().includes(q)
+                (c.name && c.name.toLowerCase().includes(q)) || (c.recipientPhone && c.recipientPhone.includes(q)) || (c.lastText && c.lastText.toLowerCase().includes(q))
             );
 
             if (currentChatFilter === 'groups') {
@@ -4687,23 +4732,29 @@
                 const row = document.createElement('div');
                 row.className = `chat-row ${currentChatId === item.chatId ? 'active' : ''}`;
                 
+                const displayName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
+                const p10 = (!item.isSelf && !item.isGroup && item.recipientPhone) ? String(item.recipientPhone).replace(/\D/g, '').slice(-10) : '';
+                const showPhoneBadge = p10 && !displayName.includes(p10);
                 const timeStr = formatTime(item.timestamp);
-                const initial = item.isSelf ? '📌' : (item.name ? item.name.charAt(0).toUpperCase() : '#');
+                const initial = item.isSelf ? '📌' : (displayName ? displayName.charAt(0).toUpperCase() : '#');
                 const avatarBg = item.isSelf ? 'background: linear-gradient(135deg, var(--neon-green), #00BFFF); color: #000;' : '';
 
-                const u = usersMap[item.recipientPhone];
+                const u = findUserInMapByPhone(item.recipientPhone);
                 const photoStyle = (u && (u.photoUrl || u.profilePhoto)) ? `background-image: url(${u.photoUrl || u.profilePhoto});` : '';
 
                 row.innerHTML = `
                     <div class="chat-avatar" style="${avatarBg} ${photoStyle}">${photoStyle ? '' : initial}</div>
                     <div class="chat-meta">
                         <div class="chat-title-row">
-                            <span class="chat-name">${escapeHtml(item.name)}</span>
+                            <span class="chat-name" style="display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis;">
+                                <span>${escapeHtml(displayName)}</span>
+                                ${showPhoneBadge ? `<span style="font-size:11px; color:#00FF7F; font-weight:600; flex-shrink:0;">📱 ${escapeHtml(p10)}</span>` : ''}
+                            </span>
                             <span class="chat-time">${timeStr}</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
-                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(item.name)}')" title="Vaciar mensajes del chat">🗑️</button>` : ''}
+                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🗑️</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -4864,46 +4915,52 @@
             });
         }
 
-        // RENDERIZAR TODOS LOS CONTACTOS (UNIFICANDO USUARIOS REGISTRADOS Y GUARDADOS)
+        // RENDERIZAR CONTACTOS DEL USUARIO (PRIVACIDAD ESTRICTA + NOMBRE Y NÚMERO SIEMPRE VISIBLES)
         function renderContactsList(filterQuery = '') {
             const container = document.getElementById('tabContacts');
             if (!container) return;
             container.innerHTML = '';
 
             const q = filterQuery.toLowerCase().trim();
-
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
             const combinedMap = new Map();
 
-            // 1. Usuarios registrados en NeoMessage
-            Object.keys(usersMap).forEach(p => {
-                if (p !== myPhone) {
-                    const u = usersMap[p] || {};
-                    combinedMap.set(p, {
-                        id: p,
-                        name: u.name || ('Usuario ' + p.slice(-4)),
-                        status: u.status || 'En línea',
-                        photo: u.photoUrl || u.profilePhoto || null,
-                        isSaved: false
-                    });
+            // 1. Contactos con conversación activa de este usuario
+            conversations.forEach(conv => {
+                if (!conv.isSelf && !conv.isGroup && conv.recipientPhone) {
+                    const p10 = String(conv.recipientPhone).replace(/\D/g, '').slice(-10);
+                    if (p10 && p10 !== myP10) {
+                        const u = findUserInMapByPhone(p10) || {};
+                        const resolvedName = resolveContactNameWeb(p10, conv.peerSenderName || conv.name);
+                        combinedMap.set(p10, {
+                            id: p10,
+                            name: resolvedName,
+                            status: u.status || 'En línea',
+                            photo: u.photoUrl || u.profilePhoto || null,
+                            isSaved: true
+                        });
+                    }
                 }
             });
 
-            // 2. Sobrescribir con nombres de contactos guardados
+            // 2. Contactos guardados / sincronizados desde la agenda del celular de este usuario
             mySavedContacts.forEach(c => {
-                if (c && c.id && c.id !== myPhone) {
-                    const existing = combinedMap.get(c.id);
-                    combinedMap.set(c.id, {
-                        id: c.id,
-                        name: c.name || (existing ? existing.name : ('Contacto ' + c.id.slice(-4))),
-                        status: existing ? existing.status : 'En línea',
-                        photo: existing ? existing.photo : null,
+                const p10 = String((c && c.id) || '').replace(/\D/g, '').slice(-10);
+                if (p10 && p10 !== myP10) {
+                    const u = findUserInMapByPhone(p10) || {};
+                    const resolvedName = resolveContactNameWeb(p10, c.name);
+                    combinedMap.set(p10, {
+                        id: p10,
+                        name: resolvedName,
+                        status: u.status || 'En línea',
+                        photo: u.photoUrl || u.profilePhoto || null,
                         isSaved: true
                     });
                 }
             });
 
-            const list = Array.from(combinedMap.values());
-            const filtered = list.filter(c => c.name.toLowerCase().includes(q) || c.id.includes(q));
+            const list = Array.from(combinedMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const filtered = list.filter(c => (c.name && c.name.toLowerCase().includes(q)) || c.id.includes(q));
 
             const addBtnRow = document.createElement('div');
             addBtnRow.style.padding = '12px 16px';
@@ -4917,7 +4974,7 @@
             if (filtered.length === 0) {
                 const emptyDiv = document.createElement('div');
                 emptyDiv.style.cssText = 'padding: 30px; text-align: center; color: #64748B; font-size: 13px;';
-                emptyDiv.innerText = 'No se encontraron contactos en NeoMessage.';
+                emptyDiv.innerText = 'Tus contactos guardados y de tu celular aparecerán aquí.';
                 container.appendChild(emptyDiv);
                 return;
             }
@@ -4933,9 +4990,9 @@
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name">${escapeHtml(c.name)}</span>
-                            ${c.isSaved ? '<span style="font-size:10px; color:#10B981; font-weight:bold;">Guardado</span>' : '<span style="font-size:10px; color:#38BDF8;">NeoMessage</span>'}
+                            <span style="font-size:11px; color:#00FF7F; font-weight:bold;">📱 ${escapeHtml(c.id)}</span>
                         </div>
-                        <span class="chat-last-msg">${c.id} • ${escapeHtml(c.status)}</span>
+                        <span class="chat-last-msg">Tel: ${escapeHtml(c.id)} • ${escapeHtml(c.status)}</span>
                     </div>
                 `;
 
@@ -4954,27 +5011,38 @@
             });
         }
 
-        // RENDERIZAR USUARIOS EN EL MODAL DE NUEVO CONTACTO
+        // RENDERIZAR CONTACTOS EN EL MODAL DE NUEVO CONTACTO (SIN MOSTRAR DESCONOCIDOS A MENOS QUE BUSQUE)
         function renderModalRegisteredUsers(query = '') {
             const listEl = document.getElementById('modalRegisteredUsersList');
             if (!listEl) return;
             listEl.innerHTML = '';
             const q = query.toLowerCase().trim();
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+
+            const myKnownPhones = new Set();
+            mySavedContacts.forEach(c => {
+                const p10 = String((c && c.id) || '').replace(/\D/g, '').slice(-10);
+                if (p10) myKnownPhones.add(p10);
+            });
+            conversations.forEach(conv => {
+                if (!conv.isSelf && !conv.isGroup && conv.recipientPhone) {
+                    const p10 = String(conv.recipientPhone).replace(/\D/g, '').slice(-10);
+                    if (p10) myKnownPhones.add(p10);
+                }
+            });
 
             const users = Object.keys(usersMap)
-                .filter(p => p !== myPhone)
-                .map(p => {
-                    const u = usersMap[p] || {};
-                    const saved = mySavedContacts.find(c => c.id === p);
-                    return {
-                        id: p,
-                        name: saved ? saved.name : (u.name || ('Usuario ' + p.slice(-4)))
-                    };
-                })
+                .map(p => String(p).replace(/\D/g, '').slice(-10))
+                .filter((p10, idx, arr) => p10 && p10 !== myP10 && arr.indexOf(p10) === idx)
+                .filter(p10 => myKnownPhones.has(p10) || q.length >= 3)
+                .map(p10 => ({
+                    id: p10,
+                    name: resolveContactNameWeb(p10, null)
+                }))
                 .filter(u => u.name.toLowerCase().includes(q) || u.id.includes(q));
 
             if (users.length === 0) {
-                listEl.innerHTML = '<div style="color: #64748B; font-size: 12px; text-align: center; padding: 8px;">No hay otros usuarios registrados aún.</div>';
+                listEl.innerHTML = '<div style="color: #64748B; font-size: 12px; text-align: center; padding: 8px;">Ingresa el nombre y número arriba o escribe al menos 3 dígitos/letras para buscar.</div>';
                 return;
             }
 
@@ -4984,7 +5052,7 @@
                 item.innerHTML = `
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div class="chat-avatar" style="width: 26px; height: 26px; font-size: 11px; margin: 0;">${u.name.charAt(0).toUpperCase()}</div>
-                        <span style="color: #FFF; font-size: 13px;">${escapeHtml(u.name)} <small style="color: #94A3B8;">(${u.id})</small></span>
+                        <span style="color: #FFF; font-size: 13px; font-weight: 600;">${escapeHtml(u.name)} <small style="color: #00FF7F; font-weight: bold;">📱 ${escapeHtml(u.id)}</small></span>
                     </div>
                     <button style="background: #10B981; color: #000; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;">Chatear</button>
                 `;
@@ -5082,15 +5150,17 @@
         function selectChat(item) {
             currentChatId = item.chatId;
             currentRecipient = item.recipientPhone;
-            currentContactName = item.name;
+            const resolvedName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
+            const p10 = (!item.isSelf && !item.isGroup && item.recipientPhone) ? String(item.recipientPhone).replace(/\D/g, '').slice(-10) : '';
+            currentContactName = resolvedName;
 
             document.getElementById('emptyPlaceholder').style.display = 'none';
             document.getElementById('statusWelcomePane').style.display = 'none';
             document.getElementById('activeChatBox').style.display = 'flex';
-            document.getElementById('activeChatName').innerText = item.name;
+            document.getElementById('activeChatName').innerText = (p10 && !resolvedName.includes(p10)) ? `${resolvedName} • 📱 ${p10}` : resolvedName;
 
             const activeAv = document.getElementById('activeAvatar');
-            const u = usersMap[item.recipientPhone];
+            const u = findUserInMapByPhone(item.recipientPhone);
             if (u && (u.photoUrl || u.profilePhoto)) {
                 activeAv.style.backgroundImage = `url(${u.photoUrl || u.profilePhoto})`;
                 activeAv.style.backgroundSize = 'cover';

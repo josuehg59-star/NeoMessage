@@ -646,8 +646,28 @@ fun ChatsListScreen(
         } catch (_: Exception) {}
 
         val spArchived = context.getSharedPreferences("NeoArchived", Context.MODE_PRIVATE)
+        val spUserNames = context.getSharedPreferences("NeoUserNames", Context.MODE_PRIVATE)
         spArchived.all.keys.forEach { if (!archivedIds.contains(it)) archivedIds.add(it) }
-// B) Mensajes locales guardados en SQLite Room
+
+        fun isValidPersonName(n: String?): Boolean {
+            val t = n?.trim() ?: return false
+            if (t.isBlank()) return false
+            val low = t.lowercase()
+            if (low == "neo" || low == "contacto" || low == "chat" || low == "usuario" || low == "usuario neomessage" || low.startsWith("contacto (") || low.startsWith("usuario ")) return false
+            return t.any { it.isLetter() }
+        }
+
+        fun sanitizePreview(raw: String): String = when {
+            raw.startsWith("[Media]") -> "📷 Foto"
+            raw.startsWith("[Document]|") || raw.startsWith("[File]") -> "📄 Archivo"
+            raw.startsWith("[Voice]") || raw.startsWith("[Audio]") -> "🎤 Mensaje de voz"
+            raw.contains("NEO_QUOTE") || raw.contains("COTIZACI") || raw.contains("Cotización") -> "📄 Presupuesto guardado"
+            raw.contains("NEO_HEALTH") || raw.contains("NEOHEALTH") || raw.contains("BPM") -> "❤️ Ficha de salud guardada"
+            raw.length > 60 -> raw.take(60) + "..."
+            else -> raw
+        }
+
+        // B) Mensajes locales guardados en SQLite Room
         launch(Dispatchers.IO) {
             try {
                 val allEntities = dao?.getAllMessagesDirect() ?: emptyList()
@@ -657,16 +677,20 @@ fun ChatsListScreen(
                         val lastMsg = msgs.maxByOrNull { it.timestamp }
                         if (lastMsg != null) {
                             val parts = cId.replace("private_", "").split("_")
-                            val otherPhone = if (parts.size == 2) {
-                                if (parts[0] == myCleanId) parts[1] else parts[0]
+                            val rawOther = if (parts.size == 2) {
+                                if (NeoUtils.sanitizeId(parts[0]).takeLast(10) == myCleanId.takeLast(10)) parts[1] else parts[0]
                             } else ""
+                            val otherPhone = NeoUtils.sanitizeId(rawOther).takeLast(10)
+                            val peerMsgName = msgs.lastOrNull {
+                                NeoUtils.sanitizeId(it.senderId).takeLast(10) != myCleanId.takeLast(10) && isValidPersonName(it.senderName)
+                            }?.senderName?.trim()
                             
-                            val name = spContacts.getString(otherPhone, null) 
-                                ?: if (lastMsg.senderId != myCleanId && lastMsg.senderName.isNotBlank() && lastMsg.senderName != "Neo") lastMsg.senderName 
-                                else if (otherPhone.isNotEmpty()) otherPhone 
-                                else "Chat"
+                            val name = spUserNames.getString(otherPhone, null)?.takeIf { isValidPersonName(it) }
+                                ?: spContacts.getString(otherPhone, null)?.takeIf { isValidPersonName(it) }
+                                ?: peerMsgName
+                                ?: if (otherPhone.isNotEmpty()) otherPhone else "Chat"
                             
-                            updateEntry(NeoChatEntry(name, cId, lastMsg.text, lastMsg.timestamp))
+                            updateEntry(NeoChatEntry(name, cId, sanitizePreview(lastMsg.text), lastMsg.timestamp))
                         }
                     }
                 }
@@ -742,55 +766,120 @@ fun ChatsListScreen(
                 override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
             })
 
-            // B) USUARIOS INDIVIDUALES: SOLO CONTACTOS REGISTRADOS EN TU AGENDA O CONVERSACIONES EXISTENTES
-            // Ningún usuario extraño de la base de datos es escuchado ni agregado a la pantalla.
-            val contactsToListen = mutableSetOf<String>()
-            spContacts.all.forEach { (phone, _) ->
-                val clean = NeoUtils.sanitizeId(phone).takeLast(10)
-                if (clean.isNotEmpty() && clean != myCleanId.takeLast(10)) {
-                    contactsToListen.add(clean)
+            // B) CHATS INDIVIDUALES CON NOMBRE REGISTRADO EN LA APP Y AGENDA
+            launch(Dispatchers.IO) {
+                val agenda = mutableMapOf<String, String>()
+                try {
+                    val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (granted) {
+                        val tmp = mutableListOf<Map<String, String>>()
+                        syncLocalContactsAction(context, tmp)
+                        tmp.forEach { m ->
+                            val p10 = NeoUtils.sanitizeId(m["id"] ?: "").takeLast(10)
+                            val n = m["name"]?.trim() ?: ""
+                            if (p10.length == 10 && isValidPersonName(n)) agenda[p10] = n
+                        }
+                    }
+                } catch (_: Exception) {}
+                val saved = mutableMapOf<String, String>()
+                spContacts.all.forEach { (k, v) ->
+                    val p10 = NeoUtils.sanitizeId(k).takeLast(10)
+                    val n = v?.toString()?.trim() ?: ""
+                    if (p10.length == 10 && isValidPersonName(n)) saved[p10] = n
                 }
-            }
+                val regNames = mutableMapOf<String, String>()
 
-            contactsToListen.forEach { canonicalPhone ->
-                val name = spContacts.getString(canonicalPhone, null) ?: "Contacto ($canonicalPhone)"
-                val chatId = NeoUtils.getChatId(myCleanId, canonicalPhone)
-                if (!listenedChatIds.contains(chatId)) {
-                    listenedChatIds.add(chatId)
-                    db.getReference("chats").child(chatId).child("messages").limitToLast(1)
-                        .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                            override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
-                                val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
-                                if (lastMsgObj != null) {
-                                    val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
-                                    val cleanMe = NeoUtils.sanitizeId(myCleanId)
-                                    if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
-                                        NeoBotManager.dispatchAutoReplyIfNeeded(
-                                            context = context,
-                                            chatId = chatId,
-                                            senderId = lastMsgObj.senderId,
-                                            myId = cleanMe,
-                                            incomingText = lastMsgObj.text,
-                                            msgTimestamp = lastMsgObj.timestamp
-                                        )
-                                    }
-                                    // ULTRA-OPTIMIZADO: NUNCA pasar Base64 al motor de texto de Compose
-                                    val previewText = when {
-                                        lastMsgObj.text.startsWith("[Media]") -> "📷 Foto"
-                                        lastMsgObj.text.startsWith("[Document]|") || lastMsgObj.text.startsWith("[File]") -> "📄 Archivo"
-                                        lastMsgObj.text.startsWith("[Voice]") || lastMsgObj.text.startsWith("[Audio]") -> "🎤 Mensaje de voz"
-                                        lastMsgObj.text.startsWith("[Presupuesto]") -> "📄 Presupuesto"
-                                        lastMsgObj.text.length > 60 -> lastMsgObj.text.take(60) + "..."
-                                        else -> lastMsgObj.text
-                                    }
-                                    val lastMsgTime = lastMsgObj.timestamp
-                                    updateEntry(NeoChatEntry(name, chatId, previewText, lastMsgTime))
-                                } else {
-                                    if (found.any { it.chatId == chatId }) { found.removeAll { it.chatId == chatId } }
-                                }
+                fun resolveName(p10: String, profileName: String?, msgSenderName: String? = null): String {
+                    val cleanProfile = profileName?.trim()?.takeIf { isValidPersonName(it) } ?: regNames[p10]
+                    val cleanSaved = saved[p10]?.takeIf { isValidPersonName(it) }
+                    val cleanAgenda = agenda[p10]?.takeIf { isValidPersonName(it) }
+                    val cleanMsg = msgSenderName?.trim()?.takeIf { isValidPersonName(it) }
+                    val cleanCached = spUserNames.getString(p10, null)?.takeIf { isValidPersonName(it) }
+                    val finalName = cleanProfile ?: cleanSaved ?: cleanAgenda ?: cleanMsg ?: cleanCached ?: p10
+                    if (isValidPersonName(finalName)) {
+                        spUserNames.edit().putString(p10, finalName).apply()
+                    }
+                    return finalName
+                }
+
+                withContext(Dispatchers.Main) {
+                    // Corregir nombres de chats ya cargados desde la base local
+                    found.toList().forEach { e ->
+                        if (e.chatId.startsWith("private_")) {
+                            val parts = e.chatId.removePrefix("private_").split("_")
+                            val other = parts.firstOrNull { NeoUtils.sanitizeId(it).takeLast(10) != myCleanId.takeLast(10) } ?: return@forEach
+                            val p10 = NeoUtils.sanitizeId(other).takeLast(10)
+                            val better = resolveName(p10, null, e.name)
+                            if (better != e.name) {
+                                val idx = found.indexOfFirst { it.chatId == e.chatId }
+                                if (idx != -1) found[idx] = e.copy(name = better)
                             }
-                            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
-                        })
+                        }
+                    }
+
+                    userIdsRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                        override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                            snapshot.children.forEach { child ->
+                                val rawKey = child.child("id").getValue(String::class.java) ?: child.key ?: ""
+                                val canonicalPhone = NeoUtils.sanitizeId(rawKey).takeLast(10)
+                                if (canonicalPhone.length != 10 || canonicalPhone == myCleanId.takeLast(10)) return@forEach
+                                val profileName = child.child("name").getValue(String::class.java)?.trim()
+                                if (isValidPersonName(profileName)) {
+                                    regNames[canonicalPhone] = profileName!!
+                                }
+                                val photo = child.child("photoUrl").getValue(String::class.java)
+                                    ?: child.child("profilePhoto").getValue(String::class.java)
+                                if (!photo.isNullOrBlank()) {
+                                    userPhotos[canonicalPhone] = photo
+                                }
+                                val name = resolveName(canonicalPhone, profileName)
+                                // Si está en la agenda del celular, sincronizar a Firebase contacts para que en PC Web también aparezca con su nombre
+                                if (agenda.containsKey(canonicalPhone) && isValidPersonName(name)) {
+                                    try {
+                                        db.getReference("users").child(myCleanId).child("contacts").child(canonicalPhone).setValue(
+                                            mapOf("id" to canonicalPhone, "name" to name)
+                                        )
+                                    } catch (_: Exception) {}
+                                }
+                                val chatId = NeoUtils.getChatId(myCleanId, canonicalPhone)
+                                val existingIdx = found.indexOfFirst { it.chatId == chatId }
+                                if (existingIdx != -1 && found[existingIdx].name != name && isValidPersonName(name)) {
+                                    found[existingIdx] = found[existingIdx].copy(name = name)
+                                }
+                                if (listenedChatIds.contains(chatId)) return@forEach
+                                listenedChatIds.add(chatId)
+                                // Solo aparece en la lista si realmente existe una conversación con mensajes
+                                db.getReference("chats").child(chatId).child("messages").limitToLast(1)
+                                    .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                                        override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
+                                            val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
+                                            if (lastMsgObj != null) {
+                                                val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
+                                                val cleanMe = NeoUtils.sanitizeId(myCleanId)
+                                                val peerSenderName = if (cleanSender.takeLast(10) != cleanMe.takeLast(10)) lastMsgObj.senderName else null
+                                                val dynamicName = resolveName(canonicalPhone, regNames[canonicalPhone], peerSenderName)
+                                                if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
+                                                    NeoBotManager.dispatchAutoReplyIfNeeded(
+                                                        context = context,
+                                                        chatId = chatId,
+                                                        senderId = lastMsgObj.senderId,
+                                                        myId = cleanMe,
+                                                        incomingText = lastMsgObj.text,
+                                                        msgTimestamp = lastMsgObj.timestamp
+                                                    )
+                                                }
+                                                val previewText = sanitizePreview(lastMsgObj.text)
+                                                updateEntry(NeoChatEntry(dynamicName, chatId, previewText, lastMsgObj.timestamp))
+                                            } else {
+                                                if (found.any { it.chatId == chatId }) { found.removeAll { it.chatId == chatId } }
+                                            }
+                                        }
+                                        override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                                    })
+                            }
+                        }
+                        override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                    })
                 }
             }
         } catch (_: Exception) {}
@@ -1341,10 +1430,11 @@ fun ChatsListScreen(
                     val isLocked = (meta as Quintuple<*, *, *, *, *>).second as Boolean
                     val otherPhone = if (id.startsWith("private_")) {
                         val parts = id.replace("private_", "").split("_")
-                        if (parts.size >= 2) (if (parts[0] == myCleanId) parts[1] else parts[0]) else ""
+                        val rawOther = if (parts.size >= 2) (if (NeoUtils.sanitizeId(parts[0]).takeLast(10) == myCleanId.takeLast(10)) parts[1] else parts[0]) else ""
+                        NeoUtils.sanitizeId(rawOther).takeLast(10)
                     } else ""
                     val photo = userPhotos[otherPhone]
-                    ChatRow(name, lastMsg, id, isLocked = isLocked, photoUrl = photo,
+                    ChatRow(name, lastMsg, id, phone = otherPhone, isLocked = isLocked, photoUrl = photo,
                         onClick = { onNavigateToChat(name, id) },
                         onLongClick = { selectedChatAction = Triple(name, id, lastMsg) }
                     )
@@ -1360,6 +1450,7 @@ fun ChatRow(
     name: String,
     lastMsg: String,
     id: String,
+    phone: String = "",
     isLocked: Boolean = false,
     photoUrl: String? = null,
     onLongClick: () -> Unit = {},
@@ -1385,7 +1476,7 @@ fun ChatRow(
         }
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Icon(
                     if (isLocked) Icons.Filled.Lock else (if (isSelf) Icons.Filled.Bookmark else if (isGroup) Icons.Filled.Groups else Icons.Filled.Person), 
                     null, 
@@ -1393,7 +1484,24 @@ fun ChatRow(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(name, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    name,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (!isSelf && !isGroup && phone.isNotBlank() && !name.contains(phone)) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "📱 $phone",
+                        color = Color(0xFF00FF7F),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                }
             }
             Text(lastMsg, color = Color.Gray, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

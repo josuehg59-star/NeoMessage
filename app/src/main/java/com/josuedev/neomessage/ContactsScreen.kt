@@ -56,6 +56,7 @@ fun ContactsScreen(
     val users = remember { mutableStateListOf<Map<String, String>>() }
     val savedContacts = remember { mutableStateListOf<Map<String, String>>() }
     val localContacts = remember { mutableStateListOf<Map<String, String>>() }
+    val activeChatPhones = remember { mutableStateListOf<String>() }
     
     var searchQuery by remember { mutableStateOf("") }
     var showAddContactDialog by remember { mutableStateOf(false) }
@@ -117,25 +118,45 @@ fun ContactsScreen(
         })
 
         // 3. Cargar Usuarios Globales de la red
+        // 2b. Cargar teléfonos con los que ya existe conversación activa en este celular
+        try {
+            val dao = AppDatabase.getDatabase(context).messageDao()
+            val allMsgs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dao.getAllMessagesDirect() }
+            allMsgs.map { it.chatId }.distinct().forEach { cId ->
+                if (cId.startsWith("private_")) {
+                    val parts = cId.removePrefix("private_").split("_")
+                    parts.forEach { p ->
+                        val p10 = NeoUtils.sanitizeId(p).takeLast(10)
+                        if (p10.length == 10 && p10 != cleanMyId.takeLast(10) && !activeChatPhones.contains(p10)) {
+                            activeChatPhones.add(p10)
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
         usersRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val tmpUsers = mutableListOf<Map<String, String>>()
                 snapshot.children.forEach { snap ->
                     val serverKey = snap.key ?: ""
                     val serverId = snap.child("id").getValue(String::class.java) ?: serverKey
-                    val name = snap.child("name").getValue(String::class.java) ?: "Usuario NeoMessage"
+                    val name = snap.child("name").getValue(String::class.java) ?: ""
+                    val photoUrl = snap.child("photoUrl").getValue(String::class.java)
+                        ?: snap.child("profilePhoto").getValue(String::class.java) ?: ""
                     val cleanId = NeoUtils.sanitizeId(serverId)
                     
-                    if (cleanId.isNotEmpty() && cleanId != cleanMyId) {
+                    if (cleanId.isNotEmpty() && cleanId.takeLast(10) != cleanMyId.takeLast(10)) {
                         tmpUsers.add(mapOf(
                             "id" to cleanId,
                             "name" to name,
-                            "status" to (snap.child("status").getValue(String::class.java) ?: "Online")
+                            "photoUrl" to photoUrl,
+                            "status" to (snap.child("status").getValue(String::class.java) ?: "En línea")
                         ))
                     }
                 }
                 users.clear()
-                users.addAll(tmpUsers.distinctBy { it["id"] })
+                users.addAll(tmpUsers.distinctBy { NeoUtils.sanitizeId(it["id"] ?: "").takeLast(10) })
             }
             override fun onCancelled(error: DatabaseError) {}
         })
@@ -399,8 +420,21 @@ fun ContactsScreen(
                 }
             }
 
-            // 1. REUNIR EXCLUSIVAMENTE LOS CONTACTOS DE ESTE CELULAR (Agenda local + Guardados por el usuario)
+            fun isValidContactName(n: String?): Boolean {
+                val t = n?.trim() ?: return false
+                if (t.isBlank()) return false
+                val low = t.lowercase()
+                if (low == "neo" || low == "contacto" || low == "chat" || low == "usuario" || low == "usuario neomessage" || low.startsWith("contacto (") || low.startsWith("usuario ")) return false
+                return t.any { it.isLetter() }
+            }
+
+            // 1. REUNIR EXCLUSIVAMENTE LOS CONTACTOS DE ESTE CELULAR (Agenda local + Guardados + Chats activos)
             val myDeviceContacts = mutableMapOf<String, Map<String, String>>()
+            activeChatPhones.forEach { p10 ->
+                if (p10.isNotEmpty() && p10 != cleanMyId.takeLast(10)) {
+                    myDeviceContacts[p10] = mapOf("id" to p10, "name" to "")
+                }
+            }
             localContacts.forEach {
                 val phone10 = NeoUtils.sanitizeId(it["id"] ?: "").takeLast(10)
                 if (phone10.isNotEmpty() && phone10 != cleanMyId.takeLast(10)) {
@@ -411,39 +445,53 @@ fun ContactsScreen(
                 val phone10 = NeoUtils.sanitizeId(it["id"] ?: "").takeLast(10)
                 if (phone10.isNotEmpty() && phone10 != cleanMyId.takeLast(10)) {
                     val existing = myDeviceContacts[phone10]
-                    if (existing != null) {
-                        myDeviceContacts[phone10] = existing + it
-                    } else {
-                        myDeviceContacts[phone10] = it
-                    }
+                    val savedName = it["name"]?.takeIf { n -> isValidContactName(n) }
+                    val localName = existing?.get("name")?.takeIf { n -> isValidContactName(n) }
+                    myDeviceContacts[phone10] = mapOf(
+                        "id" to phone10,
+                        "name" to (savedName ?: localName ?: "")
+                    )
                 }
             }
 
-            // 2. USUARIOS REGISTRADOS EN LA RED
-            val registeredMap = mutableMapOf<String, Map<String, String>>()
-            users.forEach {
-                val phone10 = NeoUtils.sanitizeId(it["id"] ?: "").takeLast(10)
-                if (phone10.isNotEmpty()) {
-                    registeredMap[phone10] = it
-                }
-            }
-
-                        // 3. REGLA ESTRICTA DE PRIVACIDAD ESTILO WHATSAPP:
-            // CADA USUARIO SOLO DEBE VER SUS PROPIOS CONTACTOS REGISTRADOS EN SU TELÉFONO.
-            // Ningún usuario extraño o desconocido de la base de datos debe aparecer jamás.
+            // 2. REGLA DE PRIVACIDAD + NOMBRE DE REGISTRO Y NÚMERO SIEMPRE VISIBLES:
+            // Solo aparecen contactos registrados en el celular del usuario (o conversaciones activas),
+            // mostrando siempre su Nombre de registro en la app (o nombre de agenda) y su Número de teléfono.
             val myContactsOnNeo = mutableListOf<Map<String, String>>()
             users.forEach { regUser ->
                 val regId = regUser["id"] ?: ""
                 val phone10 = NeoUtils.sanitizeId(regId).takeLast(10)
                 if (phone10.isNotEmpty() && phone10 != cleanMyId.takeLast(10) && myDeviceContacts.containsKey(phone10)) {
                     val localInfo = myDeviceContacts[phone10]
-                    val displayName = localInfo?.get("name") ?: regUser["name"] ?: phone10
+                    val regName = regUser["name"]?.trim()?.takeIf { isValidContactName(it) }
+                    val localName = localInfo?.get("name")?.trim()?.takeIf { isValidContactName(it) }
+                    val displayName = when {
+                        regName != null && localName != null && !regName.equals(localName, ignoreCase = true) -> "$regName ($localName)"
+                        regName != null -> regName
+                        localName != null -> localName
+                        else -> phone10
+                    }
                     myContactsOnNeo.add(mapOf(
-                        "id" to regId,
+                        "id" to phone10,
                         "phone10" to phone10,
                         "name" to displayName,
                         "photoUrl" to (regUser["photoUrl"] ?: ""),
                         "status" to (regUser["status"] ?: "En línea"),
+                        "isSaved" to "true"
+                    ))
+                }
+            }
+            // También incluir contactos guardados manualmente aunque aún no estén en el nodo global users
+            savedContacts.forEach { saved ->
+                val phone10 = NeoUtils.sanitizeId(saved["id"] ?: "").takeLast(10)
+                if (phone10.length == 10 && phone10 != cleanMyId.takeLast(10) && myContactsOnNeo.none { it["phone10"] == phone10 }) {
+                    val sName = saved["name"]?.trim()?.takeIf { isValidContactName(it) } ?: phone10
+                    myContactsOnNeo.add(mapOf(
+                        "id" to phone10,
+                        "phone10" to phone10,
+                        "name" to sName,
+                        "photoUrl" to "",
+                        "status" to "Contacto guardado",
                         "isSaved" to "true"
                     ))
                 }
@@ -474,8 +522,8 @@ fun ContactsScreen(
                     val isSaved = savedContacts.any { it["id"] == otherId }
                     
                     ContactItem(
-                        name = user["name"] ?: "Neo",
-                        subtitle = "Tel: $otherId",
+                        name = user["name"] ?: otherId,
+                        subtitle = "📱 Tel: $otherId • ${user["status"] ?: "En línea"}",
                         photoUrl = user["photoUrl"],
                         gradient = accentGradient,
                         textColor = textColor, 
