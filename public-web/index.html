@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>NeoMessage Desktop</title>
     
@@ -1768,19 +1768,13 @@
             color: var(--neon-green);
         }
 
-    </style></head>
+    </style>
+</head>
 <body data-theme="default">
 
     <!-- 1. PANTALLA DE VINCULACIÓN SEGURA (QR ESTILO WHATSAPP WEB) -->
     <div id="loginModal" class="modal-overlay" style="display: none;">
-        <div class="qr-card" style="flex-direction: column; max-width: 720px;">
-            <!-- PESTAÑAS DE ACCESO: ANDROID QR / IPHONE DIRECTO -->
-            <div style="display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; width: 100%;">
-                <button id="tabQrBtn" onclick="switchLoginTab('qr')" style="flex: 1; padding: 12px; background: none; border: none; border-bottom: 2px solid var(--neon-green); color: var(--neon-green); font-weight: bold; cursor: pointer; font-size: 13px;">📷 Escanear QR (Android)</button>
-                <button id="tabPhoneBtn" onclick="switchLoginTab('phone')" style="flex: 1; padding: 12px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); font-weight: bold; cursor: pointer; font-size: 13px;">🍏 / 📱 Iniciar con Celular (iPhone / Web)</button>
-            </div>
-            
-            <div id="loginQrView" style="display: flex; gap: 24px; width: 100%;">
+        <div class="qr-card">
             <div class="qr-instructions">
                 <h2>Vincular con tu Celular</h2>
                 <p style="font-size: 13px; color: var(--neon-green); font-weight: bold;">🔒 Cero Espionaje | Autorización Física</p>
@@ -1810,34 +1804,6 @@
                     <span style="font-size: 12px; font-weight: bold;">Código expirado.<br>Clic para recargar</span>
                 </div>
                 <div style="margin-top: 8px; font-size: 11px; color: #334155; font-weight: bold; text-align: center;">Escanea desde tu app NeoMessage</div>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -1866,34 +1832,6 @@
             <div style="display: flex; gap: 10px;">
                 <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('textStatusModal').style.display='none'">Cancelar</button>
                 <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="submitTextStatus()">Publicar Estado (24h)</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -1922,35 +1860,7 @@
             </div>
 
             <div id="storyViewerContent" style="flex: 1; display: flex; align-items: center; justify-content: center; position: relative;"></div>
-            <div id="storyViewerCaption" style="padding: 14px; font-size: 14px; color: #FFF; text-align: center; background: linear-gradient(transparent, rgba(0,0,0,0.8));">                </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
-            </div>
+            <div id="storyViewerCaption" style="padding: 14px; font-size: 14px; color: #FFF; text-align: center; background: linear-gradient(transparent, rgba(0,0,0,0.8));"></div>
         </div>
     </div>
 
@@ -2001,34 +1911,6 @@
 
             <div style="margin-top: 16px;">
                 <button class="btn-primary" style="background: #334155;" onclick="closeAllModals()">Cerrar</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2058,34 +1940,6 @@
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('profileModal').style.display='none'">Cancelar</button>
                 <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="saveProfileChanges()">Guardar</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2157,34 +2011,6 @@
             <div style="display: flex; gap: 10px;">
                 <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('quoteModal').style.display='none'">Cancelar</button>
                 <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="submitQuote()">Enviar al Chat</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2212,34 +2038,6 @@
                 <div id="modalRegisteredUsersList" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
                     <!-- Lista de usuarios registrados -->
                 </div>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2277,34 +2075,6 @@
 
             <div style="margin-top: 14px; text-align: right;">
                 <button onclick="document.getElementById('groupInfoModal').style.display='none'" style="background: #334155; color: #FFF; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer;">Cerrar</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2330,34 +2100,6 @@
             <div style="display: flex; gap: 10px; margin-top: 16px;">
                 <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('createGroupModal').style.display='none'">Cancelar</button>
                 <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="submitCreateGroup()">Crear Grupo</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2375,34 +2117,6 @@
             <div style="display: flex; gap: 10px; margin-top: 14px;">
                 <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="cancelPastedImage()">Cancelar</button>
                 <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="sendPastedImage()">Enviar ➤</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2415,34 +2129,6 @@
             <div id="outCallType" style="color: var(--neon-green); font-size: 14px; margin-bottom: 12px;">Llamando...</div>
             <div class="call-actions-row">
                 <button class="call-btn decline" onclick="cancelOutgoingCall()" title="Colgar llamada">🔴</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2456,34 +2142,6 @@
             <div class="call-actions-row">
                 <button class="call-btn decline" onclick="declineIncomingCall()" title="Rechazar">❌</button>
                 <button class="call-btn accept" onclick="acceptIncomingCall()" title="Aceptar">📞</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -2796,34 +2454,6 @@
                         </div>
                     </div>
                 </div>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -3818,228 +3448,12 @@
                 }
                 const doc = printIframe.contentWindow.document;
                 doc.open();
-                doc.write('<!DOCTYPE html><html><head>
-<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();}, 300);"/>
-    <!-- MODAL DE INSTALACIÓN NATIVA PARA IPHONE (iOS) -->
-    <div id="iosInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 420px; background: #1C1C1E; border: 1px solid #38383A; border-radius: 20px; padding: 24px; color: #FFF; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
-            <div style="text-align: center; margin-bottom: 16px;">
-                <div style="font-size: 44px; margin-bottom: 8px;">🍏 📲</div>
-                <h3 style="color: #00FF7F; font-size: 20px; font-weight: 800;">Instalar NeoMessage en iPhone</h3>
-                <p style="color: #A1A1A6; font-size: 13px; margin-top: 6px;">Instala la App Oficial en tu iPhone 13 o cualquier modelo de iOS en 3 sencillos pasos:</p>
-            </div>
-
-            <div style="display: flex; flex-direction: column; gap: 12px; margin: 16px 0;">
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">1</div>
-                    <div style="font-size: 13px; color: #FFF;">Abre esta página en <b>Safari</b> y toca el botón <b>Compartir</b> <span style="font-size: 18px;">[⬆️]</span> en la barra inferior.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">2</div>
-                    <div style="font-size: 13px; color: #FFF;">Desliza el menú hacia abajo y selecciona <b>"Agregar a pantalla de inicio"</b> ➕.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">3</div>
-                    <div style="font-size: 13px; color: #FFF;">Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo! Se instalará como aplicación nativa con su icono en tu iPhone.</div>
-                </div>
-            </div>
-
-            <button onclick="document.getElementById('iosInstallModal').style.display='none'" style="width: 100%; background: #00FF7F; color: #000; font-weight: 900; border: none; border-radius: 12px; padding: 14px; font-size: 14px; cursor: pointer; margin-top: 8px;">¡ENTENDIDO!</button>
-        </div>
-    </div>
-
-    <!-- BANNER FLOTANTE INFORMATIVO PARA IPHONE -->
-    <div id="iosInstallFloatingBanner" style="display: none; position: fixed; bottom: 16px; left: 16px; right: 16px; background: rgba(28,28,30,0.95); backdrop-filter: blur(10px); border: 1px solid #00FF7F; border-radius: 16px; padding: 12px 16px; z-index: 9999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); align-items: center; justify-content: space-between; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 26px;">🍏</span>
-            <div>
-                <div style="color: #FFF; font-weight: bold; font-size: 13px;">Instala NeoMessage en tu iPhone</div>
-                <div style="color: #A1A1A6; font-size: 11px;">Toca Compartir <span style="font-size: 13px;">[⬆️]</span> y "Agregar al inicio"</div>
-            </div>
-        </div>
-        <div style="display: flex; gap: 6px;">
-            <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
-            <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
-        </div>
-    </div>
-
-
-    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
-    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 26px;">📲</span>
-                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
-                </div>
-                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
-            </div>
-            
-            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
-                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
-            </p>
-
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                <!-- OPCIÓN IPHONE -->
-                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🍏</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN ANDROID -->
-                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🤖</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN WINDOWS / PC -->
-                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">💻</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-            </div>
-
-            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
-            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
-                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
-                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
-                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
-                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
-                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
-                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
-                </div>
-            </div>
-        </div>
-    </div>
-
-</body></html>');
+                doc.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();}, 300);"/></body></html>');
                 doc.close();
                 return;
             }
 
-            printWin.document.write('<!DOCTYPE html><html><head>
-<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();window.close();}, 300);"/>
-    <!-- MODAL DE INSTALACIÓN NATIVA PARA IPHONE (iOS) -->
-    <div id="iosInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 420px; background: #1C1C1E; border: 1px solid #38383A; border-radius: 20px; padding: 24px; color: #FFF; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
-            <div style="text-align: center; margin-bottom: 16px;">
-                <div style="font-size: 44px; margin-bottom: 8px;">🍏 📲</div>
-                <h3 style="color: #00FF7F; font-size: 20px; font-weight: 800;">Instalar NeoMessage en iPhone</h3>
-                <p style="color: #A1A1A6; font-size: 13px; margin-top: 6px;">Instala la App Oficial en tu iPhone 13 o cualquier modelo de iOS en 3 sencillos pasos:</p>
-            </div>
-
-            <div style="display: flex; flex-direction: column; gap: 12px; margin: 16px 0;">
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">1</div>
-                    <div style="font-size: 13px; color: #FFF;">Abre esta página en <b>Safari</b> y toca el botón <b>Compartir</b> <span style="font-size: 18px;">[⬆️]</span> en la barra inferior.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">2</div>
-                    <div style="font-size: 13px; color: #FFF;">Desliza el menú hacia abajo y selecciona <b>"Agregar a pantalla de inicio"</b> ➕.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">3</div>
-                    <div style="font-size: 13px; color: #FFF;">Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo! Se instalará como aplicación nativa con su icono en tu iPhone.</div>
-                </div>
-            </div>
-
-            <button onclick="document.getElementById('iosInstallModal').style.display='none'" style="width: 100%; background: #00FF7F; color: #000; font-weight: 900; border: none; border-radius: 12px; padding: 14px; font-size: 14px; cursor: pointer; margin-top: 8px;">¡ENTENDIDO!</button>
-        </div>
-    </div>
-
-    <!-- BANNER FLOTANTE INFORMATIVO PARA IPHONE -->
-    <div id="iosInstallFloatingBanner" style="display: none; position: fixed; bottom: 16px; left: 16px; right: 16px; background: rgba(28,28,30,0.95); backdrop-filter: blur(10px); border: 1px solid #00FF7F; border-radius: 16px; padding: 12px 16px; z-index: 9999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); align-items: center; justify-content: space-between; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 26px;">🍏</span>
-            <div>
-                <div style="color: #FFF; font-weight: bold; font-size: 13px;">Instala NeoMessage en tu iPhone</div>
-                <div style="color: #A1A1A6; font-size: 11px;">Toca Compartir <span style="font-size: 13px;">[⬆️]</span> y "Agregar al inicio"</div>
-            </div>
-        </div>
-        <div style="display: flex; gap: 6px;">
-            <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
-            <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
-        </div>
-    </div>
-
-
-    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
-    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 26px;">📲</span>
-                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
-                </div>
-                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
-            </div>
-            
-            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
-                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
-            </p>
-
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                <!-- OPCIÓN IPHONE -->
-                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🍏</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN ANDROID -->
-                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🤖</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN WINDOWS / PC -->
-                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">💻</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-            </div>
-
-            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
-            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
-                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
-                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
-                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
-                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
-                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
-                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
-                </div>
-            </div>
-        </div>
-    </div>
-
-</body></html>');
+            printWin.document.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();window.close();}, 300);"/></body></html>');
             printWin.document.close();
         }
 
@@ -4068,115 +3482,7 @@
             } else if (lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/) || (fileUrl && fileUrl.startsWith('data:image/'))) {
                 const win = window.open('', '_blank');
                 if (win) {
-                    win.document.write('<!DOCTYPE html><html><head>
-<title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + fileUrl + '" onload="window.print();window.close();"/>
-    <!-- MODAL DE INSTALACIÓN NATIVA PARA IPHONE (iOS) -->
-    <div id="iosInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 420px; background: #1C1C1E; border: 1px solid #38383A; border-radius: 20px; padding: 24px; color: #FFF; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
-            <div style="text-align: center; margin-bottom: 16px;">
-                <div style="font-size: 44px; margin-bottom: 8px;">🍏 📲</div>
-                <h3 style="color: #00FF7F; font-size: 20px; font-weight: 800;">Instalar NeoMessage en iPhone</h3>
-                <p style="color: #A1A1A6; font-size: 13px; margin-top: 6px;">Instala la App Oficial en tu iPhone 13 o cualquier modelo de iOS en 3 sencillos pasos:</p>
-            </div>
-
-            <div style="display: flex; flex-direction: column; gap: 12px; margin: 16px 0;">
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">1</div>
-                    <div style="font-size: 13px; color: #FFF;">Abre esta página en <b>Safari</b> y toca el botón <b>Compartir</b> <span style="font-size: 18px;">[⬆️]</span> en la barra inferior.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">2</div>
-                    <div style="font-size: 13px; color: #FFF;">Desliza el menú hacia abajo y selecciona <b>"Agregar a pantalla de inicio"</b> ➕.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">3</div>
-                    <div style="font-size: 13px; color: #FFF;">Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo! Se instalará como aplicación nativa con su icono en tu iPhone.</div>
-                </div>
-            </div>
-
-            <button onclick="document.getElementById('iosInstallModal').style.display='none'" style="width: 100%; background: #00FF7F; color: #000; font-weight: 900; border: none; border-radius: 12px; padding: 14px; font-size: 14px; cursor: pointer; margin-top: 8px;">¡ENTENDIDO!</button>
-        </div>
-    </div>
-
-    <!-- BANNER FLOTANTE INFORMATIVO PARA IPHONE -->
-    <div id="iosInstallFloatingBanner" style="display: none; position: fixed; bottom: 16px; left: 16px; right: 16px; background: rgba(28,28,30,0.95); backdrop-filter: blur(10px); border: 1px solid #00FF7F; border-radius: 16px; padding: 12px 16px; z-index: 9999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); align-items: center; justify-content: space-between; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 26px;">🍏</span>
-            <div>
-                <div style="color: #FFF; font-weight: bold; font-size: 13px;">Instala NeoMessage en tu iPhone</div>
-                <div style="color: #A1A1A6; font-size: 11px;">Toca Compartir <span style="font-size: 13px;">[⬆️]</span> y "Agregar al inicio"</div>
-            </div>
-        </div>
-        <div style="display: flex; gap: 6px;">
-            <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
-            <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
-        </div>
-    </div>
-
-
-    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
-    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 26px;">📲</span>
-                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
-                </div>
-                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
-            </div>
-            
-            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
-                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
-            </p>
-
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                <!-- OPCIÓN IPHONE -->
-                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🍏</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN ANDROID -->
-                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🤖</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN WINDOWS / PC -->
-                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">💻</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-            </div>
-
-            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
-            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
-                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
-                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
-                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
-                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
-                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
-                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
-                </div>
-            </div>
-        </div>
-    </div>
-
-</body></html>');
+                    win.document.write('<!DOCTYPE html><html><head><title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + fileUrl + '" onload="window.print();window.close();"/></body></html>');
                     win.document.close();
                 } else {
                     window.open(fileUrl, '_blank');
@@ -5549,12 +4855,6 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
         });
 
         function triggerPwaInstall() {
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS) {
-                showIosGuideFromModal();
-                document.getElementById('universalInstallModal').style.display = 'flex';
-                return;
-            }
             if (deferredPrompt) {
                 deferredPrompt.prompt();
                 deferredPrompt.userChoice.then((choiceResult) => {
@@ -5564,103 +4864,9 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     deferredPrompt = null;
                 });
             } else {
-                document.getElementById('universalInstallModal').style.display = 'flex';
+                showToast('📥 Descargando la versión más reciente de NeoMessage...');
+                window.location.href = 'https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk';
             }
-        }
-
-        function showIosGuideFromModal() {
-            const el = document.getElementById('iosStepsInsideModal');
-            if (el) el.style.display = 'block';
-        }
-
-        function downloadAndroidApkFromModal() {
-            showToast('📥 Descargando NeoMessage APK v3.36...');
-            window.location.href = 'https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk';
-            document.getElementById('universalInstallModal').style.display = 'none';
-        }
-
-        function installPcFromModal() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-            } else {
-                showToast('💡 Haz clic en el icono de instalación (➕) en la barra de direcciones de tu navegador.');
-            }
-            document.getElementById('universalInstallModal').style.display = 'none';
-        }
-
-        function switchLoginTab(tab) {
-            const qrView = document.getElementById('loginQrView');
-            const phoneView = document.getElementById('loginPhoneView');
-            const tabQr = document.getElementById('tabQrBtn');
-            const tabPhone = document.getElementById('tabPhoneBtn');
-            if (!qrView || !phoneView) return;
-
-            if (tab === 'qr') {
-                qrView.style.display = 'flex';
-                phoneView.style.display = 'none';
-                if (tabQr) { tabQr.style.borderBottom = '2px solid var(--neon-green)'; tabQr.style.color = 'var(--neon-green)'; }
-                if (tabPhone) { tabPhone.style.borderBottom = '2px solid transparent'; tabPhone.style.color = 'var(--text-secondary)'; }
-            } else {
-                qrView.style.display = 'none';
-                phoneView.style.display = 'flex';
-                if (tabPhone) { tabPhone.style.borderBottom = '2px solid var(--neon-green)'; tabPhone.style.color = 'var(--neon-green)'; }
-                if (tabQr) { tabQr.style.borderBottom = '2px solid transparent'; tabQr.style.color = 'var(--text-secondary)'; }
-            }
-        }
-
-        function performDirectPhoneLogin() {
-            const rawPhone = document.getElementById('directLoginPhone').value;
-            const name = document.getElementById('directLoginName').value.trim();
-            const pin = document.getElementById('directLoginPin').value.trim();
-            const errEl = document.getElementById('directLoginError');
-            if (errEl) errEl.style.display = 'none';
-
-            const cleanPhone = (rawPhone || '').replace(/[^0-9]/g, '');
-            if (cleanPhone.length !== 10) {
-                if (errEl) { errEl.innerText = 'El número de teléfono debe tener exactamente 10 dígitos (ej: 9612765041).'; errEl.style.display = 'block'; }
-                return;
-            }
-            if (!name) {
-                if (errEl) { errEl.innerText = 'Por favor ingresa tu nombre de usuario.'; errEl.style.display = 'block'; }
-                return;
-            }
-            if (pin.length !== 6) {
-                if (errEl) { errEl.innerText = 'El PIN de Seguridad debe tener exactamente 6 dígitos.'; errEl.style.display = 'block'; }
-                return;
-            }
-
-            // Consultar Firebase
-            const userRef = firebase.database().ref('users/' + cleanPhone);
-            userRef.once('value').then((snap) => {
-                const data = snap.val() || {};
-                const savedPin = data.securityPin || data.nexus_pin;
-                if (savedPin && savedPin !== pin) {
-                    if (errEl) { errEl.innerText = '❌ PIN de Seguridad incorrecto. Acceso bloqueado para proteger la cuenta.'; errEl.style.display = 'block'; }
-                    return;
-                }
-
-                // Iniciar sesión
-                myPhone = cleanPhone;
-                myName = name || data.name || 'Usuario iPhone';
-                localStorage.setItem('neo_my_phone', myPhone);
-                localStorage.setItem('neo_my_name', myName);
-                localStorage.setItem('neo_security_pin', pin);
-
-                userRef.update({
-                    id: cleanPhone,
-                    name: myName,
-                    securityPin: pin,
-                    loginTime: Date.now(),
-                    status: 'Online',
-                    deviceModel: 'Apple iPhone / Web Client'
-                });
-
-                showToast('✅ ¡Bienvenido a NeoMessage!');
-                document.getElementById('loginModal').style.display = 'none';
-                initApp();
-            }).catch((err) => {
-                if (errEl) { errEl.innerText = 'Error al conectar con la red: ' + err.message; errEl.style.display = 'block'; }
-            });
         }
 
         // GUARDAR CONTACTO
@@ -7170,34 +6376,6 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             </div>
             <div class="modal-body" style="max-height: 350px; overflow-y: auto;" id="forwardContactsList">
                 <!-- Se llena dinámicamente -->
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -7736,35 +6914,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     <button id="btnWikiShareChat" onclick="" style="background:#00A884; color:#FFF; border:none; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">📤 Compartir en el Chat</button>
                 </div>
             </div>
-            <div id="wikiLoading" style="display:none; text-align:center; padding:20px; color:#93C5FD; font-size:13px;">🔍 Buscando artículo en Wikipedia...                </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
-            </div>
+            <div id="wikiLoading" style="display:none; text-align:center; padding:20px; color:#93C5FD; font-size:13px;">🔍 Buscando artículo en Wikipedia...</div>
         </div>
     </div>
 
@@ -7802,34 +6952,6 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             <div style="display:flex; gap:10px; margin-top:16px;">
                 <button type="button" style="flex:1; background:#334155; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="document.getElementById('classroomAssignmentModal').style.display='none'">Cancelar</button>
                 <button type="button" style="flex:2; background:#00A884; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="dispatchAssignment()">Publicar Tarea en Grupo</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -7858,34 +6980,6 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             <div style="display:flex; gap:10px; margin-top:16px;">
                 <button type="button" style="flex:1; background:#334155; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="document.getElementById('submitAssignmentModal').style.display='none'">Cancelar</button>
                 <button type="button" style="flex:2; background:#00FF7F; color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="submitAssignmentWork()">Confirmar Entrega</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -7903,34 +6997,6 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             <input type="hidden" id="currentViewAssignmentId">
             <div id="submissionsListContainer" style="flex:1; overflow-y:auto; max-height:400px; display:flex; flex-direction:column; gap:10px; padding-right:4px;">
                 <!-- Dinámico -->
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
             </div>
         </div>
     </div>
@@ -8041,141 +7107,6 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             <div style="display:flex; gap:10px; margin-top:16px;">
                 <button type="button" style="flex:1; background:#334155; color:#FFF; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="document.getElementById('suggestionsModal').style.display='none'">Cerrar</button>
                 <button type="button" style="flex:2; background:#00FF7F; color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="submitUserSuggestion()">Enviar Sugerencia 🚀</button>
-                            </div>
-            </div>
-
-            <!-- VISTA DE ACCESO DIRECTO PARA IPHONE Y WEB -->
-            <div id="loginPhoneView" style="display: none; width: 100%; flex-direction: column; gap: 12px; padding: 10px 0;">
-                <div style="text-align: center; margin-bottom: 8px;">
-                    <div style="font-size: 32px; margin-bottom: 4px;">🍏 📲</div>
-                    <h3 style="color: #FFF; font-size: 18px; font-weight: 800;">Acceso Directo Soberano</h3>
-                    <p style="font-size: 12px; color: var(--text-secondary);">Para iPhone 13 / iOS o cualquier navegador web sin escanear QR</p>
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Número de Teléfono (10 dígitos):</label>
-                    <input type="tel" id="directLoginPhone" placeholder="Ej: 9612765041" maxlength="10" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">Nombre de Usuario:</label>
-                    <input type="text" id="directLoginName" placeholder="Tu nombre o alias" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; box-sizing: border-box;">
-                </div>
-                
-                <div>
-                    <label style="font-size: 12px; color: var(--neon-green); font-weight: bold;">PIN de Seguridad (6 dígitos):</label>
-                    <input type="password" id="directLoginPin" placeholder="••••••" maxlength="6" style="width: 100%; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: #FFF; font-size: 15px; margin-top: 4px; letter-spacing: 3px; box-sizing: border-box;">
-                </div>
-                
-                <button onclick="performDirectPhoneLogin()" style="width: 100%; background: var(--neon-green); color: #000; border: none; border-radius: 8px; padding: 12px; font-weight: 800; font-size: 14px; cursor: pointer; margin-top: 8px;">INGRESAR A NEOMESSAGE</button>
-                <div id="directLoginError" style="color: #FF453A; font-size: 12px; text-align: center; display: none; font-weight: bold; margin-top: 4px;"></div>
-            </div>
-        </div>
-    </div>
-
-
-    <!-- MODAL DE INSTALACIÓN NATIVA PARA IPHONE (iOS) -->
-    <div id="iosInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 420px; background: #1C1C1E; border: 1px solid #38383A; border-radius: 20px; padding: 24px; color: #FFF; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
-            <div style="text-align: center; margin-bottom: 16px;">
-                <div style="font-size: 44px; margin-bottom: 8px;">🍏 📲</div>
-                <h3 style="color: #00FF7F; font-size: 20px; font-weight: 800;">Instalar NeoMessage en iPhone</h3>
-                <p style="color: #A1A1A6; font-size: 13px; margin-top: 6px;">Instala la App Oficial en tu iPhone 13 o cualquier modelo de iOS en 3 sencillos pasos:</p>
-            </div>
-
-            <div style="display: flex; flex-direction: column; gap: 12px; margin: 16px 0;">
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">1</div>
-                    <div style="font-size: 13px; color: #FFF;">Abre esta página en <b>Safari</b> y toca el botón <b>Compartir</b> <span style="font-size: 18px;">[⬆️]</span> en la barra inferior.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">2</div>
-                    <div style="font-size: 13px; color: #FFF;">Desliza el menú hacia abajo y selecciona <b>"Agregar a pantalla de inicio"</b> ➕.</div>
-                </div>
-
-                <div style="display: flex; align-items: center; gap: 12px; background: #2C2C2E; padding: 12px 14px; border-radius: 12px;">
-                    <div style="background: #00FF7F; color: #000; font-weight: 900; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">3</div>
-                    <div style="font-size: 13px; color: #FFF;">Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo! Se instalará como aplicación nativa con su icono en tu iPhone.</div>
-                </div>
-            </div>
-
-            <button onclick="document.getElementById('iosInstallModal').style.display='none'" style="width: 100%; background: #00FF7F; color: #000; font-weight: 900; border: none; border-radius: 12px; padding: 14px; font-size: 14px; cursor: pointer; margin-top: 8px;">¡ENTENDIDO!</button>
-        </div>
-    </div>
-
-    <!-- BANNER FLOTANTE INFORMATIVO PARA IPHONE -->
-    <div id="iosInstallFloatingBanner" style="display: none; position: fixed; bottom: 16px; left: 16px; right: 16px; background: rgba(28,28,30,0.95); backdrop-filter: blur(10px); border: 1px solid #00FF7F; border-radius: 16px; padding: 12px 16px; z-index: 9999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); align-items: center; justify-content: space-between; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 26px;">🍏</span>
-            <div>
-                <div style="color: #FFF; font-weight: bold; font-size: 13px;">Instala NeoMessage en tu iPhone</div>
-                <div style="color: #A1A1A6; font-size: 11px;">Toca Compartir <span style="font-size: 13px;">[⬆️]</span> y "Agregar al inicio"</div>
-            </div>
-        </div>
-        <div style="display: flex; gap: 6px;">
-            <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
-            <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
-        </div>
-    </div>
-
-
-    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
-    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
-        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 26px;">📲</span>
-                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
-                </div>
-                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
-            </div>
-            
-            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
-                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
-            </p>
-
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                <!-- OPCIÓN IPHONE -->
-                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🍏</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN ANDROID -->
-                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">🤖</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-
-                <!-- OPCIÓN WINDOWS / PC -->
-                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
-                    <div style="font-size: 32px;">💻</div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
-                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
-                    </div>
-                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
-                </div>
-            </div>
-
-            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
-            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
-                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
-                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
-                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
-                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
-                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
-                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
-                </div>
             </div>
         </div>
     </div>
