@@ -3514,74 +3514,94 @@
             }
         }
 
+        // CONVERSOR SEGURO DE BASE64 A BLOB URL (EVITA BLOQUEAR EL SPOOLER DE WINDOWS)
+        function safeDataUrlToBlobUrl(dataUrl, fallbackMime) {
+            try {
+                if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
+                const parts = dataUrl.split(',');
+                if (parts.length < 2) return dataUrl;
+                const mimeMatch = parts[0].match(/:(.*?);/);
+                const mime = (mimeMatch && mimeMatch[1]) ? mimeMatch[1] : (fallbackMime || 'image/jpeg');
+                const bstr = atob(parts[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while (n--) {
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+                const blob = new Blob([u8arr], { type: mime });
+                return URL.createObjectURL(blob);
+            } catch (e) {
+                console.error("Error convirtiendo a Blob URL:", e);
+                return dataUrl;
+            }
+        }
+
+        function openSafePrintTabForImage(imageSrc, docTitle) {
+            const cleanTitle = String(docTitle || 'Documento_NeoMessage').replace(/[<>:"/\\|?*]/g, '_').slice(0, 60);
+            const blobUrl = safeDataUrlToBlobUrl(imageSrc, 'image/jpeg');
+            const printWin = window.open('', '_blank');
+            if (!printWin) {
+                alert("Por favor permite las ventanas emergentes en tu navegador para abrir la vista de impresión segura.");
+                return;
+            }
+            // SIN @page NI window.close() AUTOMÁTICO:
+            // Respeta al 100% la configuración original del driver de la impresora en Windows y mantiene vivo el proceso hasta que termine la cola de impresión.
+            const html = [
+                '<!DOCTYPE html><html><head><meta charset="utf-8">',
+                '<title>' + cleanTitle + '</title>',
+                '<style>',
+                'body { margin: 0; padding: 0; background: #ffffff; color: #000000; font-family: Arial, sans-serif; }',
+                '.no-print { background: #0f172a; color: #ffffff; padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }',
+                '.no-print button { border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; margin-left: 8px; }',
+                '.print-area { padding: 8px; text-align: center; }',
+                'img { max-width: 100%; height: auto; display: inline-block; }',
+                '@media print { .no-print { display: none !important; } .print-area { padding: 0; } }',
+                '</style></head><body>',
+                '<div class="no-print">',
+                '<span>🖨️ <b>Vista de Impresión Segura</b> — Tu impresora usará su configuración predeterminada de Windows sin alteraciones.</span>',
+                '<div>',
+                '<button style="background:#00FF7F; color:#000;" onclick="window.print()">🖨️ Imprimir</button>',
+                '<button style="background:#334155; color:#fff;" onclick="window.close()">✕ Cerrar pestaña</button>',
+                '</div></div>',
+                '<div class="print-area">',
+                '<img id="safePrintImg" src="' + blobUrl + '" />',
+                '</div>',
+                '<script>',
+                'const imgEl = document.getElementById("safePrintImg");',
+                'imgEl.onload = function() { setTimeout(function() { window.focus(); window.print(); }, 500); };',
+                '<\/script>',
+                '</body></html>'
+            ].join('');
+            printWin.document.open();
+            printWin.document.write(html);
+            printWin.document.close();
+        }
+
         function printCurrentImage() {
             const img = document.getElementById('lightboxImg');
             const titleEl = document.getElementById('lightboxTitle');
-            const title = titleEl ? titleEl.innerText : 'NeoMessage Documento';
+            const title = titleEl ? titleEl.innerText : 'Documento_NeoMessage';
             
             if (!img || !img.src) {
                 alert("No hay imagen para imprimir.");
                 return;
             }
-
-            const printWin = window.open('', '_blank');
-            if (!printWin) {
-                let printIframe = document.getElementById('printHiddenIframe');
-                if (!printIframe) {
-                    printIframe = document.createElement('iframe');
-                    printIframe.id = 'printHiddenIframe';
-                    printIframe.style.position = 'fixed';
-                    printIframe.style.width = '0';
-                    printIframe.style.height = '0';
-                    printIframe.style.border = 'none';
-                    document.body.appendChild(printIframe);
-                }
-                const doc = printIframe.contentWindow.document;
-                doc.open();
-                doc.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();}, 300);"/></body></html>');
-                doc.close();
-                return;
-            }
-
-            printWin.document.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();window.close();}, 300);"/></body></html>');
-            printWin.document.close();
+            openSafePrintTabForImage(img.src, title);
         }
 
         function printFileDirectly(fileName, fileUrl) {
             const lower = (fileName || '').toLowerCase();
             if (lower.endsWith('.pdf') || (fileUrl && fileUrl.includes('application/pdf'))) {
-                const iframe = document.createElement('iframe');
-                iframe.style.position = 'fixed';
-                iframe.style.right = '0';
-                iframe.style.bottom = '0';
-                iframe.style.width = '0';
-                iframe.style.height = '0';
-                iframe.style.border = '0';
-                iframe.src = fileUrl;
-                document.body.appendChild(iframe);
-                iframe.onload = () => {
-                    setTimeout(() => {
-                        try {
-                            iframe.contentWindow.focus();
-                            iframe.contentWindow.print();
-                        } catch(e) {
-                            window.open(fileUrl, '_blank');
-                        }
-                    }, 600);
-                };
+                // Abrir PDF como Blob nativo en una pestaña limpia del navegador (nunca en iframe 0x0 oculto que traba el spooler)
+                const pdfBlobUrl = safeDataUrlToBlobUrl(fileUrl, 'application/pdf');
+                window.open(pdfBlobUrl, '_blank');
             } else if (lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/) || (fileUrl && fileUrl.startsWith('data:image/'))) {
-                const win = window.open('', '_blank');
-                if (win) {
-                    win.document.write('<!DOCTYPE html><html><head><title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + fileUrl + '" onload="window.print();window.close();"/></body></html>');
-                    win.document.close();
-                } else {
-                    window.open(fileUrl, '_blank');
-                }
+                openSafePrintTabForImage(fileUrl, fileName || 'Imagen_NeoMessage');
             } else {
-                window.open(fileUrl, '_blank');
+                const safeUrl = safeDataUrlToBlobUrl(fileUrl, 'application/octet-stream');
+                window.open(safeUrl, '_blank');
             }
         }
-
 
         // ========================================================
         // 5. COPIAR Y PEGAR DIRECTO (Ctrl+V)
