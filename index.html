@@ -595,6 +595,7 @@
 
         .messages-scroll {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 16px 24px;
             display: flex;
@@ -758,7 +759,9 @@
         }
 
         .input-bar {
+            height: 62px;
             min-height: 62px;
+            flex-shrink: 0;
             background: var(--bg-panel);
             padding: 8px 16px;
             display: flex;
@@ -2147,7 +2150,8 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-title" id="sidebarTitle">Chats</div>
-                <div class="header-actions">
+                <div class="header-actions" style="display: flex; align-items: center; gap: 6px;">
+                    <button class="icon-btn" onclick="openCreateGroupModal()" title="Crear Nuevo Grupo Escolar o de Trabajo" style="color: #00FF7F; font-size: 12px; font-weight: bold; background: rgba(0, 255, 127, 0.15); padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(0, 255, 127, 0.35); cursor: pointer; display: flex; align-items: center; gap: 4px;">👥 Nuevo Grupo</button>
                     <button class="icon-btn" onclick="openAddContactModal()" title="Nuevo Chat / Contacto">➕</button>
                     <button class="icon-btn" onclick="openSettingsModal()" title="Ajustes">⋮</button>
                 </div>
@@ -2285,7 +2289,9 @@
                     </div>
 
                     <div class="header-actions">
-                        <button class="icon-btn" onclick="startCall('video')" title="Videollamada">📹</button>
+                        <button class="icon-btn" onclick="openClassroomAssignmentModal()" title="📚 Asignar Tarea Escolar (Classroom)" style="color: #FFD700; font-size: 16px;">📚</button>
+                        <button class="icon-btn" onclick="openWikipediaModal()" title="📖 Consultar y Compartir Wikipedia" style="color: #60A5FA; font-size: 16px;">📖</button>
+                        <button class="icon-btn" onclick="startCall('video')" title="Videollamada Grupal / Individual">📹</button>
                         <button class="icon-btn" onclick="startCall('voice')" title="Llamada de voz">📞</button>
                         <button class="icon-btn" onclick="toggleChatSearch()" title="Buscar en este chat">🔍</button>
                         <button class="icon-btn" onclick="openQuoteModal()" title="Crear Cotización">📋</button>
@@ -4743,6 +4749,36 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     </div>
                     ${reactionsHtml}
                 `;
+                        } else if (text.startsWith('[WIKIPEDIA]|')) {
+                const parts = text.split('|');
+                const wTitle = parts[1] || 'Artículo';
+                const wExtract = parts[2] || '';
+                const wUrl = parts[3] || 'https://es.wikipedia.org';
+                const wImg = parts[4] || '';
+
+                b.innerHTML = `
+                    ${menuBtnHtml}
+                    ${quoteHtml}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); border: 2px solid #3B82F6; border-radius: 12px; padding: 12px; margin-top: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); min-width: 260px; max-width: 340px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="background: #2563EB; color: #FFF; font-weight: bold; font-size: 11px; padding: 2px 8px; border-radius: 6px;">📖 WIKIPEDIA</span>
+                            <a href="${wUrl}" target="_blank" style="color: #93C5FD; font-size: 11px; text-decoration: underline;">Abrir enlace ↗</a>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:flex-start;">
+                            ${wImg ? `<img src="${wImg}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.2);">` : ''}
+                            <div style="flex:1;">
+                                <div style="font-size: 15px; font-weight: bold; color: #FFF; margin-bottom: 4px;">${escapeHtml(wTitle)}</div>
+                                <div style="font-size: 12px; color: #CBD5E1; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(wExtract)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                    ${reactionsHtml}
+                `;
             } else if (text.startsWith('[NEO_ASSIGNMENT]|')) {
                 // TAREA ESCOLAR (NEOCLASSROOM)
                 let assign = {};
@@ -6069,42 +6105,183 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             }
         }
 
+        
         // ==============================================================================
-        // 3. TRADUCTOR UNIVERSAL SIMULTÁNEO EN TIEMPO REAL ($0.00 COSTO)
+        // 3. MOTOR DE TRADUCCIÓN UNIVERSAL INSTANTÁNEO (GOOGLE GTX + MYMEMORY FALLBACK)
         // ==============================================================================
-        async function translateMessage(msgId, text) {
-            if (!text || text.trim() === '') return;
+        async function translateTextOnline(text, targetLang) {
+            if (!targetLang) targetLang = 'es';
+            if (!text || !text.trim()) return '';
             const cleanText = text.replace(/\[Media\].*|\[File\].*|\[Document\].*/g, '').trim();
-            if (!cleanText) return;
+            if (!cleanText) return '';
+
+            // 1. Google GTX API (Ultra rápido, soporta cualquier idioma, 0 costo)
+            try {
+                const gUrl = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=" + encodeURIComponent(targetLang) + "&dt=t&q=" + encodeURIComponent(cleanText);
+                const gRes = await fetch(gUrl);
+                if (gRes.ok) {
+                    const gData = await gRes.json();
+                    if (gData && gData[0]) {
+                        const translated = gData[0].map(function(item) { return item[0]; }).join('');
+                        if (translated && translated.trim()) return translated.trim();
+                    }
+                }
+            } catch (_) {}
+
+            // 2. MyMemory Fallback
+            try {
+                const mUrl = "https://api.mymemory.translated.net/get?q=" + encodeURIComponent(cleanText) + "&langpair=autodetect|" + encodeURIComponent(targetLang);
+                const mRes = await fetch(mUrl);
+                if (mRes.ok) {
+                    const mData = await mRes.json();
+                    if (mData && mData.responseData && mData.responseData.translatedText) {
+                        return mData.responseData.translatedText;
+                    }
+                }
+            } catch (_) {}
+
+            throw new Error('No se pudo traducir el texto. Verifica tu conexión.');
+        }
+
+        async function promptTranslateMessage(msgId, text) {
+            showToast('🌐 Traduciendo mensaje...');
+            try {
+                const translated = await translateTextOnline(text, 'es');
+                const bubble = document.getElementById('msg_' + msgId);
+                if (bubble) {
+                    let transBox = bubble.querySelector('.translated-box');
+                    if (!transBox) {
+                        transBox = document.createElement('div');
+                        transBox.className = 'translated-box';
+                        transBox.style.cssText = 'background: rgba(0, 168, 132, 0.18); border-left: 3px solid #00FF7F; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: #FFF; margin-top: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);';
+                        bubble.appendChild(transBox);
+                    }
+                    transBox.innerHTML = '<div style="font-weight: bold; color: #00FF7F; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; font-size: 11px;"><span>🌐 TRADUCCIÓN AL ESPAÑOL:</span></div><div style="line-height: 1.4;">' + escapeHtml(translated) + '</div>';
+                }
+                showToast('✅ Traducido con éxito');
+            } catch (err) {
+                alert('Error al traducir: ' + err.message);
+            }
+        }
+
+        async function translateMessage(msgId, text) {
+            return promptTranslateMessage(msgId, text);
+        }
+
+        async function translateInputText() {
+            const input = document.getElementById('messageInput');
+            if (!input || !input.value.trim()) {
+                alert('Escribe primero el mensaje que deseas traducir en el cuadro de texto.');
+                return;
+            }
+            const currentText = input.value.trim();
+
+            const lang = prompt(
+                "🌐 TRADUCIR MENSAJE ANTES DE ENVIAR\n\n¿A qué idioma deseas traducirlo?\n\n1 = Inglés (en)\n2 = Francés (fr)\n3 = Alemán (de)\n4 = Portugués (pt)\n5 = Chino (zh-CN)\n6 = Italiano (it)\n\nEscribe el número o el idioma:",
+                "1"
+            );
+            if (!lang) return;
+
+            let targetLang = 'en';
+            const cleanLang = lang.trim().toLowerCase();
+            if (cleanLang === '1' || cleanLang === 'en' || cleanLang.includes('ingl')) targetLang = 'en';
+            else if (cleanLang === '2' || cleanLang === 'fr' || cleanLang.includes('fran')) targetLang = 'fr';
+            else if (cleanLang === '3' || cleanLang === 'de' || cleanLang.includes('alem')) targetLang = 'de';
+            else if (cleanLang === '4' || cleanLang === 'pt' || cleanLang.includes('port')) targetLang = 'pt';
+            else if (cleanLang === '5' || cleanLang === 'zh' || cleanLang.includes('chin')) targetLang = 'zh-CN';
+            else if (cleanLang === '6' || cleanLang === 'it' || cleanLang.includes('ital')) targetLang = 'it';
+            else if (cleanLang.length === 2) targetLang = cleanLang;
 
             showToast('🌐 Traduciendo mensaje...');
             try {
-                const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=autodetect|es`;
-                const res = await fetch(url);
-                const data = await res.json();
-                if (data && data.responseData && data.responseData.translatedText) {
-                    const trans = data.responseData.translatedText;
-                    const bubble = document.getElementById('msg_' + msgId);
-                    if (bubble) {
-                        let transBox = bubble.querySelector('.translated-box');
-                        if (!transBox) {
-                            transBox = document.createElement('div');
-                            transBox.className = 'translated-box';
-                            transBox.style.cssText = 'background: rgba(0, 168, 132, 0.15); border-left: 3px solid #00A884; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #E2E8F0; margin-top: 6px;';
-                            bubble.appendChild(transBox);
-                        }
-                        transBox.innerHTML = `<b>🌐 Traducción al Español:</b><br>${escapeHtml(trans)}`;
-                    }
-                    showToast('✅ Mensaje traducido');
-                } else {
-                    showToast('⚠️ No se pudo traducir este texto');
-                }
+                const translated = await translateTextOnline(currentText, targetLang);
+                input.value = translated;
+                handleMessageInputChange(input);
+                showToast('✅ Traducido a ' + targetLang.toUpperCase());
             } catch (err) {
-                showToast('❌ Error en traducción: ' + err.message);
+                alert('Error al traducir: ' + err.message);
             }
-            const menu = document.getElementById('msgContextMenu');
-            if (menu) menu.style.display = 'none';
         }
+
+        // ==============================================================================
+        // 3.1 ENLACE DIRECTO CON WIKIPEDIA (CONSULTA Y COMPARTIR)
+        // ==============================================================================
+        let currentWikiResult = null;
+
+        function openWikipediaModal(initialQuery) {
+            if (!initialQuery) initialQuery = '';
+            document.getElementById('wikipediaModal').style.display = 'flex';
+            const input = document.getElementById('wikiSearchInput');
+            if (initialQuery) {
+                input.value = initialQuery;
+                executeWikipediaSearch();
+            } else {
+                input.focus();
+            }
+        }
+
+        async function executeWikipediaSearch() {
+            const input = document.getElementById('wikiSearchInput');
+            const q = input.value.trim();
+            if (!q) {
+                alert('Escribe el tema o palabra que deseas buscar en Wikipedia.');
+                return;
+            }
+
+            const resBox = document.getElementById('wikiResultBox');
+            const loadBox = document.getElementById('wikiLoading');
+            resBox.style.display = 'none';
+            loadBox.style.display = 'block';
+
+            try {
+                const cleanQuery = q.replace(/\s+/g, '_');
+                const url = 'https://es.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(cleanQuery);
+                const res = await fetch(url);
+                if (!res.ok) {
+                    throw new Error('No se encontró un artículo exacto con ese nombre.');
+                }
+                const data = await res.json();
+                currentWikiResult = data;
+
+                document.getElementById('wikiTitle').innerText = data.title || q;
+                document.getElementById('wikiDescription').innerText = data.description || 'Artículo de Wikipedia';
+                document.getElementById('wikiExtract').innerText = data.extract || 'Sin resumen disponible.';
+
+                const imgEl = document.getElementById('wikiImg');
+                if (data.thumbnail && data.thumbnail.source) {
+                    imgEl.src = data.thumbnail.source;
+                    imgEl.style.display = 'block';
+                } else {
+                    imgEl.style.display = 'none';
+                }
+
+                const pageUrl = (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) ? data.content_urls.desktop.page : 'https://es.wikipedia.org/wiki/' + encodeURIComponent(cleanQuery);
+                document.getElementById('btnWikiOpenBrowser').onclick = function() { window.open(pageUrl, '_blank'); };
+                document.getElementById('btnWikiShareChat').onclick = function() { shareWikipediaArticleInChat(data, pageUrl); };
+
+                loadBox.style.display = 'none';
+                resBox.style.display = 'block';
+            } catch (err) {
+                loadBox.style.display = 'none';
+                alert('Wikipedia: ' + err.message + '\n\nIntenta con un término más específico (ejemplo: "Revolución Mexicana" en vez de solo "Revolución").');
+            }
+        }
+
+        function shareWikipediaArticleInChat(data, pageUrl) {
+            if (!currentChatId) {
+                alert('Abre un chat o grupo primero para compartir el artículo.');
+                return;
+            }
+            const title = data.title || 'Artículo de Wikipedia';
+            const extract = (data.extract || '').substring(0, 300);
+            const imgUrl = (data.thumbnail && data.thumbnail.source) ? data.thumbnail.source : '';
+
+            const payload = '[WIKIPEDIA]|' + title + '|' + extract + '|' + pageUrl + '|' + imgUrl;
+            dispatchMessageObject(payload);
+            document.getElementById('wikipediaModal').style.display = 'none';
+            showToast('📖 Artículo de Wikipedia compartido en el chat');
+        }
+
 
         // ==============================================================================
         // 4. TRANSCRIPTOR DE NOTAS DE VOZ A TEXTO EN PANTALLA
@@ -6193,6 +6370,42 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             `;
         }
 </script>
+
+    
+    <!-- MODAL: CONSULTA Y ENLACE WIKIPEDIA -->
+    <div id="wikipediaModal" class="modal-overlay" style="display: none; z-index: 100015;">
+        <div class="dialog-card" style="max-width: 520px; width: 94%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <h3 style="color: #60A5FA; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
+                    <span>📖</span> Consultar Wikipedia
+                </h3>
+                <button onclick="document.getElementById('wikipediaModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:18px; cursor:pointer;">✕</button>
+            </div>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                Busca cualquier tema escolar, científico, histórico o general y compártelo directo en el chat.
+            </p>
+            <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                <input type="text" id="wikiSearchInput" placeholder="Ej: Revolución Mexicana, Célula, Gravedad..." style="flex:1; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:8px; padding:10px 14px; color:#FFF; font-size:14px; outline:none;" onkeydown="if(event.key==='Enter') executeWikipediaSearch()">
+                <button onclick="executeWikipediaSearch()" style="background:#2563EB; color:#FFF; border:none; padding:10px 16px; border-radius:8px; font-weight:bold; cursor:pointer;">Buscar</button>
+            </div>
+            
+            <div id="wikiResultBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px; padding: 14px; max-height: 280px; overflow-y: auto;">
+                <div style="display:flex; gap:12px; align-items:flex-start;">
+                    <img id="wikiImg" src="" style="width: 70px; height: 70px; object-fit: cover; border-radius: 8px; display: none; border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="flex: 1;">
+                        <h4 id="wikiTitle" style="color:#FFF; margin:0 0 4px 0; font-size: 16px;"></h4>
+                        <div id="wikiDescription" style="color:#93C5FD; font-size: 12px; margin-bottom: 6px; font-style: italic;"></div>
+                        <p id="wikiExtract" style="color:#CBD5E1; font-size: 13px; line-height: 1.4; margin: 0;"></p>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:14px; justify-content:flex-end;">
+                    <button id="btnWikiOpenBrowser" onclick="" style="background:rgba(255,255,255,0.1); color:#FFF; border:1px solid rgba(255,255,255,0.2); padding:8px 14px; border-radius:8px; font-size:12px; cursor:pointer;">🔗 Abrir en Wikipedia</button>
+                    <button id="btnWikiShareChat" onclick="" style="background:#00A884; color:#FFF; border:none; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">📤 Compartir en el Chat</button>
+                </div>
+            </div>
+            <div id="wikiLoading" style="display:none; text-align:center; padding:20px; color:#93C5FD; font-size:13px;">🔍 Buscando artículo en Wikipedia...</div>
+        </div>
+    </div>
 
     <!-- MODAL: ASIGNAR TAREA ESCOLAR (NEOCLASSROOM) -->
     <div id="classroomAssignmentModal" class="modal-overlay" style="display: none; z-index: 100010;">
