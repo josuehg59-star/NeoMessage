@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import android.webkit.MimeTypeMap
 
@@ -583,6 +584,55 @@ fun ChatRoomScreen(
             uris.forEach { uri -> performDocumentUpload(uri) }
         }
     }
+
+    val photoToPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                Toast.makeText(context, "📄 Convirtiendo foto a PDF...", Toast.LENGTH_SHORT).show()
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                if (bitmap != null) {
+                    val pdfDoc = android.graphics.pdf.PdfDocument()
+                    val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, 1).create()
+                    val page = pdfDoc.startPage(pageInfo)
+                    page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                    pdfDoc.finishPage(page)
+
+                    val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                    val fileName = "NeoMessage_Tarea_$timeStamp.pdf"
+
+                    val resolver = context.contentResolver
+                    val values = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                    }
+                    val pdfUri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    if (pdfUri != null) {
+                        resolver.openOutputStream(pdfUri)?.use { out ->
+                            pdfDoc.writeTo(out)
+                        }
+                        Toast.makeText(context, "✅ Documento PDF creado y guardado en Descargas", Toast.LENGTH_LONG).show()
+                        performDocumentUpload(pdfUri)
+                    } else {
+                        val file = java.io.File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), fileName)
+                        java.io.FileOutputStream(file).use { out ->
+                            pdfDoc.writeTo(out)
+                        }
+                        val fallbackUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                        Toast.makeText(context, "✅ PDF generado: ${file.name}", Toast.LENGTH_LONG).show()
+                        performDocumentUpload(fallbackUri)
+                    }
+                    pdfDoc.close()
+                } else {
+                    Toast.makeText(context, "No se pudo leer la imagen", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error generando PDF: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     
     DisposableEffect(chatId) {
         onDispose {
@@ -981,6 +1031,7 @@ fun ChatRoomScreen(
                 AttachmentMenu(bgColor = bgColor, textColor = textColor) { action ->
                     showAttachmentMenu = false
                     when (action) {
+                        "Foto a PDF" -> photoToPdfLauncher.launch("image/*")
                         "Galería" -> galleryLauncher.launch("image/*")
                         "Documento" -> documentLauncher.launch("*/*")
                         "Cámara", "Tomar Foto" -> {
@@ -1670,6 +1721,7 @@ fun ChatRoomScreen(
 @Composable
 fun AttachmentMenu(bgColor: Color, textColor: Color, onAction: (String) -> Unit) {
     val items = listOf(
+        Pair("Foto a PDF", Icons.Filled.PictureAsPdf) to Color(0xFFE11D48),
         Pair("Documento", Icons.AutoMirrored.Filled.InsertDriveFile) to Color(0xFF7E57C2),
         Pair("Tomar Foto", Icons.Filled.CameraAlt) to Color(0xFFE91E63),
         Pair("Grabar Video", Icons.Filled.Videocam) to Color(0xFFFF5722),
@@ -2388,17 +2440,71 @@ fun FullScreenImageViewer(
                     Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
                 }
 
-                Surface(
-                    color = Color.Black.copy(0.6f),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text(
-                        text = "Zoom: ${(scale * 100).toInt()}%",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Surface(
+                        color = Color(0xFFE11D48),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.clickable {
+                            try {
+                                val androidBmp = bitmap.asAndroidBitmap()
+                                val pdfDoc = android.graphics.pdf.PdfDocument()
+                                val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(androidBmp.width, androidBmp.height, 1).create()
+                                val page = pdfDoc.startPage(pageInfo)
+                                page.canvas.drawBitmap(androidBmp, 0f, 0f, null)
+                                pdfDoc.finishPage(page)
+
+                                val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                                val fileName = "NeoMessage_Tarea_$timeStamp.pdf"
+
+                                val resolver = context.contentResolver
+                                val values = android.content.ContentValues().apply {
+                                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                                }
+                                val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                if (uri != null) {
+                                    resolver.openOutputStream(uri)?.use { out ->
+                                        pdfDoc.writeTo(out)
+                                    }
+                                    Toast.makeText(context, "✅ Guardado como PDF en Descargas: $fileName", Toast.LENGTH_LONG).show()
+                                } else {
+                                    val file = java.io.File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), fileName)
+                                    java.io.FileOutputStream(file).use { out ->
+                                        pdfDoc.writeTo(out)
+                                    }
+                                    Toast.makeText(context, "✅ PDF guardado: ${file.name}", Toast.LENGTH_LONG).show()
+                                }
+                                pdfDoc.close()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error generando PDF: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = "📄 Guardar como PDF",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Surface(
+                        color = Color.Black.copy(0.6f),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(
+                            text = "Zoom: ${(scale * 100).toInt()}%",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
 

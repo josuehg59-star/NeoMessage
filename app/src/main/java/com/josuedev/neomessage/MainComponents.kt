@@ -276,6 +276,7 @@ fun ChatsListScreen(
     onNavigateToCorteCaja: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val spContacts = remember { context.getSharedPreferences("NeoContacts", Context.MODE_PRIVATE) }
     var showMenu by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("Todos") }
     var searchQuery by remember { mutableStateOf("") }
@@ -372,29 +373,38 @@ fun ChatsListScreen(
         try {
             val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
             val userIdsRef = db.getReference("users")
-            val archivedRef = db.getReference("users").child(userId).child("archived")
-            val lockedRef = db.getReference("users").child(userId).child("locked_chats")
+            val archivedRef = db.getReference("users").child(myCleanId).child("archived")
+            val lockedRef = db.getReference("users").child(myCleanId).child("locked_chats")
             
             archivedRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    archivedIds.clear()
-                    snapshot.children.forEach { it.key?.let { key -> archivedIds.add(key) } }
+                    val spArch = context.getSharedPreferences("NeoArchived", Context.MODE_PRIVATE)
+                    val editor = spArch.edit()
+                    snapshot.children.forEach { child ->
+                        child.key?.let { key ->
+                            if (!archivedIds.contains(key)) archivedIds.add(key)
+                            editor.putBoolean(key, true)
+                        }
+                    }
+                    editor.apply()
                 }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
 
             lockedRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    lockedIds.clear()
-                    snapshot.children.forEach { it.key?.let { key -> lockedIds.add(key) } }
+                    snapshot.children.forEach { child ->
+                        child.key?.let { key -> if (!lockedIds.contains(key)) lockedIds.add(key) }
+                    }
                 }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
 
-            db.getReference("users").child(userId).child("blocked").addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+            db.getReference("users").child(myCleanId).child("blocked").addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    blockedIds.clear()
-                    snapshot.children.forEach { it.key?.let { key -> blockedIds.add(key) } }
+                    snapshot.children.forEach { child ->
+                        child.key?.let { key -> if (!blockedIds.contains(key)) blockedIds.add(key) }
+                    }
                 }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
@@ -817,8 +827,8 @@ fun ChatsListScreen(
                         Button(
                             onClick = {
                                 val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-                                val aRef = db.getReference("users").child(userId).child("archived").child(selectedChatAction!!.second)
-                                val lRef = db.getReference("users").child(userId).child("locked_chats").child(selectedChatAction!!.second)
+                                val aRef = db.getReference("users").child(myCleanId).child("archived").child(selectedChatAction!!.second)
+                                val lRef = db.getReference("users").child(myCleanId).child("locked_chats").child(selectedChatAction!!.second)
                                 
                                 val spArch = context.getSharedPreferences("NeoArchived", Context.MODE_PRIVATE)
                                 if (isArchived) {
@@ -976,7 +986,19 @@ fun ChatsListScreen(
         
         Column(Modifier.padding(padding).fillMaxSize()) {
 
-            val archivedCount = found.count { archivedIds.contains(it.chatId) }
+            // Asegurar que todos los chats archivados aparezcan en la lista para poder abrirlos
+            archivedIds.forEach { aId ->
+                if (found.none { it.chatId == aId }) {
+                    val parts = aId.replace("private_", "").split("_")
+                    val otherPhone = if (parts.size == 2) {
+                        if (parts[0] == myCleanId) parts[1] else parts[0]
+                    } else aId
+                    val name = spContacts.getString(otherPhone, otherPhone) ?: otherPhone
+                    found.add(NeoChatEntry(name, aId, "Chat archivado", System.currentTimeMillis()))
+                }
+            }
+
+            val archivedCount = maxOf(archivedIds.size, found.count { archivedIds.contains(it.chatId) })
             BackHandler(enabled = selectedFilter == "Archivados") {
                 selectedFilter = "Todos"
             }
