@@ -1,17 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <script>
-        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
-        (function() {
-            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
-                window.location.replace('ios.html');
-            }
-        })();
-    </script>
-
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>NeoMessage Desktop</title>
     
@@ -1778,29 +1768,7 @@
             color: var(--neon-green);
         }
 
-    </style>
-
-        // DETECCIÓN INTELIGENTE DE IPHONE (iOS)
-        window.addEventListener('DOMContentLoaded', () => {
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS) {
-                const headerBtn = document.getElementById('pwaInstallHeaderBtn');
-                if (headerBtn) {
-                    headerBtn.innerHTML = '🍏 Instalar en iPhone';
-                    headerBtn.style.display = 'flex';
-                }
-                const isStandalone = ('standalone' in window.navigator) && window.navigator.standalone;
-                if (!isStandalone) {
-                    const floatBanner = document.getElementById('iosInstallFloatingBanner');
-                    if (floatBanner) floatBanner.style.display = 'flex';
-                }
-                if (!myPhone) {
-                    setTimeout(() => switchLoginTab('phone'), 300);
-                }
-            }
-        });
-
-</head>
+    </style></head>
 <body data-theme="default">
 
     <!-- 1. PANTALLA DE VINCULACIÓN SEGURA (QR ESTILO WHATSAPP WEB) -->
@@ -3851,37 +3819,7 @@
                 const doc = printIframe.contentWindow.document;
                 doc.open();
                 doc.write('<!DOCTYPE html><html><head>
-    <script>
-        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
-        (function() {
-            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
-                window.location.replace('ios.html');
-            }
-        })();
-    </script>
-<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
-        // DETECCIÓN INTELIGENTE DE IPHONE (iOS)
-        window.addEventListener('DOMContentLoaded', () => {
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS) {
-                const headerBtn = document.getElementById('pwaInstallHeaderBtn');
-                if (headerBtn) {
-                    headerBtn.innerHTML = '🍏 Instalar en iPhone';
-                    headerBtn.style.display = 'flex';
-                }
-                const isStandalone = ('standalone' in window.navigator) && window.navigator.standalone;
-                if (!isStandalone) {
-                    const floatBanner = document.getElementById('iosInstallFloatingBanner');
-                    if (floatBanner) floatBanner.style.display = 'flex';
-                }
-                if (!myPhone) {
-                    setTimeout(() => switchLoginTab('phone'), 300);
-                }
-            }
-        });
-
-</head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();}, 300);"/>
+<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();}, 300);"/>
     <!-- MODAL DE INSTALACIÓN NATIVA PARA IPHONE (iOS) -->
     <div id="iosInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
         <div class="modal-card" style="max-width: 420px; background: #1C1C1E; border: 1px solid #38383A; border-radius: 20px; padding: 24px; color: #FFF; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
@@ -3924,6 +3862,67 @@
         <div style="display: flex; gap: 6px;">
             <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
             <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
+        </div>
+    </div>
+
+
+    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
+    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
+        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 26px;">📲</span>
+                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
+                </div>
+                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
+            </div>
+            
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
+                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- OPCIÓN IPHONE -->
+                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🍏</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN ANDROID -->
+                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🤖</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN WINDOWS / PC -->
+                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">💻</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+            </div>
+
+            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
+            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
+                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
+                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
+                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
+                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
+                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
+                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
+                </div>
+            </div>
         </div>
     </div>
 
@@ -3933,37 +3932,7 @@
             }
 
             printWin.document.write('<!DOCTYPE html><html><head>
-    <script>
-        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
-        (function() {
-            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
-                window.location.replace('ios.html');
-            }
-        })();
-    </script>
-<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
-        // DETECCIÓN INTELIGENTE DE IPHONE (iOS)
-        window.addEventListener('DOMContentLoaded', () => {
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS) {
-                const headerBtn = document.getElementById('pwaInstallHeaderBtn');
-                if (headerBtn) {
-                    headerBtn.innerHTML = '🍏 Instalar en iPhone';
-                    headerBtn.style.display = 'flex';
-                }
-                const isStandalone = ('standalone' in window.navigator) && window.navigator.standalone;
-                if (!isStandalone) {
-                    const floatBanner = document.getElementById('iosInstallFloatingBanner');
-                    if (floatBanner) floatBanner.style.display = 'flex';
-                }
-                if (!myPhone) {
-                    setTimeout(() => switchLoginTab('phone'), 300);
-                }
-            }
-        });
-
-</head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();window.close();}, 300);"/>
+<title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();window.close();}, 300);"/>
     <!-- MODAL DE INSTALACIÓN NATIVA PARA IPHONE (iOS) -->
     <div id="iosInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
         <div class="modal-card" style="max-width: 420px; background: #1C1C1E; border: 1px solid #38383A; border-radius: 20px; padding: 24px; color: #FFF; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
@@ -4006,6 +3975,67 @@
         <div style="display: flex; gap: 6px;">
             <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
             <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
+        </div>
+    </div>
+
+
+    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
+    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
+        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 26px;">📲</span>
+                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
+                </div>
+                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
+            </div>
+            
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
+                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- OPCIÓN IPHONE -->
+                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🍏</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN ANDROID -->
+                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🤖</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN WINDOWS / PC -->
+                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">💻</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+            </div>
+
+            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
+            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
+                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
+                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
+                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
+                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
+                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
+                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
+                </div>
+            </div>
         </div>
     </div>
 
@@ -4039,37 +4069,7 @@
                 const win = window.open('', '_blank');
                 if (win) {
                     win.document.write('<!DOCTYPE html><html><head>
-    <script>
-        // REDIRECCIÓN INTELIGENTE PARA IPHONE (iOS)
-        (function() {
-            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS && !window.location.pathname.endsWith('ios.html')) {
-                window.location.replace('ios.html');
-            }
-        })();
-    </script>
-<title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style>
-        // DETECCIÓN INTELIGENTE DE IPHONE (iOS)
-        window.addEventListener('DOMContentLoaded', () => {
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS) {
-                const headerBtn = document.getElementById('pwaInstallHeaderBtn');
-                if (headerBtn) {
-                    headerBtn.innerHTML = '🍏 Instalar en iPhone';
-                    headerBtn.style.display = 'flex';
-                }
-                const isStandalone = ('standalone' in window.navigator) && window.navigator.standalone;
-                if (!isStandalone) {
-                    const floatBanner = document.getElementById('iosInstallFloatingBanner');
-                    if (floatBanner) floatBanner.style.display = 'flex';
-                }
-                if (!myPhone) {
-                    setTimeout(() => switchLoginTab('phone'), 300);
-                }
-            }
-        });
-
-</head><body><img src="' + fileUrl + '" onload="window.print();window.close();"/>
+<title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + fileUrl + '" onload="window.print();window.close();"/>
     <!-- MODAL DE INSTALACIÓN NATIVA PARA IPHONE (iOS) -->
     <div id="iosInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
         <div class="modal-card" style="max-width: 420px; background: #1C1C1E; border: 1px solid #38383A; border-radius: 20px; padding: 24px; color: #FFF; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
@@ -4112,6 +4112,67 @@
         <div style="display: flex; gap: 6px;">
             <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
             <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
+        </div>
+    </div>
+
+
+    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
+    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
+        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 26px;">📲</span>
+                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
+                </div>
+                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
+            </div>
+            
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
+                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- OPCIÓN IPHONE -->
+                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🍏</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN ANDROID -->
+                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🤖</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN WINDOWS / PC -->
+                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">💻</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+            </div>
+
+            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
+            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
+                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
+                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
+                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
+                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
+                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
+                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
+                </div>
+            </div>
         </div>
     </div>
 
@@ -5490,7 +5551,8 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
         function triggerPwaInstall() {
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
             if (isIOS) {
-                window.location.href = 'ios.html';
+                showIosGuideFromModal();
+                document.getElementById('universalInstallModal').style.display = 'flex';
                 return;
             }
             if (deferredPrompt) {
@@ -5502,14 +5564,28 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     deferredPrompt = null;
                 });
             } else {
-                showToast('📥 Descargando la versión más reciente de NeoMessage...');
-                window.location.href = 'https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk';
+                document.getElementById('universalInstallModal').style.display = 'flex';
             }
         }
 
-        function openIosInstallModal() {
-            const m = document.getElementById('iosInstallModal');
-            if (m) m.style.display = 'flex';
+        function showIosGuideFromModal() {
+            const el = document.getElementById('iosStepsInsideModal');
+            if (el) el.style.display = 'block';
+        }
+
+        function downloadAndroidApkFromModal() {
+            showToast('📥 Descargando NeoMessage APK v3.36...');
+            window.location.href = 'https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk';
+            document.getElementById('universalInstallModal').style.display = 'none';
+        }
+
+        function installPcFromModal() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+            } else {
+                showToast('💡 Haz clic en el icono de instalación (➕) en la barra de direcciones de tu navegador.');
+            }
+            document.getElementById('universalInstallModal').style.display = 'none';
         }
 
         function switchLoginTab(tab) {
@@ -8040,6 +8116,67 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
         <div style="display: flex; gap: 6px;">
             <button onclick="openIosInstallModal()" style="background: #00FF7F; color: #000; border: none; font-weight: bold; font-size: 11px; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Ver Guía</button>
             <button onclick="document.getElementById('iosInstallFloatingBanner').style.display='none'" style="background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
+        </div>
+    </div>
+
+
+    <!-- MODAL ELEGANTE UNIFICADO DE INSTALACIÓN -->
+    <div id="universalInstallModal" class="modal-overlay" style="display: none; z-index: 10000;">
+        <div class="modal-card" style="max-width: 440px; background: #111B21; border: 1px solid var(--border); border-radius: 18px; padding: 24px; color: #FFF; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 26px;">📲</span>
+                    <h3 style="color: #00FF7F; font-size: 18px; font-weight: 800;">Instalar NeoMessage</h3>
+                </div>
+                <button onclick="document.getElementById('universalInstallModal').style.display='none'" style="background: none; border: none; color: #888; font-size: 22px; cursor: pointer;">✕</button>
+            </div>
+            
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">
+                Selecciona tu tipo de dispositivo para instalar la aplicación oficial:
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- OPCIÓN IPHONE -->
+                <div onclick="showIosGuideFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🍏</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Apple iPhone (iOS)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar en iPhone 13 o cualquier modelo vía Safari</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN ANDROID -->
+                <div onclick="downloadAndroidApkFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">🤖</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Android (Huawei, Samsung, etc.)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Descargar instalador APK v3.36 directo</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+
+                <!-- OPCIÓN WINDOWS / PC -->
+                <div onclick="installPcFromModal()" style="background: #202C33; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s;">
+                    <div style="font-size: 32px;">💻</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 14px; color: #FFF;">Computadora (Windows / Mac)</div>
+                        <div style="font-size: 11px; color: #8E8E93;">Instalar como App de Escritorio independiente</div>
+                    </div>
+                    <span style="color: #00FF7F; font-size: 18px; font-weight: bold;">›</span>
+                </div>
+            </div>
+
+            <!-- GUÍA VISUAL IPHONE DENTRO DEL MODAL -->
+            <div id="iosStepsInsideModal" style="display: none; margin-top: 16px; background: #0B141A; border: 1px solid #00FF7F; border-radius: 12px; padding: 14px;">
+                <div style="font-weight: bold; color: #00FF7F; font-size: 13px; margin-bottom: 8px;">Instalación en 3 toques en Safari:</div>
+                <div style="font-size: 12px; color: #FFF; line-height: 1.6;">
+                    1. En tu iPhone, abre esta página en <b>Safari</b>.<br>
+                    2. Toca el botón <b>Compartir</b> <span style="font-size: 15px;">[⬆️]</span> (en la barra de abajo).<br>
+                    3. Desliza hacia abajo y toca <b>"Agregar a pantalla de inicio"</b> ➕.<br>
+                    4. Toca <b>"Agregar"</b> arriba a la derecha. ¡Listo!
+                </div>
+            </div>
         </div>
     </div>
 
