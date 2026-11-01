@@ -1,0 +1,23 @@
+{
+  "name": "NeoMessage",
+  "short_name": "NeoMessage",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111B21",
+  "theme_color": "#111B21",
+  "description": "Mensajería Soberana, Escolar y Comunitaria con Llamadas y Grupos",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23111B21'/><circle cx='96' cy='96' r='72' fill='%2300A884'/><text x='96' y='122' font-size='82' font-weight='900' text-anchor='middle' fill='%23FFF' font-family='sans-serif'>N</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='112' fill='%23111B21'/><circle cx='256' cy='256' r='196' fill='%2300A884'/><text x='256' y='325' font-size='220' font-weight='900' text-anchor='middle' fill='%23FFF' font-family='sans-serif'>N</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

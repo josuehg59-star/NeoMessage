@@ -6,6 +6,8 @@
     <title>NeoMessage Desktop</title>
     
     <!-- Meta etiquetas PWA & Desktop -->
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <meta name="application-name" content="NeoMessage">
     <meta name="apple-mobile-web-app-title" content="NeoMessage">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2151,6 +2153,7 @@
             <div class="sidebar-header">
                 <div class="sidebar-title" id="sidebarTitle">Chats</div>
                 <div class="header-actions" style="display: flex; align-items: center; gap: 6px;">
+                    <button class="icon-btn" onclick="triggerPwaInstall()" id="pwaInstallHeaderBtn" title="Instalar App en Celular o PC" style="color: #38BDF8; font-size: 12px; font-weight: bold; background: rgba(56, 189, 248, 0.15); padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); cursor: pointer; display: flex; align-items: center; gap: 4px;">📲 Instalar App</button>
                     <button class="icon-btn" onclick="openCreateGroupModal()" title="Crear Nuevo Grupo Escolar o de Trabajo" style="color: #00FF7F; font-size: 12px; font-weight: bold; background: rgba(0, 255, 127, 0.15); padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(0, 255, 127, 0.35); cursor: pointer; display: flex; align-items: center; gap: 4px;">👥 Nuevo Grupo</button>
                     <button class="icon-btn" onclick="openAddContactModal()" title="Nuevo Chat / Contacto">➕</button>
                     <button class="icon-btn" onclick="openSettingsModal()" title="Ajustes">⋮</button>
@@ -3161,6 +3164,16 @@
                         </div>
 
                         <!-- DESCARGAR A LA PC -->
+                        
+                        <!-- CONVERTIR A PDF -->
+                        <button id="lightboxPdfBtn" onclick="convertCurrentImageToPdf()" title="Guardar imagen como documento PDF" style="background: #E11D48; color: #FFF; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(225,29,72,0.3); font-size: 13px;">
+                            📄 Guardar como PDF
+                        </button>
+
+                        <!-- IMPRIMIR DIRECTO -->
+                        <button id="lightboxPrintBtn" onclick="printCurrentImage()" title="Imprimir imagen en papel" style="background: #3B82F6; color: #FFF; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(59,130,246,0.3); font-size: 13px;">
+                            🖨️ Imprimir
+                        </button>
                         <button id="lightboxDownloadBtn" title="Descargar imagen a la PC" style="background: #00FF7F; color: #000; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(0,255,127,0.3);">
                             ⬇️ Descargar
                         </button>
