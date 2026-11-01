@@ -108,32 +108,78 @@ fun NeoLogo(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginView(onLogin: (String, String) -> Unit, bgColor: Color, textColor: Color, isLoading: Boolean = false) {
+fun LoginView(
+    onLogin: (String, String, String) -> Unit, 
+    bgColor: Color, 
+    textColor: Color, 
+    isLoading: Boolean = false
+) {
     var phone by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
-    var step by remember { mutableStateOf(1) }
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var step by remember { mutableIntStateOf(1) }
     var isCheckingPhone by remember { mutableStateOf(false) }
+    
     var registeredOwnerName by remember { mutableStateOf<String?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    var boundDeviceId by remember { mutableStateOf<String?>(null) }
+    var boundDeviceModel by remember { mutableStateOf<String?>(null) }
+    var savedSecurityPin by remember { mutableStateOf<String?>(null) }
+    var isDifferentDevice by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().background(NeoTheme.Dark).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        NeoLogo(Modifier.size(150.dp))
-        Spacer(Modifier.height(16.dp))
-        Text("NeoMessage Auth", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Text("Protocolo Soberano de Identidad", color = Color.Gray, fontSize = 14.sp)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentDeviceId = remember {
+        try {
+            android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
+        } catch (_: Exception) { "" }
+    }
+    val currentDeviceModel = remember {
+        "${android.os.Build.MANUFACTURER.uppercase()} ${android.os.Build.MODEL}".trim()
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(NeoTheme.Dark)
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        NeoLogo(Modifier.size(120.dp))
+        Spacer(Modifier.height(12.dp))
+        Text("NeoMessage Auth", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text("Protocolo de Vinculación de Dispositivo Físico", color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center)
         
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(32.dp))
         
         if (isLoading || isCheckingPhone) {
             CircularProgressIndicator(color = NeoTheme.Green)
             Spacer(Modifier.height(16.dp))
-            Text(if (isCheckingPhone) "Validando identidad en red..." else "Estableciendo enlace seguro...", color = Color.Gray, fontSize = 12.sp)
+            Text(if (isCheckingPhone) "Verificando hardware e identidad en red..." else "Estableciendo enlace seguro...", color = Color.Gray, fontSize = 12.sp)
         } else {
             if (step == 1) {
+                Surface(
+                    color = Color(0xFF1E293B),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.PhoneAndroid, null, tint = NeoTheme.Green, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Dispositivo Local Detectado", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(currentDeviceModel, color = NeoTheme.Green, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("El número quedará enlazado a este teléfono físico para prevenir suplantación o delitos.", color = Color.LightGray, fontSize = 11.sp)
+                    }
+                }
+
                 OutlinedTextField(
                     value = phone, 
-                    onValueChange = { phone = it }, 
-                    label = { Text("Número de Teléfono") }, 
+                    onValueChange = { if (it.length <= 10 && it.all { c -> c.isDigit() }) phone = it }, 
+                    label = { Text("Número de Teléfono (10 dígitos)") }, 
                     placeholder = { Text("Ej: 9612765041", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone),
@@ -148,6 +194,7 @@ fun LoginView(onLogin: (String, String) -> Unit, bgColor: Color, textColor: Colo
                     ),
                     singleLine = true
                 )
+
                 Button(
                     onClick = {
                         val clean = NeoUtils.sanitizeId(phone)
@@ -159,12 +206,20 @@ fun LoginView(onLogin: (String, String) -> Unit, bgColor: Color, textColor: Colo
                                     override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                                         isCheckingPhone = false
                                         val existing = snapshot.child("name").getValue(String::class.java)
+                                        val devId = snapshot.child("deviceId").getValue(String::class.java) ?: snapshot.child("deviceBinding/deviceId").getValue(String::class.java)
+                                        val devMod = snapshot.child("deviceModel").getValue(String::class.java) ?: snapshot.child("deviceBinding/deviceModel").getValue(String::class.java)
+                                        val secPin = snapshot.child("securityPin").getValue(String::class.java) ?: snapshot.child("nexus_pin").getValue(String::class.java)
+
+                                        registeredOwnerName = existing
+                                        boundDeviceId = devId
+                                        boundDeviceModel = devMod
+                                        savedSecurityPin = secPin
                                         if (!existing.isNullOrBlank()) {
                                             name = existing
-                                            registeredOwnerName = existing
-                                        } else {
-                                            registeredOwnerName = null
                                         }
+
+                                        // Si ya tiene un deviceId registrado y es distinto al actual: ES OTRO TELÉFONO FÍSICO
+                                        isDifferentDevice = !devId.isNullOrBlank() && currentDeviceId.isNotBlank() && devId != currentDeviceId
                                         step = 2
                                     }
                                     override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
@@ -183,66 +238,302 @@ fun LoginView(onLogin: (String, String) -> Unit, bgColor: Color, textColor: Colo
                     Modifier.fillMaxWidth().padding(top = 16.dp).height(56.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = NeoTheme.Green)
-                ) { Text("VALIDAR NÚMERO (10 DÍGITOS)", color = Color.Black, fontWeight = FontWeight.Bold) }
+                ) { 
+                    Text("VALIDAR NÚMERO Y VINCULACIÓN", color = Color.Black, fontWeight = FontWeight.Bold) 
+                }
             } else {
-                if (registeredOwnerName != null) {
+                // PASO 2: COMPROBACIÓN DE HARDWARE FÍSICO Y PIN
+                if (isDifferentDevice) {
+                    // ALERTA DE SEGURIDAD: INTENTO DE USAR EL NÚMERO EN OTRO TELÉFONO
+                    Surface(
+                        color = Color(0xFFFF453A).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF453A)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Security, null, tint = Color(0xFFFF453A), modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("DISPOSITIVO NO AUTORIZADO", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text("Este número pertenece a otro celular físico registrado:", color = Color.White, fontSize = 12.sp)
+                            Text("📱 ${boundDeviceModel ?: "Teléfono original protegido"}", color = Color(0xFFFFD60A), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Por seguridad y prevención contra delitos de suplantación, ingresa el PIN de Seguridad de 6 dígitos establecido por el propietario para autorizar la transferencia a este teléfono.", color = Color.LightGray, fontSize = 11.sp)
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pin = it },
+                        label = { Text("PIN de Seguridad (6 dígitos)") },
+                        placeholder = { Text("••••••", color = Color.Gray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedLabelColor = Color(0xFFFFD60A),
+                            unfocusedLabelColor = Color.Gray,
+                            focusedBorderColor = Color(0xFFFFD60A),
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
+                    )
+
+                    Button(
+                        onClick = {
+                            if (pin.length != 6) {
+                                android.widget.Toast.makeText(context, "Ingresa el PIN de 6 dígitos completo.", android.widget.Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (savedSecurityPin != null && pin != savedSecurityPin) {
+                                android.widget.Toast.makeText(context, "❌ PIN INCORRECTO. Acceso denegado: Este número pertenece a otro teléfono físico.", android.widget.Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
+                            android.widget.Toast.makeText(context, "✅ PIN verificado. Vinculando número a este nuevo teléfono físico...", android.widget.Toast.LENGTH_SHORT).show()
+                            val clean = NeoUtils.sanitizeId(phone)
+                            onLogin(if (name.isNotBlank()) name.trim() else (registeredOwnerName ?: "Usuario Neo"), clean, pin)
+                        },
+                        Modifier.fillMaxWidth().padding(top = 16.dp).height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9F0A))
+                    ) {
+                        Text("VERIFICAR IDENTIDAD Y TRANSFERIR", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                } else if (registeredOwnerName != null) {
+                    // MISMO TELÉFONO O CUENTA EXISTENTE VINCULÁNDOSE
                     Surface(
                         color = Color(0xFF00FF7F).copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00FF7F).copy(alpha = 0.5f)),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00FF7F).copy(alpha = 0.6f)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
                     ) {
-                        Column(Modifier.padding(12.dp)) {
+                        Column(Modifier.padding(14.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.AccountCircle, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(20.dp))
+                                Icon(Icons.Filled.VerifiedUser, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(22.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Registrado como: $registeredOwnerName", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("DISPOSITIVO FÍSICO AUTORIZADO", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                             Spacer(Modifier.height(4.dp))
-                            Text("¿Deseas actualizar tu nombre? Edítalo abajo o pulsa continuar.", color = Color.LightGray, fontSize = 11.sp)
+                            Text("Equipo: $currentDeviceModel", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Registrado como: $registeredOwnerName", color = Color.LightGray, fontSize = 12.sp)
                         }
+                    }
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nombre de Usuario") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedLabelColor = NeoTheme.Green,
+                            unfocusedLabelColor = Color.Gray,
+                            focusedBorderColor = NeoTheme.Green,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
+                    )
+
+                    if (savedSecurityPin != null) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = pin,
+                            onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pin = it },
+                            label = { Text("PIN de Seguridad (6 dígitos)") },
+                            placeholder = { Text("••••••", color = Color.Gray) },
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedLabelColor = NeoTheme.Green,
+                                unfocusedLabelColor = Color.Gray,
+                                focusedBorderColor = NeoTheme.Green,
+                                unfocusedBorderColor = Color.DarkGray,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            singleLine = true
+                        )
+                    } else {
+                        Spacer(Modifier.height(8.dp))
+                        Text("🔒 Protege tu número en este celular creando tu PIN de 6 dígitos:", color = Color.LightGray, fontSize = 11.sp)
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = pin,
+                            onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pin = it },
+                            label = { Text("Crear PIN de Seguridad (6 dígitos)") },
+                            placeholder = { Text("••••••", color = Color.Gray) },
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedLabelColor = NeoTheme.Green,
+                                unfocusedLabelColor = Color.Gray,
+                                focusedBorderColor = NeoTheme.Green,
+                                unfocusedBorderColor = Color.DarkGray,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            singleLine = true
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            if (name.isBlank()) {
+                                android.widget.Toast.makeText(context, "El nombre no puede estar vacío.", android.widget.Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (savedSecurityPin != null) {
+                                if (pin.length != 6) {
+                                    android.widget.Toast.makeText(context, "Ingresa tu PIN de 6 dígitos.", android.widget.Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                if (pin != savedSecurityPin) {
+                                    android.widget.Toast.makeText(context, "❌ PIN incorrecto.", android.widget.Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                            } else {
+                                if (pin.isNotEmpty() && pin.length != 6) {
+                                    android.widget.Toast.makeText(context, "El PIN debe tener exactamente 6 dígitos.", android.widget.Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                            }
+                            val clean = NeoUtils.sanitizeId(phone)
+                            onLogin(name.trim(), clean, pin)
+                        },
+                        Modifier.fillMaxWidth().padding(top = 16.dp).height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = NeoTheme.Green)
+                    ) {
+                        Text("CONTINUAR A MIS CHATS", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    // CASO 3: NÚMERO NUEVO
+                    Surface(
+                        color = Color(0xFF00BFFF).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00BFFF).copy(alpha = 0.6f)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.PhoneAndroid, null, tint = Color(0xFF00BFFF), modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("VINCULACIÓN DE HARDWARE FÍSICO", color = Color(0xFF00BFFF), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text("Este número quedará enlazado exclusivamente a este teléfono ($currentDeviceModel).", color = Color.White, fontSize = 11.sp)
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Tu Nombre Completo") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedLabelColor = NeoTheme.Green,
+                            unfocusedLabelColor = Color.Gray,
+                            focusedBorderColor = NeoTheme.Green,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pin = it },
+                        label = { Text("Crea tu PIN de Seguridad (6 dígitos)") },
+                        placeholder = { Text("••••••", color = Color.Gray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedLabelColor = NeoTheme.Green,
+                            unfocusedLabelColor = Color.Gray,
+                            focusedBorderColor = NeoTheme.Green,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) confirmPin = it },
+                        label = { Text("Confirmar PIN de Seguridad (6 dígitos)") },
+                        placeholder = { Text("••••••", color = Color.Gray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedLabelColor = NeoTheme.Green,
+                            unfocusedLabelColor = Color.Gray,
+                            focusedBorderColor = NeoTheme.Green,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
+                    )
+
+                    Button(
+                        onClick = {
+                            if (name.isBlank()) {
+                                android.widget.Toast.makeText(context, "Ingresa tu nombre completo.", android.widget.Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (pin.length != 6) {
+                                android.widget.Toast.makeText(context, "El PIN debe tener exactamente 6 dígitos.", android.widget.Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (pin != confirmPin) {
+                                android.widget.Toast.makeText(context, "Los PIN ingresados no coinciden.", android.widget.Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            val clean = NeoUtils.sanitizeId(phone)
+                            onLogin(name.trim(), clean, pin)
+                        },
+                        Modifier.fillMaxWidth().padding(top = 16.dp).height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = NeoTheme.Green)
+                    ) {
+                        Text("REGISTRAR Y VINCULAR A ESTE CELULAR", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                OutlinedTextField(
-                    value = name, 
-                    onValueChange = { name = it }, 
-                    label = { Text("Nombre de Usuario") }, 
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedLabelColor = NeoTheme.Green,
-                        unfocusedLabelColor = Color.Gray,
-                        focusedBorderColor = NeoTheme.Green,
-                        unfocusedBorderColor = Color.DarkGray,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    singleLine = true
-                )
-                val isUpdatingName = registeredOwnerName != null && name.isNotBlank() && name != registeredOwnerName
-                Button(
-                    onClick = { 
-                        if (name.isNotBlank()) {
-                            val clean = NeoUtils.sanitizeId(phone)
-                            onLogin(name.trim(), clean) 
-                        }
-                    }, 
-                    Modifier.fillMaxWidth().padding(top = 16.dp).height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeoTheme.Green)
-                ) { 
-                    Text(
-                        if (isUpdatingName) "ACTUALIZAR NOMBRE E INICIAR" 
-                        else if (registeredOwnerName != null) "CONTINUAR COMO $registeredOwnerName" 
-                        else "REGISTRARME E INICIAR SESIÓN", 
-                        color = Color.Black, 
-                        fontWeight = FontWeight.Bold
-                    ) 
-                }
-                
-                TextButton(onClick = { step = 1; registeredOwnerName = null }, Modifier.padding(top = 8.dp)) {
-                    Text("Usar otro número", color = Color.Gray)
+                TextButton(onClick = { 
+                    step = 1
+                    registeredOwnerName = null
+                    boundDeviceId = null
+                    boundDeviceModel = null
+                    savedSecurityPin = null
+                    isDifferentDevice = false
+                    pin = ""
+                    confirmPin = ""
+                }, Modifier.padding(top = 8.dp)) {
+                    Text("← Usar otro número", color = Color.Gray)
                 }
             }
         }
@@ -315,6 +606,10 @@ fun ChatsListScreen(
             if (idx != -1) {
                 val existing = found[idx]
                 if (existing.lastMsg == entry.lastMsg && existing.timestamp == entry.timestamp && existing.name == entry.name) {
+                    return
+                }
+                if (existing.timestamp == entry.timestamp) {
+                    found[idx] = entry
                     return
                 }
                 found.removeAt(idx)
@@ -443,7 +738,7 @@ fun ChatsListScreen(
             })
 
             // B) USUARIOS INDIVIDUALES (OPTIMIZADO SIN FUGAS DE MEMORIA PARA QUE EL CELULAR NO SE ALIENTE)
-            userIdsRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+            userIdsRef.addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                     val seenPhones = mutableSetOf<String>()
                     snapshot.children.forEach { child ->
@@ -481,7 +776,7 @@ fun ChatsListScreen(
                                                 val lastMsgTime = lastMsgObj.timestamp
                                                 updateEntry(NeoChatEntry(name, chatId, lastMsgText, lastMsgTime))
                                             } else {
-                                                found.removeAll { it.chatId == chatId }
+                                                if (found.any { it.chatId == chatId }) { found.removeAll { it.chatId == chatId } }
                                             }
                                         }
                                         override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
@@ -495,7 +790,11 @@ fun ChatsListScreen(
         } catch (_: Exception) {}
     }
 
-    val expandedChats by remember(found.toList(), archivedIds.toList(), lockedIds.toList()) {
+    val hiddenChatIds = remember(hiddenChatUpdateTrigger) {
+        NeoHiddenChatsManager.getHiddenChatIds(context)
+    }
+
+    val expandedChats by remember {
         derivedStateOf {
             val list = found.toMutableList()
             archivedIds.forEach { aId ->
@@ -519,12 +818,12 @@ fun ChatsListScreen(
         }
     }
 
-    val filteredChats by remember(selectedFilter, searchQuery, expandedChats, blockedIds.size, isVaultUnlocked, hiddenChatUpdateTrigger) {
+    val filteredChats by remember(selectedFilter, searchQuery, blockedIds.size, isVaultUnlocked, hiddenChatUpdateTrigger) {
         derivedStateOf {
+            val isPinMatch = searchQuery.isNotBlank() && NeoHiddenChatsManager.checkPin(context, searchQuery)
             expandedChats.filter { (name, id, lastMsg, isFav, isUnread, meta) ->
                 val (isArchived, isLocked, _, _, _) = meta as Quintuple<Boolean, Boolean, Boolean, Boolean, Boolean>
-                val isHidden = NeoHiddenChatsManager.isChatHidden(context, id)
-                val isPinMatch = searchQuery.isNotBlank() && NeoHiddenChatsManager.checkPin(context, searchQuery)
+                val isHidden = hiddenChatIds.contains(id)
                 if (isVaultUnlocked || isPinMatch) return@filter isHidden
                 if (isHidden) return@filter false
                 
@@ -1031,7 +1330,7 @@ fun ChatsListScreen(
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
-                items(filteredChats) { chat ->
+                items(filteredChats, key = { it.second }) { chat ->
                     val (name, id, lastMsg, _, _, meta) = chat
                     val isLocked = (meta as Quintuple<*, *, *, *, *>).second as Boolean
                     val otherPhone = if (id.startsWith("private_")) {

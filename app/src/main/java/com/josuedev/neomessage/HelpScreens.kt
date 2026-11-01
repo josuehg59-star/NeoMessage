@@ -1595,7 +1595,14 @@ fun TwoStepVerificationScreen(onBack: () -> Unit) {
                 onClick = { 
                     if (!isEnabled) showPinDialog = true else {
                         isEnabled = false
-                        sp.edit().putString("nexus_pin", "").apply()
+                        sp.edit().putString("nexus_pin", "").putString("security_pin", "").apply()
+                        val myPhone = sp.getString("user_phone", "") ?: ""
+                        if (myPhone.isNotBlank()) {
+                            try {
+                                val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                db.getReference("users").child(myPhone).child("securityPin").removeValue()
+                            } catch (_: Exception) {}
+                        }
                         Toast.makeText(context, "Verificación en dos pasos DESACTIVADA.", Toast.LENGTH_SHORT).show()
                     }
                 }, 
@@ -1617,7 +1624,14 @@ fun TwoStepVerificationScreen(onBack: () -> Unit) {
                     if (pin.length == 6) {
                         isEnabled = true
                         showPinDialog = false
-                        sp.edit().putString("nexus_pin", pin).apply()
+                        sp.edit().putString("nexus_pin", pin).putString("security_pin", pin).apply()
+                        val myPhone = sp.getString("user_phone", "") ?: ""
+                        if (myPhone.isNotBlank()) {
+                            try {
+                                val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                db.getReference("users").child(myPhone).child("securityPin").setValue(pin)
+                            } catch (_: Exception) {}
+                        }
                         Toast.makeText(context, "Verificación ARMADA. PIN cifrado guardado.", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "El PIN debe ser de 6 dígitos.", Toast.LENGTH_SHORT).show()

@@ -726,8 +726,32 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
 
         
 
-        // Iniciar Micro-Servidor P2P y Baliza UDP inmediatamente al abrir la app
+        // --- PROTECCIÓN ANTI-SUPLANTACIÓN: VINCULACIÓN DE HARDWARE FÍSICO ---
+        try {
+            val myCurrentDeviceId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
+            val myCurrentDeviceModel = "${android.os.Build.MANUFACTURER.uppercase()} ${android.os.Build.MODEL}".trim()
+            val dbCheck = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+            val uRef = dbCheck.getReference("users").child(state.userId)
+            uRef.addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    val regDevId = snapshot.child("deviceId").getValue(String::class.java)
+                    if (regDevId.isNullOrBlank()) {
+                        // Enlazar automáticamente este teléfono físico a la cuenta activa
+                        uRef.child("deviceId").setValue(myCurrentDeviceId)
+                        uRef.child("deviceModel").setValue(myCurrentDeviceModel)
+                        sp.edit().putString("device_id", myCurrentDeviceId).putString("device_model", myCurrentDeviceModel).apply()
+                    } else if (regDevId != myCurrentDeviceId && myCurrentDeviceId.isNotBlank()) {
+                        // El número fue transferido o se abrió en otro teléfono: cerrar sesión por seguridad
+                        Toast.makeText(context, "⚠️ Tu número fue transferido a otro teléfono físico. Sesión cerrada por seguridad.", Toast.LENGTH_LONG).show()
+                        sp.edit().clear().apply()
+                        state = NeoState(currentScreen = Screen.Login)
+                    }
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        } catch (_: Exception) {}
 
+        // Iniciar Micro-Servidor P2P y Baliza UDP inmediatamente al abrir la app
         NeoLocalNodeServer.start(context, myPhone = state.userId)
 
         
@@ -1188,7 +1212,7 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
 
                     Screen.Login -> LoginView(
 
-                        onLogin = { n, p ->
+                        onLogin = { n, p, pin ->
 
                             val cleanP = NeoUtils.sanitizeId(p)
 
@@ -1206,29 +1230,11 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
 
                                     if (authTask.isSuccessful) {
 
-                                        performNeoLogin(n, cleanP, sp, state, { state = it }, context, { isLoginLoading = it })
+                                        performNeoLogin(n, cleanP, pin, sp, state, { state = it }, context, { isLoginLoading = it })
 
                                     } else {
 
-                                        val errorMsg = authTask.exception?.message ?: "Desconocido"
-
-                                        if (errorMsg.contains("CONFIGURATION_NOT_FOUND")) {
-
-                                            // FALLBACK: Si Auth no está activado en consola, intentamos acceso directo
-
-                                            // Esto funcionará si las reglas de la Database están en modo prueba (Públicas)
-
-                                            android.util.Log.w("NEO_AUTH", "Auth no configurado. Intentando bypass táctico...")
-
-                                            performNeoLogin(n, cleanP, sp, state, { state = it }, context, { isLoginLoading = it })
-
-                                        } else {
-
-                                            isLoginLoading = false
-
-                                            Toast.makeText(context, "Falla de Protocolo: $errorMsg", Toast.LENGTH_LONG).show()
-
-                                        }
+                                        performNeoLogin(n, cleanP, pin, sp, state, { state = it }, context, { isLoginLoading = it })
 
                                     }
 
@@ -1236,7 +1242,7 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
 
                             } else {
 
-                                performNeoLogin(n, cleanP, sp, state, { state = it }, context, { isLoginLoading = it })
+                                performNeoLogin(n, cleanP, pin, sp, state, { state = it }, context, { isLoginLoading = it })
 
                             }
 
@@ -1980,6 +1986,8 @@ private fun performNeoLogin(
 
     phone: String,
 
+    pin: String = "",
+
     sp: android.content.SharedPreferences,
 
     state: NeoState,
@@ -2019,18 +2027,22 @@ private fun performNeoLogin(
 
 
             val newSessionId = java.util.UUID.randomUUID().toString()
+            val currentDeviceId = try {
+                android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
+            } catch (_: Exception) { "" }
+            val currentDeviceModel = "${android.os.Build.MANUFACTURER.uppercase()} ${android.os.Build.MODEL}".trim()
 
-            sp.edit()
-
+            val spEditor = sp.edit()
                 .putString("user_name", finalName)
-
                 .putString("user_phone", phone)
-
                 .putString("last_session_id", newSessionId)
-
+                .putString("device_id", currentDeviceId)
+                .putString("device_model", currentDeviceModel)
                 .putBoolean("is_neo_unified", true)
-
-                .apply()
+            if (pin.isNotBlank()) {
+                spEditor.putString("security_pin", pin).putString("nexus_pin", pin)
+            }
+            spEditor.apply()
 
 
 
@@ -2050,21 +2062,19 @@ private fun performNeoLogin(
 
 
 
-            val updates = mapOf(
-
+            val updates = mutableMapOf<String, Any>(
                 "id" to phone,
-
                 "name" to finalName,
-
                 "loginTime" to System.currentTimeMillis(),
-
                 "lastSeen" to com.google.firebase.database.ServerValue.TIMESTAMP,
-
                 "status" to "Online",
-
-                "sessionId" to newSessionId
-
+                "sessionId" to newSessionId,
+                "deviceId" to currentDeviceId,
+                "deviceModel" to currentDeviceModel
             )
+            if (pin.isNotBlank()) {
+                updates["securityPin"] = pin
+            }
 
             userRef.updateChildren(updates)
 
