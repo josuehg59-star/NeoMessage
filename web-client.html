@@ -5226,7 +5226,28 @@
                     return;
                 }
 
+                let lastDateKey = '';
                 list.forEach(m => {
+                    const ts = Number(m.timestamp) || 0;
+                    if (ts > 0) {
+                        const d = new Date(ts);
+                        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                        if (dateKey !== lastDateKey) {
+                            lastDateKey = dateKey;
+                            const now = new Date();
+                            const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+                            const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                            const yestKey = `${yest.getFullYear()}-${yest.getMonth()}-${yest.getDate()}`;
+                            let label = '';
+                            if (dateKey === todayKey) label = 'HOY';
+                            else if (dateKey === yestKey) label = 'AYER';
+                            else label = d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase();
+                            const sep = document.createElement('div');
+                            sep.style.cssText = 'display:flex; justify-content:center; width:100%; margin:12px 0 8px 0; pointer-events:none;';
+                            sep.innerHTML = `<span style="background:rgba(30,41,59,0.92); color:#94A3B8; font-size:11px; font-weight:700; padding:5px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); box-shadow:0 2px 6px rgba(0,0,0,0.25); letter-spacing:0.4px;">${label}</span>`;
+                            messagesContainer.appendChild(sep);
+                        }
+                    }
                     renderMessageBubble(m);
                     // Marcar como leído
                     const senderClean = (m.senderId || '').replace(/\D/g, '');
