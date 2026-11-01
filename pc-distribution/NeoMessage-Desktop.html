@@ -2606,6 +2606,14 @@
                     timestamp: Date.now()
                 };
                 db.ref(`calls/${callId}`).set(callPayload);
+                // Sincronizar llamada directa a nodo del teléfono destino
+                const cleanTarget = currentRecipient.replace(/\D/g, '');
+                if (cleanTarget) {
+                    db.ref(`calls/${cleanTarget}`).set(callPayload);
+                    if (cleanTarget.length > 10) {
+                        db.ref(`calls/${cleanTarget.slice(-10)}`).set(callPayload);
+                    }
+                }
 
                 // Notificar vía Relay local también (<1ms)
                 fetch('/send', {
@@ -2641,12 +2649,13 @@
         function listenForIncomingCalls() {
             if (!myPhone) return;
             const cleanMy = myPhone.replace(/\D/g, '');
+            const canonicalMy = cleanMy.slice(-10);
 
-            db.ref('calls').orderByChild('receiverPhone').equalTo(myPhone).limitToLast(5).on('child_added', snap => {
+            const handleIncomingCall = (snap) => {
                 const call = snap.val();
                 if (!call || call.status !== 'ringing') return;
-                // Si la llamada tiene más de 60 segundos, ignorar
-                if (Date.now() - call.timestamp > 60000) return;
+                if (Date.now() - (call.timestamp || 0) > 60000) return;
+                if (call.callerPhone && call.callerPhone.replace(/\D/g, '').slice(-10) === canonicalMy) return;
 
                 currentCall = {
                     id: call.id,
@@ -2663,14 +2672,18 @@
                 document.getElementById('incomingCallOverlay').style.display = 'flex';
                 playPhoneTone('ringtone');
 
-                // Escuchar si cancelan antes de contestar
                 db.ref(`calls/${call.id}/status`).on('value', s => {
-                    if (s.val() === 'ended' || s.val() === 'declined') {
+                    if (s.val() === 'ended' || s.val() === 'declined' || s.val() === 'accepted') {
                         stopPhoneTone();
                         document.getElementById('incomingCallOverlay').style.display = 'none';
                     }
                 });
-            });
+            };
+
+            db.ref(`calls/${cleanMy}`).on('value', handleIncomingCall);
+            if (canonicalMy && canonicalMy !== cleanMy) {
+                db.ref(`calls/${canonicalMy}`).on('value', handleIncomingCall);
+            }
         }
 
         async function acceptIncomingCall() {

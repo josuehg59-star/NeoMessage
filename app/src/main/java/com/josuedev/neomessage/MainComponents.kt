@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
@@ -398,6 +399,36 @@ fun ChatsListScreen(
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
             
+            // A) SINCRONIZACIÓN DE GRUPOS EN TIEMPO REAL (APARECEN DE INMEDIATO EN LA LISTA PRINCIPAL)
+            val listenedChatIds = mutableSetOf<String>()
+            val groupsRef = db.getReference("groups")
+            groupsRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(groupSnap: com.google.firebase.database.DataSnapshot) {
+                    val myCanonical = NeoUtils.sanitizeId(myCleanId).takeLast(10)
+                    groupSnap.children.forEach { child ->
+                        val g = child.getValue(NeoGroup::class.java) ?: return@forEach
+                        val isMember = g.createdBy.takeLast(10) == myCanonical || g.members.any { it.takeLast(10) == myCanonical }
+                        if (isMember) {
+                            if (!listenedChatIds.contains(g.id)) {
+                                listenedChatIds.add(g.id)
+                                db.getReference("chats").child(g.id).child("messages").limitToLast(1)
+                                    .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                                        override fun onDataChange(mSnap: com.google.firebase.database.DataSnapshot) {
+                                            val lastMsgObj = mSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
+                                            val display = lastMsgObj?.text ?: "Grupo creado"
+                                            val time = lastMsgObj?.timestamp ?: g.createdAt
+                                            updateEntry(NeoChatEntry(g.name, g.id, display, time))
+                                        }
+                                        override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                                    })
+                            }
+                        }
+                    }
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+
+            // B) USUARIOS INDIVIDUALES (OPTIMIZADO SIN FUGAS DE MEMORIA PARA QUE EL CELULAR NO SE ALIENTE)
             userIdsRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                     val seenPhones = mutableSetOf<String>()
@@ -407,54 +438,41 @@ fun ChatsListScreen(
                         val canonicalPhone = otherCleanId.takeLast(10)
                         
                         if (canonicalPhone.isNotEmpty() && canonicalPhone != myCleanId.takeLast(10)) {
-                            // ANTIDUPLICADOS: Si este número ya fue agregado, no duplicar en la lista
                             if (seenPhones.contains(canonicalPhone)) return@forEach
                             seenPhones.add(canonicalPhone)
 
                             val name = child.child("name").getValue(String::class.java) ?: "Neo"
                             val chatId = NeoUtils.getChatId(myCleanId, canonicalPhone)
                             
-                            db.getReference("chats").child(chatId).child("messages").limitToLast(1)
-                                .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                                    override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
-                                        val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
-                                        if (lastMsgObj != null) {
-                                            val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
-                                            val cleanMe = NeoUtils.sanitizeId(myCleanId)
-                                            if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
-                                                NeoBotManager.dispatchAutoReplyIfNeeded(
-                                                    context = context,
-                                                    chatId = chatId,
-                                                    senderId = lastMsgObj.senderId,
-                                                    myId = cleanMe,
-                                                    incomingText = lastMsgObj.text,
-                                                    msgTimestamp = lastMsgObj.timestamp
-                                                )
-                                            }
-                                            val lastMsgText = lastMsgObj.text
-                                            val lastMsgTime = lastMsgObj.timestamp
-                                            db.getReference("typing").child(chatId).addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                                                override fun onDataChange(typingSnap: com.google.firebase.database.DataSnapshot) {
-                                                    val typingStatus = typingSnap.child("user").getValue(String::class.java) ?: typingSnap.getValue(String::class.java)
-                                                    val typingTime = typingSnap.child("time").getValue(Long::class.java) ?: 0L
-                                                    val isRecent = typingTime == 0L || (System.currentTimeMillis() - typingTime < 4500L)
-                                                    val isOtherTyping = isRecent && !typingStatus.isNullOrBlank() && 
-                                                                        typingStatus != "null" && 
-                                                                        typingStatus != mySavedName && 
-                                                                        NeoUtils.sanitizeId(typingStatus).takeLast(10) != myCleanId.takeLast(10)
-                                                    val finalDisplayMsg = if (isOtherTyping) "✍️ Escribiendo..." else lastMsgText
-                                                    val finalTime = if (isOtherTyping) System.currentTimeMillis() else lastMsgTime
-                                                    updateEntry(NeoChatEntry(name, chatId, finalDisplayMsg, finalTime))
+                            if (!listenedChatIds.contains(chatId)) {
+                                listenedChatIds.add(chatId)
+                                db.getReference("chats").child(chatId).child("messages").limitToLast(1)
+                                    .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                                        override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
+                                            val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
+                                            if (lastMsgObj != null) {
+                                                val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
+                                                val cleanMe = NeoUtils.sanitizeId(myCleanId)
+                                                if (cleanSender.takeLast(10) != cleanMe.takeLast(10) && NeoBotManager.isBotEnabled(context)) {
+                                                    NeoBotManager.dispatchAutoReplyIfNeeded(
+                                                        context = context,
+                                                        chatId = chatId,
+                                                        senderId = lastMsgObj.senderId,
+                                                        myId = cleanMe,
+                                                        incomingText = lastMsgObj.text,
+                                                        msgTimestamp = lastMsgObj.timestamp
+                                                    )
                                                 }
-                                                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
-                                            })
-                                        } else {
-                                            // Estilo WhatsApp: Si no hay mensajes intercambiados, no se muestra en la pantalla principal
-                                            found.removeAll { it.chatId == chatId }
+                                                val lastMsgText = lastMsgObj.text
+                                                val lastMsgTime = lastMsgObj.timestamp
+                                                updateEntry(NeoChatEntry(name, chatId, lastMsgText, lastMsgTime))
+                                            } else {
+                                                found.removeAll { it.chatId == chatId }
+                                            }
                                         }
-                                    }
-                                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
-                                })
+                                        override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                                    })
+                            }
                         }
                     }
                 }
@@ -553,7 +571,19 @@ fun ChatsListScreen(
                         onDismissRequest = { showMenu = false },
                         modifier = Modifier.background(NeoTheme.Card)
                     ) {
-                        DropdownMenuItem(text = { Text("Nuevo grupo", color = Color.White) }, onClick = { showMenu = false; onNavigateToCommunities() })
+                        DropdownMenuItem(
+    text = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.GroupAdd, null, tint = Color(0xFF00FF7F), modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Text("👥 Crear Grupo Escolar / Comunidad", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    },
+    onClick = {
+        showMenu = false
+        onNavigateToCommunities()
+    }
+)
                         DropdownMenuItem(text = { Text("Nueva comunidad", color = Color.White) }, onClick = { showMenu = false; onNavigateToCommunities() })
                         DropdownMenuItem(text = { Text("Listas de difusión", color = Color.White) }, onClick = { showMenu = false; onNavigateToBroadcasts() })
                         DropdownMenuItem(text = { Text("Dispositivos vinculados", color = Color.White) }, onClick = { showMenu = false; onNavigateToLinkedDevices() })
@@ -947,7 +977,22 @@ fun ChatsListScreen(
         Column(Modifier.padding(padding).fillMaxSize()) {
 
             val archivedCount = found.count { archivedIds.contains(it.chatId) }
-            if (archivedCount > 0 && selectedFilter == "Todos") {
+            BackHandler(enabled = selectedFilter == "Archivados") {
+                selectedFilter = "Todos"
+            }
+            if (selectedFilter == "Archivados") {
+                Row(
+                    Modifier.fillMaxWidth().background(NeoTheme.Card).padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { selectedFilter = "Todos" }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("Chats Archivados ($archivedCount)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                }
+                HorizontalDivider(color = NeoTheme.Border, thickness = 0.5.dp)
+            } else if (archivedCount > 0 && selectedFilter == "Todos") {
                 Row(
                     Modifier.fillMaxWidth().clickable { selectedFilter = "Archivados" }.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
