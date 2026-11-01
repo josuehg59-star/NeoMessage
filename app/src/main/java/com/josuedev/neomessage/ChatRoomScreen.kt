@@ -1283,11 +1283,11 @@ fun ChatRoomScreen(
                             val bitmap = NeoUtils.renderTableToBitmap(textToRender)
                             if (bitmap != null) {
                                 val stream = java.io.ByteArrayOutputStream()
-                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, stream)
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 72, stream)
                                 val b64 = android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
                                 
                                 val mid = database.push().key ?: UUID.randomUUID().toString()
-                                val msgText = "[Media] data:image/png;base64,$b64"
+                                val msgText = "[Media] data:image/jpeg;base64,$b64"
                                 val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
                                 dao?.insertMessage(msg.toEntity(chatId))
                                 withContext(Dispatchers.Main) {
@@ -1869,7 +1869,12 @@ fun MessageContent(
             }
         }
         text.startsWith("[Media]") -> {
-            val mediaContent = text.substringAfter("[Media]").trim()
+            val rawMedia = text.substringAfter("[Media]").trim()
+            val (mediaContent, caption) = if (rawMedia.contains("\n")) {
+                rawMedia.substringBefore("\n").trim() to rawMedia.substringAfter("\n").trim()
+            } else {
+                rawMedia to ""
+            }
             var decodedBitmap by remember(mediaContent) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
             var isDecoding by remember(mediaContent) { mutableStateOf(mediaContent.startsWith("data:image")) }
 
@@ -1917,8 +1922,12 @@ fun MessageContent(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF1E293B))
                         .clickable { onImageClick?.invoke(decodedBitmap!!) },
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
                 )
+                if (caption.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = caption, color = Color(0xFFE2E8F0), fontSize = 14.sp)
+                }
             } else if (isDecoding) {
                 Box(
                     modifier = Modifier
