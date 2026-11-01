@@ -138,13 +138,6 @@ object NeoCommerceManager {
         list.add(0, sale) // La más reciente al principio
         if (list.size > 200) list.removeAt(list.size - 1)
         saveSalesList(context, list)
-
-        // También sincronizar a Firebase si hay red
-        try {
-            val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-            val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(sale.timestamp))
-            db.getReference("caja_ventas").child(dateKey).child(sale.id).setValue(sale)
-        } catch (_: Exception) {}
     }
 
     fun updateSaleStatus(context: Context, saleId: String, newStatus: String) {
@@ -154,26 +147,13 @@ object NeoCommerceManager {
             val updated = list[index].copy(status = newStatus)
             list[index] = updated
             saveSalesList(context, list)
-            try {
-                val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-                val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(updated.timestamp))
-                db.getReference("caja_ventas").child(dateKey).child(updated.id).child("status").setValue(newStatus)
-            } catch (_: Exception) {}
         }
     }
 
     fun deleteSale(context: Context, saleId: String) {
         val list = getAllSales(context).toMutableList()
-        val removed = list.firstOrNull { it.id == saleId }
         list.removeAll { it.id == saleId }
         saveSalesList(context, list)
-        if (removed != null) {
-            try {
-                val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-                val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(removed.timestamp))
-                db.getReference("caja_ventas").child(dateKey).child(removed.id).removeValue()
-            } catch (_: Exception) {}
-        }
     }
 
     private fun saveSalesList(context: Context, list: List<SaleRecord>) {

@@ -870,8 +870,6 @@ fun ChatsListScreen(
                                                 }
                                                 val previewText = sanitizePreview(lastMsgObj.text)
                                                 updateEntry(NeoChatEntry(dynamicName, chatId, previewText, lastMsgObj.timestamp))
-                                            } else {
-                                                if (found.any { it.chatId == chatId }) { found.removeAll { it.chatId == chatId } }
                                             }
                                         }
                                         override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}

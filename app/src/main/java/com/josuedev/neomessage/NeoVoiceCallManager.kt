@@ -6,16 +6,19 @@ import android.util.Log
 import kotlinx.coroutines.*
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.nio.ByteBuffer
+import java.security.SecureRandom
+import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * ⚡ VOIP AUDIO STREAMING REAL CON AMPLIFICACIÓN DE VOLUMEN ULTRA (+12 dB)
- * - Captura micrófono real con AudioRecord (PCM 16-bit 16kHz)
- * - Algoritmo DSP de ganancia por software (x2.2) para que se escuche FUERTE y CLARO
- * - Fuerza el volumen máximo del sistema telefónico
- * - Costo: $0.00 para 1 a 1,000,000,000 de usuarios
+ * ⚡ MOTOR VOIP & VIDEO P2P DIRECTO (UDP + STUN HOLE-PUNCHING)
+ * - Firebase SOLO se usa para enviar el aviso inicial de IP:Puerto (< 1 KB).
+ * - El audio y el video viajan directo de celular a celular por WiFi o Datos Móviles (0 MB en Firebase).
+ * - Cancelación de eco por hardware (AcousticEchoCanceler) + supresión en altavoz.
  */
 object NeoVoiceCallManager {
     private const val TAG = "NEO_VOIP"
@@ -34,15 +37,153 @@ object NeoVoiceCallManager {
     private var udpSocket: DatagramSocket? = null
     private var jobRecord: Job? = null
     private var jobPlay: Job? = null
+    private var jobHolePunch: Job? = null
 
-    // Callback para retransmitir chunks de audio por el canal de la llamada
     var onAudioChunkCaptured: ((ByteArray) -> Unit)? = null
+    var onRemoteVideoFrameReceived: ((ByteArray) -> Unit)? = null
+    var onLocalEndpointDiscovered: ((Map<String, Any>) -> Unit)? = null
+
+    private val peerEndpoints = CopyOnWriteArraySet<InetSocketAddress>()
+    @Volatile private var lockedPeerAddress: InetSocketAddress? = null
+    @Volatile private var lastDirectUdpPacketAt = 0L
+
+    @Volatile private var lastRemoteVoiceAt = 0L
+    @Volatile private var lastRemoteRms = 0.0
+    private var echoCanceler: android.media.audiofx.AcousticEchoCanceler? = null
+    private var noiseSuppressor: android.media.audiofx.NoiseSuppressor? = null
+    private var gainControl: android.media.audiofx.AutomaticGainControl? = null
+    private val localAddresses = mutableSetOf<String>()
 
     /**
-     * AMPLIFICADOR DSP DE AUDIO PCM 16-BIT (+8 dB a +12 dB)
-     * Multiplica las muestras de audio con soft-clipping para que nunca distorsione
-     * pero el volumen suene potente como en una llamada tradicional o WhatsApp
+     * Indica si la conexión directa P2P UDP entre los teléfonos está activa (0 gasto en Firebase)
      */
+    fun isDirectP2pActive(): Boolean {
+        return System.currentTimeMillis() - lastDirectUdpPacketAt < 4500L
+    }
+
+    /**
+     * Registra las direcciones IP:Puerto (pública STUN y local WiFi) del otro teléfono recibidas en el aviso de Firebase
+     */
+    fun registerPeerEndpoints(pubIp: String?, pubPort: Int, locIp: String?, locPort: Int) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (!locIp.isNullOrBlank() && locPort > 0 && !localAddresses.contains(locIp)) {
+                    peerEndpoints.add(InetSocketAddress(InetAddress.getByName(locIp), locPort))
+                }
+            } catch (_: Exception) {}
+            try {
+                if (!pubIp.isNullOrBlank() && pubPort > 0 && !localAddresses.contains(pubIp)) {
+                    peerEndpoints.add(InetSocketAddress(InetAddress.getByName(pubIp), pubPort))
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Envía un cuadro de video JPEG directamente por UDP P2P (sin pasar por Firebase)
+     */
+    fun sendVideoFrameUdp(jpegBytes: ByteArray) {
+        if (!isCallActive.get() || udpSocket == null || jpegBytes.isEmpty() || jpegBytes.size > 60000) return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val packetBytes = ByteArray(jpegBytes.size + 4)
+                packetBytes[0] = 'V'.code.toByte()
+                packetBytes[1] = 'I'.code.toByte()
+                packetBytes[2] = 'D'.code.toByte()
+                packetBytes[3] = 0
+                System.arraycopy(jpegBytes, 0, packetBytes, 4, jpegBytes.size)
+                sendRawUdpToPeers(packetBytes, packetBytes.size, includeBroadcast = false)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun sendRawUdpToPeers(data: ByteArray, length: Int, includeBroadcast: Boolean = true) {
+        val sock = udpSocket ?: return
+        val locked = lockedPeerAddress
+        if (locked != null && isDirectP2pActive()) {
+            try {
+                sock.send(DatagramPacket(data, length, locked.address, locked.port))
+                return
+            } catch (_: Exception) {}
+        }
+        for (ep in peerEndpoints) {
+            try {
+                sock.send(DatagramPacket(data, length, ep.address, ep.port))
+            } catch (_: Exception) {}
+        }
+        if (includeBroadcast && peerEndpoints.isEmpty()) {
+            try {
+                sock.send(DatagramPacket(data, length, InetAddress.getByName("255.255.255.255"), UDP_PORT))
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Consulta STUN RFC 5389 gratuita de Google sobre el mismo DatagramSocket para abrir el NAT y obtener IP:Puerto público
+     */
+    private fun queryStunPublicEndpoint(sock: DatagramSocket): Pair<String, Int>? {
+        val stunServers = listOf("stun.l.google.com" to 19302, "stun1.l.google.com" to 19302)
+        for ((host, port) in stunServers) {
+            try {
+                val req = ByteArray(20)
+                req[0] = 0x00
+                req[1] = 0x01 // Binding Request
+                req[2] = 0x00
+                req[3] = 0x00 // Length 0
+                // Magic Cookie 0x2112A442
+                req[4] = 0x21
+                req[5] = 0x12
+                req[6] = 0xA4.toByte()
+                req[7] = 0x42
+                val txId = ByteArray(12)
+                SecureRandom().nextBytes(txId)
+                System.arraycopy(txId, 0, req, 8, 12)
+
+                val serverAddr = InetAddress.getByName(host)
+                sock.send(DatagramPacket(req, req.size, serverAddr, port))
+
+                val respBuf = ByteArray(512)
+                val respPkt = DatagramPacket(respBuf, respBuf.size)
+                val prevTimeout = sock.soTimeout
+                sock.soTimeout = 1200
+                try {
+                    sock.receive(respPkt)
+                    val len = respPkt.length
+                    if (len >= 20 && respBuf[0] == 0x01.toByte() && respBuf[1] == 0x01.toByte()) {
+                        var idx = 20
+                        while (idx + 4 <= len) {
+                            val attrType = ((respBuf[idx].toInt() and 0xFF) shl 8) or (respBuf[idx + 1].toInt() and 0xFF)
+                            val attrLen = ((respBuf[idx + 2].toInt() and 0xFF) shl 8) or (respBuf[idx + 3].toInt() and 0xFF)
+                            idx += 4
+                            if (idx + attrLen > len) break
+                            // XOR-MAPPED-ADDRESS (0x0020) or MAPPED-ADDRESS (0x0001)
+                            if ((attrType == 0x0020 || attrType == 0x0001) && attrLen >= 8) {
+                                val family = respBuf[idx + 1].toInt() and 0xFF
+                                if (family == 0x01) { // IPv4
+                                    val rawPort = ((respBuf[idx + 2].toInt() and 0xFF) shl 8) or (respBuf[idx + 3].toInt() and 0xFF)
+                                    val mappedPort = if (attrType == 0x0020) rawPort xor 0x2112 else rawPort
+                                    val ipBytes = ByteArray(4)
+                                    val cookie = byteArrayOf(0x21, 0x12, 0xA4.toByte(), 0x42)
+                                    for (b in 0..3) {
+                                        ipBytes[b] = if (attrType == 0x0020) (respBuf[idx + 4 + b].toInt() xor cookie[b].toInt()).toByte() else respBuf[idx + 4 + b]
+                                    }
+                                    val ipStr = InetAddress.getByAddress(ipBytes).hostAddress ?: ""
+                                    if (ipStr.isNotBlank() && mappedPort > 0) {
+                                        return ipStr to mappedPort
+                                    }
+                                }
+                            }
+                            idx += (attrLen + 3) and -4
+                        }
+                    }
+                } finally {
+                    sock.soTimeout = prevTimeout
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
     private fun boostPcmVolume(buffer: ByteArray, length: Int, gain: Float = 2.2f): ByteArray {
         val boosted = ByteArray(length)
         var i = 0
@@ -58,16 +199,6 @@ object NeoVoiceCallManager {
         return boosted
     }
 
-    // ===== ANTI-ECO (ALTAVOZ) =====
-    // Momento y nivel de la última voz remota reproducida: si el otro está hablando
-    // y estamos en altavoz, se atenúa el micrófono para no devolverle su propia voz.
-    @Volatile private var lastRemoteVoiceAt = 0L
-    @Volatile private var lastRemoteRms = 0.0
-    private var echoCanceler: android.media.audiofx.AcousticEchoCanceler? = null
-    private var noiseSuppressor: android.media.audiofx.NoiseSuppressor? = null
-    private var gainControl: android.media.audiofx.AutomaticGainControl? = null
-    private val localAddresses = mutableSetOf<String>()
-
     private fun pcmRms(buffer: ByteArray, length: Int): Double {
         var sum = 0.0
         var count = 0
@@ -81,10 +212,7 @@ object NeoVoiceCallManager {
         return if (count == 0) 0.0 else kotlin.math.sqrt(sum / count)
     }
 
-    /** Ganancia de reproducción: en altavoz se evita saturar (la saturación arruina la cancelación de eco). */
     private fun playbackGain(): Float = if (isSpeaker) 1.0f else 1.8f
-
-    /** Ganancia de micrófono: en altavoz sin amplificación para no recapturar la voz remota. */
     private fun micGain(): Float = if (isSpeaker) 1.0f else 1.4f
 
     private fun registerRemotePlayback(data: ByteArray, length: Int) {
@@ -95,29 +223,40 @@ object NeoVoiceCallManager {
         }
     }
 
-    private fun loadLocalAddresses() {
+    private fun loadLocalAddresses(): String {
         localAddresses.clear()
+        var bestLanIp = ""
         try {
             java.net.NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { ni ->
-                ni.inetAddresses?.toList()?.forEach { addr -> addr.hostAddress?.let { localAddresses.add(it) } }
+                ni.inetAddresses?.toList()?.forEach { addr ->
+                    addr.hostAddress?.let { ip ->
+                        localAddresses.add(ip)
+                        if (addr is Inet4Address && !addr.isLoopbackAddress && bestLanIp.isEmpty()) {
+                            bestLanIp = ip
+                        }
+                    }
+                }
             }
         } catch (_: Exception) {}
+        return bestLanIp
     }
 
     fun startCall(context: Context, targetIp: String = "255.255.255.255", isSpeakerphone: Boolean = true) {
         if (isCallActive.getAndSet(true)) return
 
         isSpeaker = isSpeakerphone
+        peerEndpoints.clear()
+        lockedPeerAddress = null
+        lastDirectUdpPacketAt = 0L
+
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = isSpeaker
-
-            // Volumen de llamada alto pero sin forzar STREAM_MUSIC al máximo (provocaba eco en altavoz)
             val maxVoice = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
             audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, (maxVoice * 0.85f).toInt().coerceAtLeast(1), 0)
         } catch (_: Exception) {}
-        loadLocalAddresses()
+        val myLanIp = loadLocalAddresses()
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -125,7 +264,7 @@ object NeoVoiceCallManager {
                 val minBufTrack = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_OUT, AUDIO_FORMAT)
                 val bufferSize = maxOf(minBufRecord, minBufTrack, 1024)
 
-                // 1. INICIALIZAR RECEPTOR DE AUDIO (AudioTrack al 100% de ganancia)
+                // 1. INICIALIZAR RECEPTOR DE AUDIO
                 try {
                     val audioAttributes = AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -153,7 +292,7 @@ object NeoVoiceCallManager {
                     Log.e(TAG, "AudioTrack init error: ${e.message}")
                 }
 
-                // 2. INICIALIZAR GRABADOR DE AUDIO (AudioRecord con cancelación de eco)
+                // 2. INICIALIZAR GRABADOR DE AUDIO CON CANCELACIÓN DE ECO
                 try {
                     audioRecord = AudioRecord(
                         MediaRecorder.AudioSource.VOICE_COMMUNICATION,
@@ -164,7 +303,6 @@ object NeoVoiceCallManager {
                     )
 
                     if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
-                        // Activar cancelación de eco, supresión de ruido y control de ganancia del hardware
                         val sessionId = audioRecord!!.audioSessionId
                         try {
                             if (android.media.audiofx.AcousticEchoCanceler.isAvailable()) {
@@ -187,7 +325,7 @@ object NeoVoiceCallManager {
                     Log.e(TAG, "AudioRecord init error: ${e.message}")
                 }
 
-                // 3. SOCKET UDP CON REUTILIZACIÓN DE PUERTO
+                // 3. SOCKET UDP P2P + DESCUBRIMIENTO STUN (SOLO AVISO LIGERO A FIREBASE)
                 udpSocket = try {
                     DatagramSocket(null).apply {
                         reuseAddress = true
@@ -198,40 +336,52 @@ object NeoVoiceCallManager {
                     try { DatagramSocket().apply { broadcast = true } } catch (_: Exception) { null }
                 }
 
-                Log.d(TAG, "VoIP Engine iniciado en puerto ${udpSocket?.localPort} con Amplificación DSP activa.")
+                val localPort = udpSocket?.localPort ?: UDP_PORT
+                val stunRes = udpSocket?.let { queryStunPublicEndpoint(it) }
+                val endpointMap = mutableMapOf<String, Any>(
+                    "locIp" to myLanIp,
+                    "locPort" to localPort,
+                    "ts" to System.currentTimeMillis()
+                )
+                if (stunRes != null) {
+                    endpointMap["pubIp"] = stunRes.first
+                    endpointMap["pubPort"] = stunRes.second
+                }
+                onLocalEndpointDiscovered?.invoke(endpointMap)
 
-                // HILO 1: CAPTURA DE MICRÓFONO Y ENVÍO (con Boost x1.6 en micrófono)
+                // HILO 0: HOLE-PUNCHING KEEP-ALIVE UDP DIRECTO CADA 800ms
+                jobHolePunch = launch {
+                    val ping = byteArrayOf('P'.code.toByte(), '2'.code.toByte(), 'P'.code.toByte(), '0'.code.toByte())
+                    while (isCallActive.get()) {
+                        sendRawUdpToPeers(ping, ping.size, includeBroadcast = true)
+                        delay(800)
+                    }
+                }
+
+                // HILO 1: CAPTURA DE MICRÓFONO Y ENVÍO P2P
                 jobRecord = launch {
                     val buffer = ByteArray(bufferSize)
-                    val targetAddress = try { InetAddress.getByName(targetIp) } catch (_: Exception) { null }
-
                     while (isCallActive.get()) {
                         val rec = audioRecord
                         if (rec != null && rec.state == AudioRecord.STATE_INITIALIZED && rec.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                             val read = rec.read(buffer, 0, buffer.size)
                             if (read > 0 && !isMuted) {
-                                // SUPRESOR DE ECO: si el otro está hablando por el altavoz,
-                                // el micrófono capta su voz; se atenúa para no devolvérsela.
                                 var gain = micGain()
                                 val remoteActive = System.currentTimeMillis() - lastRemoteVoiceAt < 350L
                                 if (remoteActive) {
                                     val micRms = pcmRms(buffer, read)
-                                    // Solo se deja pasar si tú hablas claramente más fuerte que el eco
                                     val threshold = if (isSpeaker) lastRemoteRms * 0.9 else lastRemoteRms * 0.4
                                     if (micRms < threshold) gain = if (isSpeaker) 0.05f else 0.3f
                                 }
                                 val boostedMic = boostPcmVolume(buffer, read, gain)
 
-                                // Enviar por UDP local
-                                if (targetAddress != null && udpSocket != null) {
-                                    try {
-                                        val packet = DatagramPacket(boostedMic, read, targetAddress, UDP_PORT)
-                                        udpSocket?.send(packet)
-                                    } catch (_: Exception) {}
-                                }
+                                // Enviar directo por UDP P2P (WiFi / Datos del teléfono)
+                                sendRawUdpToPeers(boostedMic, read, includeBroadcast = true)
 
-                                // Enviar por stream de llamada
-                                onAudioChunkCaptured?.invoke(boostedMic)
+                                // Solo usar respaldo si aún no engancha el túnel UDP directo
+                                if (!isDirectP2pActive()) {
+                                    onAudioChunkCaptured?.invoke(boostedMic)
+                                }
                             }
                         } else {
                             delay(40)
@@ -239,9 +389,9 @@ object NeoVoiceCallManager {
                     }
                 }
 
-                // HILO 2: RECEPCIÓN UDP DIRECTA (con Boost x2.0 en altavoz)
+                // HILO 2: RECEPCIÓN UDP DIRECTA (AUDIO Y VIDEO P2P)
                 jobPlay = launch {
-                    val receiveBuffer = ByteArray(bufferSize * 2)
+                    val receiveBuffer = ByteArray(65507)
                     val receivePacket = DatagramPacket(receiveBuffer, receiveBuffer.size)
 
                     while (isCallActive.get()) {
@@ -249,15 +399,31 @@ object NeoVoiceCallManager {
                             if (udpSocket != null) {
                                 udpSocket?.receive(receivePacket)
                                 val len = receivePacket.length
-                                // CAUSA PRINCIPAL DEL ECO: el broadcast UDP regresaba al propio teléfono
-                                // y te reproducía tu misma voz. Se descartan los paquetes propios.
-                                val fromSelf = receivePacket.address?.let { addr ->
+                                val senderAddr = receivePacket.address
+                                val senderPort = receivePacket.port
+                                val fromSelf = senderAddr?.let { addr ->
                                     addr.isLoopbackAddress || localAddresses.contains(addr.hostAddress)
                                 } ?: false
-                                if (len > 0 && audioTrack != null && !fromSelf) {
-                                    val boostedPlayback = boostPcmVolume(receivePacket.data, len, playbackGain())
-                                    registerRemotePlayback(boostedPlayback, len)
-                                    audioTrack?.write(boostedPlayback, 0, len)
+
+                                if (len > 0 && !fromSelf && senderAddr != null) {
+                                    lastDirectUdpPacketAt = System.currentTimeMillis()
+                                    lockedPeerAddress = InetSocketAddress(senderAddr, senderPort)
+
+                                    val d = receivePacket.data
+                                    if (len == 4 && d[0] == 'P'.code.toByte() && d[1] == '2'.code.toByte() && d[2] == 'P'.code.toByte()) {
+                                        if (d[3] == '0'.code.toByte()) {
+                                            val pong = byteArrayOf('P'.code.toByte(), '2'.code.toByte(), 'P'.code.toByte(), '1'.code.toByte())
+                                            try { udpSocket?.send(DatagramPacket(pong, pong.size, senderAddr, senderPort)) } catch (_: Exception) {}
+                                        }
+                                    } else if (len > 4 && d[0] == 'V'.code.toByte() && d[1] == 'I'.code.toByte() && d[2] == 'D'.code.toByte() && d[3] == 0.toByte()) {
+                                        val jpegBytes = ByteArray(len - 4)
+                                        System.arraycopy(d, 4, jpegBytes, 0, len - 4)
+                                        onRemoteVideoFrameReceived?.invoke(jpegBytes)
+                                    } else if (audioTrack != null) {
+                                        val boostedPlayback = boostPcmVolume(d, len, playbackGain())
+                                        registerRemotePlayback(boostedPlayback, len)
+                                        audioTrack?.write(boostedPlayback, 0, len)
+                                    }
                                 }
                             } else {
                                 delay(80)
@@ -272,9 +438,6 @@ object NeoVoiceCallManager {
         }
     }
 
-    /**
-     * Reproduce un paquete de audio recibido de la red con amplificación activa
-     */
     fun playAudioChunk(data: ByteArray) {
         if (!isCallActive.get() || audioTrack == null || data.isEmpty()) return
         try {
@@ -300,6 +463,13 @@ object NeoVoiceCallManager {
         if (!isCallActive.getAndSet(false)) return
 
         onAudioChunkCaptured = null
+        onRemoteVideoFrameReceived = null
+        onLocalEndpointDiscovered = null
+        peerEndpoints.clear()
+        lockedPeerAddress = null
+        lastDirectUdpPacketAt = 0L
+
+        jobHolePunch?.cancel()
         jobRecord?.cancel()
         jobPlay?.cancel()
 

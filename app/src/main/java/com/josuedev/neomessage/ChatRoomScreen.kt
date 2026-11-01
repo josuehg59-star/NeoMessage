@@ -245,6 +245,15 @@ fun ChatRoomScreen(
                         }
                         coroutineScope.launch(Dispatchers.IO) {
                             try { dao?.insertMessage(m.toEntity(chatId)) } catch (_: Exception) {}
+                            // Si el mensaje es entrante (ya respaldado en SQLite local) o tiene más de 10 min, limpiarlo de Firebase para no gastar almacenamiento
+                            val isFromOther = NeoUtils.sanitizeId(m.senderId).takeLast(10) != cleanMyId.takeLast(10)
+                            val isOld = (System.currentTimeMillis() - m.timestamp) > 10 * 60 * 1000L
+                            if (isFromOther || isOld) {
+                                try {
+                                    kotlinx.coroutines.delay(6000)
+                                    database.child(m.id).removeValue()
+                                } catch (_: Exception) {}
+                            }
                         }
                         if (NeoUtils.sanitizeId(m.senderId).takeLast(10) != cleanMyId.takeLast(10) && m.deliveredTo[cleanMyId] != true) {
                             try { database.child(m.id).child("deliveredTo").child(cleanMyId).setValue(true) } catch (_: Exception) {}
@@ -274,9 +283,11 @@ fun ChatRoomScreen(
                     }
                 }
                 override fun onChildRemoved(snapshot: DataSnapshot) {
+                    // Cuando Firebase limpia automáticamente mensajes ya entregados para ahorrar MB/GB,
+                    // CONSERVAMOS el respaldo local en SQLite Room y en pantalla.
                     val m = snapshot.getValue(CloudMessage::class.java)
-                    val mid = m?.id ?: snapshot.key
-                    if (mid != null) {
+                    if (m != null && (m.isDeletedForEveryone || m.text == "[DELETED]")) {
+                        val mid = m.id
                         firebaseMessages.removeAll { it.id == mid }
                         coroutineScope.launch(Dispatchers.IO) {
                             try { dao?.deleteMessageById(mid) } catch (_: Exception) {}
@@ -442,9 +453,21 @@ fun ChatRoomScreen(
                     )
                 }
 
-                // 4. ENTREGA INMEDIATA EN TIEMPO REAL VÍA FIREBASE (CERO DEMORA, MILISEGUNDOS)
+                // 4. ENTREGA INMEDIATA EN TIEMPO REAL VÍA FIREBASE + AVISO LIGERO INBOX (< 200 BYTES)
                 try {
                     database.child(msgId).setValue(msg)
+                    if (!isGroup && otherCleanId.length >= 10) {
+                        val inboxNotice = mapOf(
+                            "id" to msgId,
+                            "chatId" to chatId,
+                            "senderId" to cleanMyId,
+                            "senderName" to myName,
+                            "text" to currentText.take(80),
+                            "timestamp" to msg.timestamp
+                        )
+                        com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                            .getReference("inbox").child(otherCleanId.takeLast(10)).child(msgId).setValue(inboxNotice)
+                    }
                 } catch (e: Exception) {
                     android.util.Log.w("NEO_FIREBASE", "Cloud sync queued: ${e.message}")
                 }
@@ -511,8 +534,16 @@ fun ChatRoomScreen(
                         )
                     }
 
-                    // Enviar por Firebase en tiempo real
-                    try { database.child(mid).setValue(msg) } catch (_: Exception) {}
+                    // Enviar por Firebase en tiempo real + aviso ligero a inbox
+                    try {
+                        database.child(mid).setValue(msg)
+                        if (!isGroup && otherCleanId.length >= 10) {
+                            com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                .getReference("inbox").child(otherCleanId.takeLast(10)).child(mid).setValue(
+                                    mapOf("id" to mid, "chatId" to chatId, "senderId" to cleanMyId, "senderName" to myName, "text" to "📷 Foto", "timestamp" to msg.timestamp)
+                                )
+                        }
+                    } catch (_: Exception) {}
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Error procesando imagen: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -566,8 +597,16 @@ fun ChatRoomScreen(
                 // Enviar vía UDP Mesh local
                 NeoLocalNodeServer.broadcastUdpMessage(otherCleanId, msg, chatId)
 
-                // Enviar por Firebase a la nube
-                try { database.child(mid).setValue(msg) } catch (_: Exception) {}
+                // Enviar por Firebase a la nube + aviso ligero a inbox
+                try {
+                    database.child(mid).setValue(msg)
+                    if (!isGroup && otherCleanId.length >= 10) {
+                        com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                            .getReference("inbox").child(otherCleanId.takeLast(10)).child(mid).setValue(
+                                mapOf("id" to mid, "chatId" to chatId, "senderId" to cleanMyId, "senderName" to myName, "text" to "📄 $fileName", "timestamp" to msg.timestamp)
+                            )
+                    }
+                } catch (_: Exception) {}
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Error al enviar: ${e.message}", Toast.LENGTH_SHORT).show()

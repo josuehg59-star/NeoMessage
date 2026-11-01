@@ -853,101 +853,76 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
 
         
 
-        // --- DETECTOR GLOBAL DE MENSAJES PARA NOTIFICACIONES ---
-
+        // --- DETECTOR LIGERO DE AVISOS (INBOX < 200 BYTES, CERO DESCARGA MASIVA DE CHATS) ---
         val notifiedMsgIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+        val myInboxKey = NeoUtils.sanitizeId(state.userId).takeLast(10)
+        if (myInboxKey.length == 10) {
+            val inboxRef = db.getReference("inbox").child(myInboxKey)
+            inboxRef.addChildEventListener(object : com.google.firebase.database.ChildEventListener {
+                override fun onChildAdded(snapshot: com.google.firebase.database.DataSnapshot, previousChildName: String?) {
+                    try {
+                        val msgId = snapshot.child("id").getValue(String::class.java) ?: snapshot.key ?: return
+                        val chatId = snapshot.child("chatId").getValue(String::class.java) ?: ""
+                        val senderId = snapshot.child("senderId").getValue(String::class.java) ?: ""
+                        val senderName = snapshot.child("senderName").getValue(String::class.java) ?: senderId
+                        val textPreview = snapshot.child("text").getValue(String::class.java) ?: "Nuevo mensaje"
+                        val ts = snapshot.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
+                        val cleanMyId = NeoUtils.sanitizeId(state.userId)
+                        val lastSenderClean = NeoUtils.sanitizeId(senderId)
 
-        val chatsRef = db.getReference("chats")
+                        // Borrar el aviso de inmediato en Firebase para que nunca ocupe espacio
+                        snapshot.ref.removeValue()
 
-        chatsRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-
-            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-
-                snapshot.children.forEach { chat ->
-
-                    val chatId = chat.key ?: ""
-
-                    val cleanMyId = NeoUtils.sanitizeId(state.userId)
-
-                    // Verificamos si somos parte del chat (convención de ID: user1_user2)
-
-                    if (chatId.contains(cleanMyId) && cleanMyId.isNotEmpty()) {
-
-                        val messages = chat.child("messages")
-
-                        val lastMsg = messages.children.mapNotNull { it.getValue(CloudMessage::class.java) }.maxByOrNull { it.timestamp }
-
-                        val lastSenderClean = if (lastMsg != null) NeoUtils.sanitizeId(lastMsg.senderId) else ""
-
-                        
-
-                        if (lastMsg != null && lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(lastMsg.id)) {
-
-                            notifiedMsgIds.add(lastMsg.id)
-
-                            // Despachar auto-respuesta con NeoBot si está habilitado ($0 costo)
-
-                            NeoBotManager.dispatchAutoReplyIfNeeded(
-
-                                context = context,
-
-                                chatId = chatId,
-
-                                senderId = lastMsg.senderId,
-
-                                myId = cleanMyId,
-
-                                incomingText = lastMsg.text,
-
-                                msgTimestamp = lastMsg.timestamp,
-
-                                msgId = lastMsg.id
-
-                            )
-
-
-
-                            // Margen de 60 segundos para tolerancia horaria entre dispositivos
-
-                            if (lastMsg.timestamp > System.currentTimeMillis() - 60000) {
-
-                                    // Solo notificar si no estamos viendo ese chat específico y NO es un transeúnte
-
-                                    if (state.currentScreen != Screen.ChatRoom || state.activeChatId != chatId) {
-
-                                        if (!lastMsg.text.contains("TRANSEÚNTE", ignoreCase = true)) {
-
-                                            notifiedMsgIds.add(lastMsg.id)
-
-                                            NeoNotificationHelper.showNotification(
-
-                                                context, 
-
-                                                "Nuevo mensaje de ${lastMsg.senderName}", 
-
-                                                lastMsg.text, 
-
-                                                lastMsg.id, "", chatId, lastMsg.senderId
-
-                                            )
-
-                                        }
-
+                        // Respaldar el mensaje completo en SQLite local y limpiarlo de Firebase
+                        if (chatId.isNotEmpty() && msgId.isNotEmpty()) {
+                            db.getReference("chats").child(chatId).child("messages").child(msgId).get()
+                                .addOnSuccessListener { msgSnap ->
+                                    val fullMsg = msgSnap.getValue(CloudMessage::class.java)
+                                    if (fullMsg != null) {
+                                        Thread {
+                                            try {
+                                                kotlinx.coroutines.runBlocking { AppDatabase.getDatabase(context).messageDao().insertMessage(fullMsg.toEntity(chatId)) }
+                                                // Una vez guardado en el respaldo local del celular receptor, limpiar de Firebase tras breve margen
+                                                 Thread.sleep(8000)
+                                                msgSnap.ref.removeValue()
+                                            } catch (_: Exception) {}
+                                        }.start()
                                     }
-
-                            }
-
+                                }
                         }
 
-                    }
-
+                        if (lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(msgId)) {
+                            notifiedMsgIds.add(msgId)
+                            NeoBotManager.dispatchAutoReplyIfNeeded(
+                                context = context,
+                                chatId = chatId,
+                                senderId = senderId,
+                                myId = cleanMyId,
+                                incomingText = textPreview,
+                                msgTimestamp = ts,
+                                msgId = msgId
+                            )
+                            if (ts > System.currentTimeMillis() - 120000) {
+                                if (state.currentScreen != Screen.ChatRoom || state.activeChatId != chatId) {
+                                    if (!textPreview.contains("TRANSEÚNTE", ignoreCase = true)) {
+                                        NeoNotificationHelper.showNotification(
+                                            context,
+                                            "Nuevo mensaje de $senderName",
+                                            textPreview,
+                                            msgId, "", chatId, senderId
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
                 }
-
-            }
-
-            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
-
-        })
+                override fun onChildChanged(snapshot: com.google.firebase.database.DataSnapshot, previousChildName: String?) {}
+                override fun onChildRemoved(snapshot: com.google.firebase.database.DataSnapshot) {}
+                override fun onChildMoved(snapshot: com.google.firebase.database.DataSnapshot, previousChildName: String?) {}
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        }
 
 
 

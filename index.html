@@ -2299,6 +2299,12 @@
                         <button class="btn-primary" style="background: var(--gold); color: #000;" onclick="openQuoteModal()">➕ Crear Cotización</button>
                     </div>
 
+                    <div style="background: var(--bg-panel); border: 1px solid rgba(0,255,127,0.4); border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                        <h4 style="color: #00FF7F; margin-bottom: 8px;">🛒 POS Tienda & Clientes (Opcional)</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">Marca productos de tu catálogo, asigna clientes, envía tickets y realiza tu Corte del Día (solo lo aplicado entra al corte, 0 MB en Firebase).</p>
+                        <button class="btn-primary" style="background: #00FF7F; color: #000;" onclick="openPosStoreModal()">🏪 Abrir Punto de Venta (POS)</button>
+                    </div>
+
                     <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
                         <h4 style="color: var(--neon-green); margin-bottom: 8px;">📌 Mis Notas Personales</h4>
                         <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">Tu espacio privado para recordatorios, textos e imágenes.</p>
@@ -2763,6 +2769,9 @@
                     })
                 }).catch(() => {});
 
+                // Iniciar conexión directa P2P WebRTC (WiFi/Datos directo, 0 MB en Firebase)
+                startWebRtcPeerConnection(callChannel, true);
+
                 // Escuchar respuesta
                 db.ref(`calls/${callId}/status`).on('value', snap => {
                     const status = snap.val();
@@ -2836,6 +2845,7 @@
                 localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
 
                 db.ref(`calls/${currentCall.id}/status`).set('accepted');
+                startWebRtcPeerConnection(currentCall.channel || currentCall.id, false);
                 showActiveCallUI();
             } catch (err) {
                 alert('Error al acceder a micrófono o cámara: ' + err.message);
@@ -2910,12 +2920,121 @@
             showToast('Llamada terminada');
         }
 
+        let activeRtcPeer = null;
+        let activeRtcSignalingRef = null;
+
+        async function startWebRtcPeerConnection(channelId, isCaller) {
+            try {
+                if (activeRtcPeer) {
+                    try { activeRtcPeer.close(); } catch (_) {}
+                }
+                const rtcConfig = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+                const pc = new RTCPeerConnection(rtcConfig);
+                activeRtcPeer = pc;
+                const sigRef = db.ref(`calls_live/${channelId}/webrtc`);
+                activeRtcSignalingRef = sigRef;
+
+                if (localMediaStream) {
+                    localMediaStream.getTracks().forEach(track => pc.addTrack(track, localMediaStream));
+                }
+
+                pc.ontrack = (event) => {
+                    const remoteVid = document.getElementById('remoteVideoElement');
+                    if (remoteVid && event.streams && event.streams[0]) {
+                        remoteVid.srcObject = event.streams[0];
+                        remoteVid.style.display = (currentCall && currentCall.type === 'video') ? 'block' : 'none';
+                        remoteVid.play().catch(() => {});
+                    }
+                };
+
+                const myRole = isCaller ? 'caller' : 'callee';
+                const otherRole = isCaller ? 'callee' : 'caller';
+
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        sigRef.child(`${myRole}_candidates`).push(event.candidate.toJSON());
+                    }
+                };
+
+                if (isCaller) {
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    await sigRef.child('offer').set({ type: offer.type, sdp: offer.sdp });
+
+                    sigRef.child('answer').on('value', async (snap) => {
+                        const ans = snap.val();
+                        if (ans && !pc.currentRemoteDescription) {
+                            try { await pc.setRemoteDescription(new RTCSessionDescription(ans)); } catch (_) {}
+                        }
+                    });
+                } else {
+                    sigRef.child('offer').on('value', async (snap) => {
+                        const off = snap.val();
+                        if (off && !pc.currentRemoteDescription) {
+                            try {
+                                await pc.setRemoteDescription(new RTCSessionDescription(off));
+                                const answer = await pc.createAnswer();
+                                await pc.setLocalDescription(answer);
+                                await sigRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+                            } catch (_) {}
+                        }
+                    });
+                }
+
+                sigRef.child(`${otherRole}_candidates`).on('child_added', async (snap) => {
+                    const cand = snap.val();
+                    if (cand) {
+                        try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+                    }
+                });
+            } catch (e) {
+                console.warn('WebRTC P2P init warning:', e);
+            }
+        }
+
         function cleanupCall() {
             if (callTimerInterval) clearInterval(callTimerInterval);
             callTimerInterval = null;
             document.getElementById('activeCallOverlay').style.display = 'none';
             document.getElementById('outgoingCallOverlay').style.display = 'none';
             document.getElementById('incomingCallOverlay').style.display = 'none';
+
+            if (activeRtcPeer) {
+                try { activeRtcPeer.close(); } catch (_) {}
+                activeRtcPeer = null;
+            }
+            if (activeRtcSignalingRef) {
+                try {
+                    activeRtcSignalingRef.off();
+                    activeRtcSignalingRef.remove();
+                } catch (_) {}
+                activeRtcSignalingRef = null;
+            }
+
+            // Limpiar nodos de llamada en Firebase para dejar 0 KB de rastro
+            if (currentCall) {
+                const cId = currentCall.id;
+                const ch = currentCall.channel;
+                const rPhone = String(currentCall.receiverPhone || '').replace(/\D/g, '');
+                const cPhone = String(currentCall.callerPhone || '').replace(/\D/g, '');
+                setTimeout(() => {
+                    if (cId) db.ref(`calls/${cId}`).remove().catch(() => {});
+                    if (ch) db.ref(`calls_live/${ch}`).remove().catch(() => {});
+                    if (rPhone) {
+                        db.ref(`calls/${rPhone}`).remove().catch(() => {});
+                        if (rPhone.length > 10) db.ref(`calls/${rPhone.slice(-10)}`).remove().catch(() => {});
+                    }
+                    if (cPhone) {
+                        db.ref(`calls/${cPhone}`).remove().catch(() => {});
+                        if (cPhone.length > 10) db.ref(`calls/${cPhone.slice(-10)}`).remove().catch(() => {});
+                    }
+                }, 1500);
+            }
 
             if (localMediaStream) {
                 localMediaStream.getTracks().forEach(track => track.stop());
@@ -3570,7 +3689,512 @@
                 'const imgEl = document.getElementById("safePrintImg");',
                 'imgEl.onload = function() { setTimeout(function() { window.focus(); window.print(); }, 500); };',
                 '<\/script>',
-                '</body></html>'
+                '
+    <!-- MODAL: PUNTO DE VENTA (POS BÁSICO OPCIONAL) CON CATÁLOGO, CLIENTES Y CORTE DEL DÍA -->
+    <div id="posStoreModal" class="modal-overlay" style="display: none; z-index: 100020;">
+        <div class="dialog-card" style="max-width: 760px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <div>
+                    <h3 style="color: #00FF7F; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
+                        <span>🛒</span> Punto de Venta (POS Básico) & Control de Tienda
+                    </h3>
+                    <div style="font-size:11px; color:#94A3B8; margin-top:2px;">100% Memoria Local (0 KB en Firebase) • Solo los tickets aplicados entran al Corte del Día</div>
+                </div>
+                <button onclick="document.getElementById('posStoreModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:20px; cursor:pointer;">✕</button>
+            </div>
+
+            <!-- SUB-TABS POS -->
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <button id="posTabBtn0" onclick="switchPosWebTab(0)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #00FF7F; background:#00FF7F; color:#000; font-weight:bold; font-size:12px; cursor:pointer;">🛍️ Nueva Venta</button>
+                <button id="posTabBtn1" onclick="switchPosWebTab(1)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">👥 Clientes</button>
+                <button id="posTabBtn2" onclick="switchPosWebTab(2)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📦 Catálogo</button>
+                <button id="posTabBtn3" onclick="switchPosWebTab(3)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📊 Corte del Día</button>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 0: NUEVA VENTA -->
+            <div id="posWebPane0" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:8px; flex:1;">
+                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">👤 Cliente:</span>
+                        <select id="posCustomerSelect" style="flex:1; background:#1E293B; color:#FFF; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:13px;"></select>
+                    </div>
+                    <button onclick="promptCreatePosCustomerWeb()" style="background:#10B981; color:#000; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Nuevo Cliente</button>
+                </div>
+
+                <input type="text" id="posProductSearchWeb" oninput="renderPosCatalogSaleWeb()" placeholder="🔍 Buscar producto o código del catálogo para marcar..." style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:9px 12px; color:#FFF; font-size:13px; margin-bottom:8px;">
+
+                <div id="posProductsSaleListWeb" style="flex:1; overflow-y:auto; max-height:280px; display:flex; flex-direction:column; gap:6px; padding-right:4px;"></div>
+
+                <div style="background:#0F172A; border:1px solid #00FF7F; border-radius:12px; padding:12px; margin-top:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div id="posCartCountWeb" style="font-size:12px; color:#94A3B8;">0 artículos marcados</div>
+                            <div id="posCartTotalWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">TOTAL: $0.00 MXN</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <label style="font-size:12px; color:#FFF; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                                <input type="checkbox" id="posApplyToCutCheckbox" checked>
+                                <span>✅ Aplicar al Corte (Pagado)</span>
+                            </label>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button onclick="submitPosSaleWeb(false)" style="background:#00FF7F; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">💾 Registrar Venta</button>
+                            <button onclick="submitPosSaleWeb(true)" style="background:#FFD700; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">📲 Guardar + Enviar Ticket</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 1: CLIENTES -->
+            <div id="posWebPane1" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Cartera de Clientes</span>
+                    <button onclick="promptCreatePosCustomerWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Crear Cliente</button>
+                </div>
+                <div id="posCustomersListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 2: CATÁLOGO -->
+            <div id="posWebPane2" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Catálogo de Productos de tu Tienda</span>
+                    <button onclick="promptAddPosProductWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Añadir Producto</button>
+                </div>
+                <div id="posCatalogManageListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 3: CORTE DEL DÍA -->
+            <div id="posWebPane3" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <div style="flex:1; background:#0F172A; border:1px solid #00FF7F; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Corte de Hoy (Aplicado)</div>
+                        <div id="posCutTodayWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">$0.00 MXN</div>
+                    </div>
+                    <div style="flex:1; background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Total Aplicado General</div>
+                        <div id="posCutAllPaidWeb" style="font-size:18px; font-weight:bold; color:#FFF;">$0.00 MXN</div>
+                    </div>
+                    <div style="flex:1; background:#0F172A; border:1px solid #F59E0B; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Sin Aplicar / Pendientes</div>
+                        <div id="posCutPendingWeb" style="font-size:18px; font-weight:bold; color:#F59E0B;">$0.00 MXN</div>
+                    </div>
+                </div>
+                <div style="font-size:11px; color:#CBD5E1; margin-bottom:8px;">
+                    💡 <b>Nota:</b> Los tickets que <b>NO se vendan</b> pueden eliminarse con <b>🗑️ Eliminar</b>. Solo los tickets con <b>✅ En Corte</b> suman al Corte del Día.
+                </div>
+                <div id="posSalesHistoryListWeb" style="flex:1; overflow-y:auto; max-height:320px; display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_POS_CATALOG_WEB = [
+            { codigo: 1, nombre: "IMPRESIONES B/N", precio: "1" },
+            { codigo: 2, nombre: "IMPRESIONES A COLOR LETRAS", precio: "2" },
+            { codigo: 3, nombre: "IMPRESIONES A COLOR IMÁGENES GDES", precio: "5" },
+            { codigo: 4, nombre: "CARGA DE BATERIA COCHE O MOTO", precio: "50" },
+            { codigo: 5, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 400 ML", precio: "24" },
+            { codigo: 6, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 850 ML", precio: "44" },
+            { codigo: 7, nombre: "AGUA CIEL PURIFICADA BOTTLE 1 LTS NR", precio: "16" },
+            { codigo: 8, nombre: "AGUA CRISTAL PURIFICADA 20 LTS", precio: "50" },
+            { codigo: 9, nombre: "AZUCAR KILO", precio: "22" },
+            { codigo: 10, nombre: "COCA COLA 600 ML", precio: "18" },
+            { codigo: 11, nombre: "COCA COLA 2.5 LTS", precio: "38" },
+            { codigo: 12, nombre: "HUEVO CONO 30 PZAS", precio: "85" },
+            { codigo: 13, nombre: "LECHE LALA ENTERA 1 LTS", precio: "26" }
+        ];
+
+        let posCartMapWeb = {}; // idx -> qty
+
+        function getPosCatalogWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_catalog');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                }
+            } catch (_) {}
+            return DEFAULT_POS_CATALOG_WEB.slice();
+        }
+
+        function savePosCatalogWeb(list) {
+            try { localStorage.setItem('neo_pos_catalog', JSON.stringify(list)); } catch (_) {}
+        }
+
+        function getPosCustomersWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_customers');
+                return raw ? JSON.parse(raw) : [];
+            } catch (_) { return []; }
+        }
+
+        function savePosCustomersWeb(list) {
+            try { localStorage.setItem('neo_pos_customers', JSON.stringify(list)); } catch (_) {}
+        }
+
+        function getPosSalesWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_sales');
+                return raw ? JSON.parse(raw) : [];
+            } catch (_) { return []; }
+        }
+
+        function savePosSalesWeb(list) {
+            try { localStorage.setItem('neo_pos_sales', JSON.stringify(list.slice(0, 500))); } catch (_) {}
+        }
+
+        function openPosStoreModal() {
+            // Sincronizar catálogo del bot desde Firebase 1 sola vez si existe
+            const cleanMy10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (cleanMy10) {
+                db.ref(`bot_configs/${cleanMy10}/catalogo`).once('value', snap => {
+                    const cat = snap.val();
+                    if (Array.isArray(cat) && cat.length > 0) {
+                        savePosCatalogWeb(cat);
+                        renderPosCatalogSaleWeb();
+                        renderPosCatalogManageWeb();
+                    }
+                });
+            }
+            document.getElementById('posStoreModal').style.display = 'flex';
+            switchPosWebTab(0);
+        }
+
+        function switchPosWebTab(idx) {
+            for (let i = 0; i < 4; i++) {
+                const pane = document.getElementById('posWebPane' + i);
+                const btn = document.getElementById('posTabBtn' + i);
+                if (pane) pane.style.display = (i === idx) ? 'flex' : 'none';
+                if (btn) {
+                    btn.style.background = (i === idx) ? '#00FF7F' : '#1E293B';
+                    btn.style.color = (i === idx) ? '#000' : '#FFF';
+                    btn.style.borderColor = (i === idx) ? '#00FF7F' : '#334155';
+                }
+            }
+            refreshPosCustomerSelectWeb();
+            if (idx === 0) renderPosCatalogSaleWeb();
+            else if (idx === 1) renderPosCustomersListWeb();
+            else if (idx === 2) renderPosCatalogManageWeb();
+            else if (idx === 3) renderPosSalesCutWeb();
+        }
+
+        function refreshPosCustomerSelectWeb() {
+            const sel = document.getElementById('posCustomerSelect');
+            if (!sel) return;
+            const currentVal = sel.value;
+            const custs = getPosCustomersWeb();
+            sel.innerHTML = '<option value="mostrador">Público en General (Mostrador)</option>';
+            custs.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.phone ? `${c.name} (📱 ${c.phone})` : c.name;
+                sel.appendChild(opt);
+            });
+            if (currentVal && Array.from(sel.options).some(o => o.value === currentVal)) {
+                sel.value = currentVal;
+            }
+        }
+
+        function promptCreatePosCustomerWeb() {
+            const name = prompt('👤 Nombre del Cliente:');
+            if (!name || !name.trim()) return;
+            const phone = prompt('📱 Teléfono de 10 dígitos (opcional, para enviarle tickets al chat):', '') || '';
+            const notes = prompt('📝 Nota o Dirección (opcional):', '') || '';
+            const custs = getPosCustomersWeb();
+            const newC = {
+                id: 'cli_' + Date.now(),
+                name: name.trim(),
+                phone: phone.replace(/\D/g, '').slice(-10),
+                notes: notes.trim(),
+                createdAt: Date.now()
+            };
+            custs.push(newC);
+            savePosCustomersWeb(custs);
+            refreshPosCustomerSelectWeb();
+            const sel = document.getElementById('posCustomerSelect');
+            if (sel) sel.value = newC.id;
+            renderPosCustomersListWeb();
+            showToast(`✅ Cliente "${newC.name}" creado`);
+        }
+
+        function changePosQtyWeb(idx, delta) {
+            const cur = posCartMapWeb[idx] || 0;
+            const next = cur + delta;
+            if (next <= 0) delete posCartMapWeb[idx];
+            else posCartMapWeb[idx] = next;
+            renderPosCatalogSaleWeb();
+        }
+
+        function renderPosCatalogSaleWeb() {
+            const container = document.getElementById('posProductsSaleListWeb');
+            if (!container) return;
+            const q = (document.getElementById('posProductSearchWeb').value || '').toLowerCase().trim();
+            const catalog = getPosCatalogWeb();
+            container.innerHTML = '';
+
+            let totalItems = 0;
+            let totalAmount = 0;
+
+            catalog.forEach((p, idx) => {
+                const qty = posCartMapWeb[idx] || 0;
+                const unitPrice = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
+                if (qty > 0) {
+                    totalItems += qty;
+                    totalAmount += qty * unitPrice;
+                }
+                const code = p.codigo || (idx + 1);
+                if (q && !String(p.nombre || '').toLowerCase().includes(q) && !String(code).includes(q)) return;
+
+                const row = document.createElement('div');
+                row.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-radius:8px; background:${qty > 0 ? '#064E3B' : '#1E293B'}; border:1px solid ${qty > 0 ? '#00FF7F' : '#334155'};`;
+                row.innerHTML = `
+                    <div>
+                        <div style="color:#FFF; font-weight:bold; font-size:13px;">[${code}] ${escapeHtml(p.nombre)}</div>
+                        <div style="color:#00FF7F; font-weight:bold; font-size:12px;">$${unitPrice.toFixed(2)} MXN</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button onclick="changePosQtyWeb(${idx}, -1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#334155; color:#FFF; font-weight:bold; cursor:pointer;">-</button>
+                        <span style="min-width:22px; text-align:center; color:${qty > 0 ? '#00FF7F' : '#94A3B8'}; font-weight:bold; font-size:14px;">${qty}</span>
+                        <button onclick="changePosQtyWeb(${idx}, 1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#00FF7F; color:#000; font-weight:bold; cursor:pointer;">+</button>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            document.getElementById('posCartCountWeb').innerText = `${totalItems} artículo(s) marcados`;
+            document.getElementById('posCartTotalWeb').innerText = `TOTAL: $${totalAmount.toFixed(2)} MXN`;
+        }
+
+        function submitPosSaleWeb(sendToChat) {
+            const catalog = getPosCatalogWeb();
+            const items = [];
+            Object.keys(posCartMapWeb).forEach(k => {
+                const idx = parseInt(k);
+                const qty = posCartMapWeb[idx] || 0;
+                const p = catalog[idx];
+                if (p && qty > 0) {
+                    const price = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
+                    items.push({
+                        codigo: p.codigo || (idx + 1),
+                        nombre: p.nombre,
+                        precioUnitario: price,
+                        cantidad: qty,
+                        subtotal: price * qty
+                    });
+                }
+            });
+
+            if (items.length === 0) {
+                alert('Marca al menos 1 producto del catálogo con el botón [+] para registrar la venta.');
+                return;
+            }
+
+            const selVal = document.getElementById('posCustomerSelect').value;
+            const custs = getPosCustomersWeb();
+            const cust = custs.find(c => c.id === selVal) || null;
+            const isPaid = document.getElementById('posApplyToCutCheckbox').checked;
+            const total = items.reduce((acc, it) => acc + it.subtotal, 0);
+            const sales = getPosSalesWeb();
+            const folio = '#POS-' + String(sales.length + 1).padStart(4, '0');
+
+            const record = {
+                id: 'sale_' + Date.now(),
+                folio: folio,
+                customerId: cust ? cust.id : 'mostrador',
+                customerName: cust ? cust.name : 'Público en General',
+                customerPhone: cust ? (cust.phone || '') : '',
+                items: items,
+                total: total,
+                isPaid: isPaid,
+                timestamp: Date.now()
+            };
+
+            sales.unshift(record);
+            savePosSalesWeb(sales);
+            posCartMapWeb = {};
+            renderPosCatalogSaleWeb();
+            showToast(`✅ Venta ${folio} registrada ($${total.toFixed(2)} MXN)`);
+
+            if (sendToChat) {
+                const targetPhone = record.customerPhone || currentRecipient;
+                if (!targetPhone) {
+                    alert('Venta guardada. Para enviarla por chat, selecciona un cliente con teléfono o abre primero el chat del cliente.');
+                    return;
+                }
+                const p10 = String(targetPhone).replace(/\D/g, '').slice(-10);
+                const my10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+                const ids = [my10, p10].sort();
+                const tChatId = `private_${ids[0]}_${ids[1]}`;
+                let ticket = `🧾 *NOTA DE VENTA ${record.folio}*\n👤 Cliente: *${record.customerName}*\n━━━━━━━━━━━━━━━━━━━━\n`;
+                record.items.forEach(it => {
+                    ticket += `• ${it.cantidad}x ${it.nombre} ($${it.precioUnitario.toFixed(2)}) = *$${it.subtotal.toFixed(2)}*\n`;
+                });
+                ticket += `━━━━━━━━━━━━━━━━━━━━\n💰 *TOTAL: $${record.total.toFixed(2)} MXN*\n📌 Estado: ${record.isPaid ? '✅ PAGADO' : '⏳ PENDIENTE POR COBRAR'}\n🙏 ¡Gracias por su compra!`;
+
+                selectChat({
+                    chatId: tChatId,
+                    recipientPhone: p10,
+                    name: record.customerName,
+                    lastText: ticket,
+                    timestamp: Date.now(),
+                    isSelf: false
+                });
+                dispatchMessageObject(ticket);
+                document.getElementById('posStoreModal').style.display = 'none';
+            }
+        }
+
+        function renderPosCustomersListWeb() {
+            const container = document.getElementById('posCustomersListWeb');
+            if (!container) return;
+            const custs = getPosCustomersWeb();
+            const sales = getPosSalesWeb();
+            container.innerHTML = '';
+
+            if (custs.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay clientes registrados. Haz clic en "➕ Crear Cliente".</div>';
+                return;
+            }
+
+            custs.forEach(c => {
+                const cSales = sales.filter(s => s.customerId === c.id);
+                const totalBought = cSales.reduce((a, b) => a + (b.total || 0), 0);
+                const pending = cSales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+                const prodsSummary = cSales.slice(0, 3).map(s => `${s.folio}: ` + (s.items || []).map(i => `${i.cantidad}x ${i.nombre}`).join(', ')).join(' | ');
+
+                const card = document.createElement('div');
+                card.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;';
+                card.innerHTML = `
+                    <div style="flex:1;">
+                        <div style="color:#FFF; font-weight:bold; font-size:14px;">👤 ${escapeHtml(c.name)} ${c.phone ? `<span style="color:#00FF7F; font-size:12px;">📱 ${escapeHtml(c.phone)}</span>` : ''}</div>
+                        ${c.notes ? `<div style="color:#94A3B8; font-size:12px;">📝 ${escapeHtml(c.notes)}</div>` : ''}
+                        <div style="color:#CBD5E1; font-size:12px; margin-top:4px;">🛍️ ${cSales.length} compra(s) • Total: <b>$${totalBought.toFixed(2)} MXN</b> ${pending > 0 ? `• <span style="color:#F59E0B; font-weight:bold;">⏳ Pendiente: $${pending.toFixed(2)}</span>` : ''}</div>
+                        ${prodsSummary ? `<div style="color:#94A3B8; font-size:11px; margin-top:3px;">📦 Últimas compras: ${escapeHtml(prodsSummary)}</div>` : ''}
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="document.getElementById('posCustomerSelect').value='${c.id}'; switchPosWebTab(0);" style="background:#00FF7F; color:#000; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">Venderle</button>
+                        <button onclick="deletePosCustomerWeb('${c.id}')" style="background:#EF4444; color:#FFF; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">🗑️</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function deletePosCustomerWeb(id) {
+            const custs = getPosCustomersWeb().filter(c => c.id !== id);
+            savePosCustomersWeb(custs);
+            renderPosCustomersListWeb();
+            refreshPosCustomerSelectWeb();
+        }
+
+        function promptAddPosProductWeb() {
+            const name = prompt('📦 Nombre del Producto o Servicio:');
+            if (!name || !name.trim()) return;
+            const price = prompt('💲 Precio en MXN (ej: 25):', '0');
+            if (price === null) return;
+            const catalog = getPosCatalogWeb();
+            catalog.push({
+                codigo: catalog.length + 1,
+                nombre: name.trim().toUpperCase(),
+                precio: String(parseFloat(price) || 0)
+            });
+            savePosCatalogWeb(catalog);
+            renderPosCatalogManageWeb();
+            showToast('✅ Producto añadido al catálogo');
+        }
+
+        function renderPosCatalogManageWeb() {
+            const container = document.getElementById('posCatalogManageListWeb');
+            if (!container) return;
+            const catalog = getPosCatalogWeb();
+            container.innerHTML = '';
+            catalog.forEach((p, idx) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;';
+                row.innerHTML = `
+                    <div>
+                        <span style="color:#FFF; font-weight:bold; font-size:13px;">[${p.codigo || (idx + 1)}] ${escapeHtml(p.nombre)}</span>
+                        <span style="color:#00FF7F; font-weight:bold; font-size:13px; margin-left:8px;">$${escapeHtml(String(p.precio))} MXN</span>
+                    </div>
+                    <button onclick="deletePosProductWeb(${idx})" style="background:rgba(239,68,68,0.2); color:#EF4444; border:1px solid #EF4444; padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer;">🗑️ Eliminar</button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function deletePosProductWeb(idx) {
+            const catalog = getPosCatalogWeb();
+            catalog.splice(idx, 1);
+            savePosCatalogWeb(catalog);
+            renderPosCatalogManageWeb();
+        }
+
+        function renderPosSalesCutWeb() {
+            const container = document.getElementById('posSalesHistoryListWeb');
+            if (!container) return;
+            const sales = getPosSalesWeb();
+            const nowStr = new Date().toDateString();
+
+            // SOLO LOS TICKETS APLICADOS (isPaid === true) ENTRAN AL CORTE DEL DÍA
+            const todayApplied = sales.filter(s => new Date(s.timestamp).toDateString() === nowStr && s.isPaid);
+            const todayCut = todayApplied.reduce((a, b) => a + (b.total || 0), 0);
+            const allApplied = sales.filter(s => s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+            const allPending = sales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+
+            document.getElementById('posCutTodayWeb').innerText = `$${todayCut.toFixed(2)} MXN`;
+            document.getElementById('posCutAllPaidWeb').innerText = `$${allApplied.toFixed(2)} MXN`;
+            document.getElementById('posCutPendingWeb').innerText = `$${allPending.toFixed(2)} MXN`;
+
+            container.innerHTML = '';
+            if (sales.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay ventas registradas aún.</div>';
+                return;
+            }
+
+            sales.forEach(s => {
+                const itemsText = (s.items || []).map(i => `${i.cantidad}x ${i.nombre} ($${Number(i.subtotal || 0).toFixed(2)})`).join(' • ');
+                const card = document.createElement('div');
+                card.style.cssText = `background:#1E293B; border:1px solid ${s.isPaid ? 'rgba(0,255,127,0.4)' : 'rgba(245,158,11,0.5)'}; border-radius:10px; padding:10px 12px;`;
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">${escapeHtml(s.folio)} • 👤 ${escapeHtml(s.customerName)}</span>
+                        <span style="color:#94A3B8; font-size:11px;">${new Date(s.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div style="color:#CBD5E1; font-size:12px; margin-bottom:8px;">${escapeHtml(itemsText)}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:${s.isPaid ? '#00FF7F' : '#F59E0B'}; font-weight:900; font-size:14px;">TOTAL: $${Number(s.total || 0).toFixed(2)} MXN</span>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="togglePosSaleAppliedWeb('${s.id}')" style="background:${s.isPaid ? '#065F46' : '#00FF7F'}; color:${s.isPaid ? '#FFF' : '#000'}; border:none; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
+                                ${s.isPaid ? '✅ En Corte' : '✅ Aplicar al Corte'}
+                            </button>
+                            <button onclick="deletePosSaleWeb('${s.id}')" style="background:rgba(239,68,68,0.15); color:#EF4444; border:1px solid #EF4444; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
+                                🗑️ Eliminar No Vendido
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function togglePosSaleAppliedWeb(saleId) {
+            const sales = getPosSalesWeb().map(s => {
+                if (s.id === saleId) s.isPaid = !s.isPaid;
+                return s;
+            });
+            savePosSalesWeb(sales);
+            renderPosSalesCutWeb();
+        }
+
+        function deletePosSaleWeb(saleId) {
+            const sales = getPosSalesWeb().filter(s => s.id !== saleId);
+            savePosSalesWeb(sales);
+            renderPosSalesCutWeb();
+            showToast('🗑️ Ticket eliminado (no entra al Corte del Día)');
+        }
+    </script>
+
+</body></html>'
             ].join('');
             printWin.document.open();
             printWin.document.write(html);
@@ -4610,112 +5234,206 @@
             });
         }
 
-        // ESCUCHAR CHATS ACTIVOS
-        function listenToUserChats() {
-            db.ref('chats').on('value', snap => {
-                const list = [];
-                const raw = snap.val() || {};
+        // ESCUCHAR CHATS ACTIVOS (MODO ULTRA-LIGERO: CERO DESCARGA MASIVA DE FIREBASE + RESPALDO LOCAL)
+        const watchedChatIdsWeb = new Set();
 
-                const selfChatId = `private_${myPhone}_${myPhone}`;
-                let selfLastText = 'Notas y archivos personales';
-                let selfTime = 0;
+        function getLocalChatMessages(chatId) {
+            try {
+                const raw = localStorage.getItem('neo_web_msgs_' + chatId);
+                return raw ? JSON.parse(raw) : {};
+            } catch (_) { return {}; }
+        }
 
-                if (raw[selfChatId] && raw[selfChatId].messages) {
-                    const mList = Object.values(raw[selfChatId].messages);
-                    if (mList.length > 0) {
-                        const lastM = mList[mList.length - 1];
-                        selfLastText = formatPreviewText(lastM.text);
-                        selfTime = lastM.timestamp || Date.now();
+        function saveLocalChatMessages(chatId, msgsMap) {
+            try {
+                const entries = Object.values(msgsMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-80);
+                const pruned = {};
+                entries.forEach(m => { if (m && m.id) pruned[m.id] = m; });
+                localStorage.setItem('neo_web_msgs_' + chatId, JSON.stringify(pruned));
+            } catch (_) {}
+        }
+
+        function saveLocalConversationsWeb() {
+            try {
+                const cleanMy = String(myPhone || '').replace(/\D/g, '').slice(-10);
+                if (!cleanMy) return;
+                localStorage.setItem('neo_web_convs_' + cleanMy, JSON.stringify(conversations));
+            } catch (_) {}
+        }
+
+        function upsertConversationWeb(entry) {
+            const idx = conversations.findIndex(c => c.chatId === entry.chatId);
+            if (idx !== -1) {
+                conversations[idx] = Object.assign({}, conversations[idx], entry);
+            } else {
+                conversations.push(entry);
+            }
+            conversations.sort((a, b) => {
+                if (a.isSelf) return -1;
+                if (b.isSelf) return 1;
+                return (b.timestamp || 0) - (a.timestamp || 0);
+            });
+            saveLocalConversationsWeb();
+            renderChatsList();
+            renderContactsList();
+        }
+
+        function attachLightweightChatWatcher(cId, otherPhone, isGroup, groupTitle) {
+            if (!cId || watchedChatIdsWeb.has(cId)) return;
+            watchedChatIdsWeb.add(cId);
+            const myCleanPhone = String(myPhone || '').replace(/\D/g, '').slice(-10);
+
+            // Cargar vista previa desde el respaldo local inmediato si existe
+            const localMap = getLocalChatMessages(cId);
+            const localList = Object.values(localMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            if (localList.length > 0) {
+                const lastM = localList[localList.length - 1];
+                let peerName = null;
+                for (let i = localList.length - 1; i >= 0; i--) {
+                    const sId = String(localList[i].senderId || '').replace(/\D/g, '').slice(-10);
+                    if (sId && sId !== myCleanPhone && isValidPersonNameWeb(localList[i].senderName)) {
+                        peerName = localList[i].senderName.trim();
+                        break;
                     }
                 }
+                upsertConversationWeb({
+                    chatId: cId,
+                    recipientPhone: isGroup ? cId : otherPhone,
+                    name: isGroup ? (groupTitle || 'Grupo') : resolveContactNameWeb(otherPhone, peerName),
+                    peerSenderName: peerName,
+                    lastText: formatPreviewText(lastM.text),
+                    timestamp: lastM.timestamp || 0,
+                    isGroup: !!isGroup,
+                    isSelf: false
+                });
+            }
 
-                list.push({
+            // Escuchar únicamente el último mensaje (.limitToLast(1)) para no descargar nunca todo el árbol
+            db.ref(`chats/${cId}/messages`).limitToLast(1).on('value', snap => {
+                const val = snap.val();
+                if (!val) return;
+                const lastM = Object.values(val)[0];
+                if (!lastM) return;
+
+                // Guardar en el respaldo local de la PC
+                const mapNow = getLocalChatMessages(cId);
+                if (lastM.id) {
+                    mapNow[lastM.id] = lastM;
+                    saveLocalChatMessages(cId, mapNow);
+                }
+
+                const sId = String(lastM.senderId || '').replace(/\D/g, '').slice(-10);
+                const peerName = (sId && sId !== myCleanPhone && isValidPersonNameWeb(lastM.senderName)) ? lastM.senderName.trim() : null;
+
+                upsertConversationWeb({
+                    chatId: cId,
+                    recipientPhone: isGroup ? cId : otherPhone,
+                    name: isGroup ? (groupTitle || 'Grupo') : resolveContactNameWeb(otherPhone, peerName),
+                    peerSenderName: peerName,
+                    lastText: formatPreviewText(lastM.text),
+                    timestamp: lastM.timestamp || Date.now(),
+                    isGroup: !!isGroup,
+                    isSelf: false
+                });
+            });
+        }
+
+        function listenToUserChats() {
+            const myCleanPhone = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (!myCleanPhone) return;
+
+            // 1. Restaurar conversaciones respaldadas localmente en esta PC
+            try {
+                const cachedConvs = JSON.parse(localStorage.getItem('neo_web_convs_' + myCleanPhone) || '[]');
+                if (Array.isArray(cachedConvs) && cachedConvs.length > 0) {
+                    conversations = cachedConvs;
+                }
+            } catch (_) {}
+
+            const selfChatId = `private_${myPhone}_${myPhone}`;
+            if (!conversations.some(c => c.chatId === selfChatId)) {
+                conversations.unshift({
                     chatId: selfChatId,
                     recipientPhone: myPhone,
                     name: 'Mis Notas Personales (Tú)',
-                    lastText: selfLastText,
-                    timestamp: selfTime,
+                    lastText: 'Notas y archivos personales',
+                    timestamp: 0,
                     isSelf: true
                 });
+            }
 
-                const myCleanPhone = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            // Vigilar conversaciones ya conocidas localmente
+            conversations.forEach(c => {
+                if (!c.isSelf && c.chatId) {
+                    attachLightweightChatWatcher(c.chatId, c.recipientPhone, c.isGroup, c.name);
+                }
+            });
 
-                Object.keys(raw).forEach(cId => {
-                    if (cId === selfChatId) return;
-                    const cleanCId = cId.replace(/\D/g, '');
-                    if (cleanCId.includes(myCleanPhone)) {
-                        const parts = cId.replace('private_', '').split('_');
-                        const p0Clean = parts[0] ? parts[0].replace(/\D/g, '').slice(-10) : '';
-                        const rawOther = p0Clean === myCleanPhone ? parts[1] : parts[0];
-                        const otherPhone = rawOther ? rawOther.replace(/\D/g, '').slice(-10) : '';
-                        if (!otherPhone) return;
-
-                        const msgs = raw[cId].messages ? Object.values(raw[cId].messages) : [];
-                        let lastText = 'Conversación abierta';
-                        let time = 0;
-                        let peerSenderName = null;
-
-                        if (msgs.length > 0) {
-                            msgs.sort((m1, m2) => (m1.timestamp || 0) - (m2.timestamp || 0));
-                            const lastM = msgs[msgs.length - 1];
-                            lastText = formatPreviewText(lastM.text);
-                            time = lastM.timestamp || 0;
-                            for (let i = msgs.length - 1; i >= 0; i--) {
-                                const sId = String(msgs[i].senderId || '').replace(/\D/g, '').slice(-10);
-                                if (sId && sId !== myCleanPhone && isValidPersonNameWeb(msgs[i].senderName)) {
-                                    peerSenderName = msgs[i].senderName.trim();
-                                    break;
-                                }
-                            }
-                        }
-
-                        const contactName = resolveContactNameWeb(otherPhone, peerSenderName);
-
-                        list.push({
-                            chatId: cId,
-                            recipientPhone: otherPhone,
-                            name: contactName,
-                            peerSenderName: peerSenderName,
-                            lastText: lastText,
-                            timestamp: time,
-                            isSelf: false
-                        });
+            // 2. Vigilar contactos guardados de este usuario (.limitToLast(1) por contacto)
+            db.ref(`users/${myPhone}/contacts`).on('value', cSnap => {
+                const rawC = cSnap.val() || {};
+                Object.keys(rawC).forEach(k => {
+                    const p10 = String((rawC[k] && rawC[k].id) || k).replace(/\D/g, '').slice(-10);
+                    if (p10 && p10.length === 10 && p10 !== myCleanPhone) {
+                        const ids = [myCleanPhone, p10].sort();
+                        attachLightweightChatWatcher(`private_${ids[0]}_${ids[1]}`, p10, false, null);
                     }
                 });
+            });
 
-                // Integrar Grupos Ilimitados
-                db.ref('groups').once('value', gSnap => {
-                    const groupsData = gSnap.val() || {};
-                    Object.values(groupsData).forEach(g => {
-                        if (g && g.id && (!g.members || g.members.includes(myPhone) || g.createdBy === myPhone)) {
-                            const grpChatId = g.id;
-                            const msgs = (raw[grpChatId] && raw[grpChatId].messages) ? Object.values(raw[grpChatId].messages) : [];
-                            let lastText = g.description || 'Grupo masivo';
-                            let time = g.createdAt || 0;
-                            if (msgs.length > 0) {
-                                const lastM = msgs[msgs.length - 1];
-                                lastText = formatPreviewText(lastM.text);
-                                time = lastM.timestamp || time;
-                            }
-                            if (!list.some(item => item.chatId === grpChatId)) {
-                                list.push({
-                                    chatId: grpChatId,
-                                    recipientPhone: grpChatId,
-                                    name: g.name || 'Grupo',
-                                    lastText: lastText,
-                                    timestamp: time,
-                                    isGroup: true,
-                                    isSelf: false
-                                });
-                            }
-                        }
-                    });
-
-                    list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                    conversations = list;
-                    renderChatsList();
-                    renderContactsList();
+            // 3. Vigilar usuarios registrados para descubrir chats existentes con este usuario sin descargar todo 'chats'
+            db.ref('users').once('value', uSnap => {
+                const uData = uSnap.val() || {};
+                Object.keys(uData).forEach(k => {
+                    const p10 = String((uData[k] && uData[k].id) || k).replace(/\D/g, '').slice(-10);
+                    if (p10 && p10.length === 10 && p10 !== myCleanPhone) {
+                        const ids = [myCleanPhone, p10].sort();
+                        attachLightweightChatWatcher(`private_${ids[0]}_${ids[1]}`, p10, false, null);
+                    }
                 });
+            });
+
+            // 4. Escuchar avisos ligeros entrantes en inbox/{myCleanPhone} (< 200 bytes)
+            db.ref(`inbox/${myCleanPhone}`).on('child_added', snap => {
+                const notice = snap.val();
+                if (!notice) return;
+                const cId = notice.chatId || '';
+                const sPhone = String(notice.senderId || '').replace(/\D/g, '').slice(-10);
+                if (cId && sPhone) {
+                    attachLightweightChatWatcher(cId, sPhone, cId.startsWith('group_'), notice.senderName);
+                    upsertConversationWeb({
+                        chatId: cId,
+                        recipientPhone: sPhone,
+                        name: resolveContactNameWeb(sPhone, notice.senderName),
+                        peerSenderName: notice.senderName,
+                        lastText: formatPreviewText(notice.text || 'Nuevo mensaje'),
+                        timestamp: notice.timestamp || Date.now(),
+                        isSelf: false
+                    });
+                }
+            });
+
+            // 5. Integrar Grupos Ilimitados
+            db.ref('groups').on('value', gSnap => {
+                const groupsData = gSnap.val() || {};
+                Object.values(groupsData).forEach(g => {
+                    if (g && g.id && (!g.members || g.members.includes(myPhone) || g.createdBy === myPhone)) {
+                        attachLightweightChatWatcher(g.id, g.id, true, g.name || 'Grupo');
+                        if (!conversations.some(item => item.chatId === g.id)) {
+                            upsertConversationWeb({
+                                chatId: g.id,
+                                recipientPhone: g.id,
+                                name: g.name || 'Grupo',
+                                lastText: g.description || 'Grupo masivo',
+                                timestamp: g.createdAt || 0,
+                                isGroup: true,
+                                isSelf: false
+                            });
+                        }
+                    }
+                });
+                renderChatsList();
+                renderContactsList();
             });
         }
 
@@ -5211,11 +5929,33 @@
             const messagesContainer = document.getElementById('messagesList');
             messagesContainer.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:12px; margin-top:20px;">Cargando mensajes...</div>';
 
-            messagesListener = db.ref(`chats/${currentChatId}/messages`);
+            messagesListener = db.ref(`chats/${currentChatId}/messages`).limitToLast(50);
             messagesListener.on('value', snap => {
                 messagesContainer.innerHTML = '';
-                const msgs = snap.val() || {};
-                const list = Object.values(msgs).sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
+                const cloudMsgs = snap.val() || {};
+                const localMsgs = getLocalChatMessages(currentChatId);
+                const mergedMap = Object.assign({}, localMsgs);
+                const myClean10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+
+                Object.keys(cloudMsgs).forEach(k => {
+                    const cm = cloudMsgs[k];
+                    if (cm) {
+                        const mid = cm.id || k;
+                        cm.id = mid;
+                        mergedMap[mid] = cm;
+                        // Si el mensaje ya fue recibido por nosotros o tiene más de 10 minutos, limpiarlo de Firebase tras respaldarlo localmente
+                        const sClean10 = String(cm.senderId || '').replace(/\D/g, '').slice(-10);
+                        const ageMs = Date.now() - (Number(cm.timestamp) || 0);
+                        if ((sClean10 && sClean10 !== myClean10 && ageMs > 15000) || ageMs > 10 * 60 * 1000) {
+                            setTimeout(() => {
+                                db.ref(`chats/${currentChatId}/messages/${mid}`).remove().catch(() => {});
+                            }, 5000);
+                        }
+                    }
+                });
+
+                saveLocalChatMessages(currentChatId, mergedMap);
+                const list = Object.values(mergedMap).sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
 
                 if (list.length === 0) {
                     messagesContainer.innerHTML = `
@@ -5776,8 +6516,25 @@
                 cancelReply();
             }
 
-            // 1. Firebase
+            // 0. Respaldo inmediato en almacenamiento local de esta PC
+            const localMap = getLocalChatMessages(currentChatId);
+            localMap[msgId] = msgObj;
+            saveLocalChatMessages(currentChatId, localMap);
+
+            // 1. Firebase (entrega en tiempo real + aviso ligero < 200 bytes en inbox)
             newRef.set(msgObj);
+            const cleanRecip10 = String(currentRecipient || '').replace(/\D/g, '').slice(-10);
+            const myClean10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (cleanRecip10 && cleanRecip10.length === 10 && cleanRecip10 !== myClean10 && !String(currentChatId).startsWith('group_')) {
+                db.ref(`inbox/${cleanRecip10}/${msgId}`).set({
+                    id: msgId,
+                    chatId: currentChatId,
+                    senderId: myPhone,
+                    senderName: myName,
+                    text: formatPreviewText(textPayload).slice(0, 80),
+                    timestamp: msgObj.timestamp
+                });
+            }
 
             // 2. Relay local hacia el destinatario (<1ms)
             fetch('/send', {

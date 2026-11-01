@@ -228,38 +228,62 @@ class NeoForegroundService : Service() {
     private fun startListeningForMessages(userId: String) {
         val cleanMyId = NeoUtils.sanitizeId(userId)
         val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-        val chatsRef = db.getReference("chats")
-        chatsRef.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                snapshot.children.forEach { chat ->
-                    val chatId = chat.key ?: ""
-                    if (chatId.contains(cleanMyId) && cleanMyId.isNotEmpty()) {
-                        val messages = chat.child("messages")
-                        val lastMsg = messages.children.mapNotNull { it.getValue(CloudMessage::class.java) }.maxByOrNull { it.timestamp }
-                        val lastSenderClean = if (lastMsg != null) NeoUtils.sanitizeId(lastMsg.senderId) else ""
-                        if (lastMsg != null && lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(lastMsg.id)) {
-                            notifiedMsgIds.add(lastMsg.id)
+        val myInboxKey = cleanMyId.takeLast(10)
+        if (myInboxKey.length == 10) {
+            val inboxRef = db.getReference("inbox").child(myInboxKey)
+            inboxRef.addChildEventListener(object : com.google.firebase.database.ChildEventListener {
+                override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                    try {
+                        val msgId = snapshot.child("id").getValue(String::class.java) ?: snapshot.key ?: return
+                        val chatId = snapshot.child("chatId").getValue(String::class.java) ?: ""
+                        val senderId = snapshot.child("senderId").getValue(String::class.java) ?: ""
+                        val senderName = snapshot.child("senderName").getValue(String::class.java) ?: senderId
+                        val textPreview = snapshot.child("text").getValue(String::class.java) ?: "Nuevo mensaje"
+                        val ts = snapshot.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
+                        val lastSenderClean = NeoUtils.sanitizeId(senderId)
 
-                            // Auto-respuesta con NeoBot 24/7 incluso con pantalla apagada
+                        // Limpiar aviso inmediatamente de Firebase
+                        snapshot.ref.removeValue()
+
+                        if (chatId.isNotEmpty() && msgId.isNotEmpty()) {
+                            db.getReference("chats").child(chatId).child("messages").child(msgId).get()
+                                .addOnSuccessListener { msgSnap ->
+                                    val fullMsg = msgSnap.getValue(CloudMessage::class.java)
+                                    if (fullMsg != null) {
+                                        serviceScope.launch(Dispatchers.IO) {
+                                            try {
+                                                AppDatabase.getDatabase(this@NeoForegroundService).messageDao().insertMessage(fullMsg.toEntity(chatId))
+                                                kotlinx.coroutines.delay(8000)
+                                                msgSnap.ref.removeValue()
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                }
+                        }
+
+                        if (lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(msgId)) {
+                            notifiedMsgIds.add(msgId)
                             NeoBotManager.dispatchAutoReplyIfNeeded(
                                 context = this@NeoForegroundService,
                                 chatId = chatId,
-                                senderId = lastMsg.senderId,
+                                senderId = senderId,
                                 myId = cleanMyId,
-                                incomingText = lastMsg.text,
-                                msgTimestamp = lastMsg.timestamp,
-                                msgId = lastMsg.id
+                                incomingText = textPreview,
+                                msgTimestamp = ts,
+                                msgId = msgId
                             )
-
-                            if (Math.abs(System.currentTimeMillis() - lastMsg.timestamp) < 30 * 60 * 1000L) {
-                                NeoNotificationHelper.showNotification(this@NeoForegroundService, "Nuevo mensaje de ${lastMsg.senderName}", lastMsg.text, lastMsg.id)
+                            if (Math.abs(System.currentTimeMillis() - ts) < 30 * 60 * 1000L) {
+                                NeoNotificationHelper.showNotification(this@NeoForegroundService, "Nuevo mensaje de $senderName", textPreview, msgId, "", chatId, senderId)
                             }
                         }
-                    }
+                    } catch (_: Exception) {}
                 }
-            }
-            override fun onCancelled(error: DatabaseError) {}
-        })
+                override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onChildRemoved(snapshot: DataSnapshot) {}
+                override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onCancelled(error: DatabaseError) {}
+            })
+        }
 
         // Escucha en segundo plano desde el Relay Soberano ($0.00 costo)
         serviceScope.launch {

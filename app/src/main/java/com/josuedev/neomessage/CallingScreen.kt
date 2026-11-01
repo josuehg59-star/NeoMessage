@@ -132,9 +132,42 @@ fun CallingScreen(
                 override fun onCancelled(error: DatabaseError) {}
             })
 
-            // 3. Transmitir audio local
+            // 2b. Aviso P2P ligero (<1 KB): intercambiar solo IP:Puerto STUN/WiFi para que voz y video viajen directo sin gastar Firebase
+            NeoVoiceCallManager.onLocalEndpointDiscovered = { epMap ->
+                try {
+                    channelRef.child("p2p").child(cleanMyId).setValue(epMap)
+                } catch (_: Exception) {}
+            }
+            channelRef.child("p2p").addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    snapshot.children.forEach { peerSnap ->
+                        val pId = peerSnap.key ?: ""
+                        if (pId.isNotEmpty() && pId != cleanMyId) {
+                            val pubIp = peerSnap.child("pubIp").getValue(String::class.java)
+                            val pubPort = peerSnap.child("pubPort").getValue(Long::class.java)?.toInt() ?: 0
+                            val locIp = peerSnap.child("locIp").getValue(String::class.java)
+                            val locPort = peerSnap.child("locPort").getValue(Long::class.java)?.toInt() ?: 0
+                            NeoVoiceCallManager.registerPeerEndpoints(pubIp, pubPort, locIp, locPort)
+                        }
+                    }
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
+
+            // Recibir video directo por UDP P2P (0 gasto en Firebase)
+            NeoVoiceCallManager.onRemoteVideoFrameReceived = { jpegBytes ->
+                try {
+                    val bmp = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+                    if (bmp != null) {
+                        remoteBitmap = bmp
+                        remoteParticipants["p2p_peer"] = bmp
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 3. Transmitir audio local (solo si aún no engancha P2P directo)
             NeoVoiceCallManager.onAudioChunkCaptured = { chunk ->
-                if (!isMuted && chunk.isNotEmpty()) {
+                if (!isMuted && chunk.isNotEmpty() && !NeoVoiceCallManager.isDirectP2pActive()) {
                     try {
                         val b64 = Base64.encodeToString(chunk, Base64.NO_WRAP)
                         channelRef.child("audio").child(cleanMyId).setValue(b64)
@@ -142,7 +175,7 @@ fun CallingScreen(
                 }
             }
 
-            // Iniciar motor de llamadas VoIP
+            // Iniciar motor de llamadas VoIP P2P
             NeoVoiceCallManager.startCall(context, isSpeakerphone = isSpeakerOn)
 
         } catch (e: Exception) {
@@ -346,9 +379,18 @@ fun CallingScreen(
                     isFrontCamera = isFrontCamera,
                     onFrameCaptured = { jpegBytes ->
                         try {
-                            val b64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
-                            val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-                            db.getReference("calls_live").child(effectiveChannel).child("video").child(cleanMyId).setValue(b64)
+                            // 1. Enviar directo por UDP P2P (WiFi / Datos del celular, 0 gasto en Firebase)
+                            NeoVoiceCallManager.sendVideoFrameUdp(jpegBytes)
+                            // 2. Solo usar Firebase si el túnel UDP directo aún no engancha
+                            if (!NeoVoiceCallManager.isDirectP2pActive()) {
+                                val b64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+                                val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                db.getReference("calls_live").child(effectiveChannel).child("video").child(cleanMyId).setValue(b64)
+                            } else {
+                                val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                db.getReference("calls_live").child(effectiveChannel).child("video").child(cleanMyId).removeValue()
+                                db.getReference("calls_live").child(effectiveChannel).child("audio").child(cleanMyId).removeValue()
+                            }
                         } catch (_: Exception) {}
                     },
                     modifier = Modifier.fillMaxSize()
