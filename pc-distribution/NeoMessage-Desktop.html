@@ -1772,6 +1772,41 @@
 </head>
 <body data-theme="default">
 
+        <!-- MODAL DESCARGAR / INSTALAR APP CON CÓDIGO QR -->
+    <div id="installAppModal" class="modal-overlay" style="display: none;">
+        <div class="dialog-card" style="max-width: 460px; text-align: center; padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="color: var(--neon-green); margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                    📲 Descargar NeoMessage
+                </h3>
+                <button onclick="document.getElementById('installAppModal').style.display='none'" style="background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">✕</button>
+            </div>
+
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">
+                Apunta con la cámara de tu teléfono hacia este código QR para descargar e instalar la versión más reciente de NeoMessage en Android.
+            </p>
+
+            <!-- CÓDIGO QR OFICIAL DE DESCARGA -->
+            <div style="background: #FFFFFF; padding: 14px; border-radius: 14px; display: inline-block; box-shadow: 0 4px 20px rgba(0,255,127,0.25); margin-bottom: 14px;">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=2&data=https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk" alt="QR Descargar APK NeoMessage" style="width: 200px; height: 200px; display: block;">
+            </div>
+
+            <div style="font-size: 11px; color: var(--neon-green); font-weight: bold; margin-bottom: 16px;">
+                ⚡ Enlace permanente y directo a la versión oficial v3.39
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <a href="https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk" target="_blank" class="btn-primary" style="display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; font-size: 13px; padding: 12px;">
+                    📥 Descargar APK Directamente al Teléfono
+                </a>
+
+                <button onclick="executePwaInstall()" class="btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; padding: 10px;">
+                    💻 Instalar como Aplicación en esta Computadora
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 1. PANTALLA DE VINCULACIÓN SEGURA (QR ESTILO WHATSAPP WEB) -->
     <div id="loginModal" class="modal-overlay" style="display: none;">
         <div class="qr-card">
@@ -1804,6 +1839,12 @@
                     <span style="font-size: 12px; font-weight: bold;">Código expirado.<br>Clic para recargar</span>
                 </div>
                 <div style="margin-top: 8px; font-size: 11px; color: #334155; font-weight: bold; text-align: center;">Escanea desde tu app NeoMessage</div>
+            </div>
+                <div style="margin-top: 14px; text-align: center;">
+                    <button onclick="openInstallAppModal()" style="background: rgba(0, 255, 127, 0.12); border: 1px solid var(--neon-green); color: var(--neon-green); padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                        📲 ¿Descargar la App para Celular? Escanea aquí
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -2107,7 +2148,7 @@
     <!-- MODAL: PREVISUALIZAR IMAGEN PEGADA DEL PORTAPAPELES (Ctrl+V) -->
     <div id="pastePreviewModal" class="modal-overlay" style="display: none;">
         <div class="dialog-card" style="max-width: 440px;">
-            <h3 style="color: var(--neon-green);">🖼️ Enviar Imagen del Portapapeles</h3>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h3 style="color:var(--neon-green);margin:0;font-size:16px;">🖼️ Imagen del Portapapeles</h3><span id="pasteSizeBadge" style="background:rgba(0,255,127,0.15);color:#00FF7F;font-size:11px;padding:3px 8px;border-radius:12px;font-weight:bold;border:1px solid rgba(0,255,127,0.3);">⚡ Optimizada</span></div>
             <div style="width: 100%; max-height: 300px; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 10px; overflow: hidden; margin: 12px 0;">
                 <img id="pastedImagePreview" style="max-width: 100%; max-height: 280px; object-fit: contain;">
             </div>
@@ -2256,6 +2297,12 @@
                         <h4 style="color: var(--gold); margin-bottom: 8px;">📋 Centro de Cotizaciones</h4>
                         <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">Elabora presupuestos formales para tus clientes con cálculos automáticos.</p>
                         <button class="btn-primary" style="background: var(--gold); color: #000;" onclick="openQuoteModal()">➕ Crear Cotización</button>
+                    </div>
+
+                    <div style="background: var(--bg-panel); border: 1px solid rgba(0,255,127,0.4); border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                        <h4 style="color: #00FF7F; margin-bottom: 8px;">🛒 POS Tienda & Clientes (Opcional)</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">Marca productos de tu catálogo, asigna clientes, envía tickets y realiza tu Corte del Día (solo lo aplicado entra al corte, 0 MB en Firebase).</p>
+                        <button class="btn-primary" style="background: #00FF7F; color: #000;" onclick="openPosStoreModal()">🏪 Abrir Punto de Venta (POS)</button>
                     </div>
 
                     <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
@@ -2499,23 +2546,72 @@
             });
         }
 
+        
+                let pcTypingTimeout = null;
+        function handleTypingEvent() {
+            if (!currentChatId || !myPhone) return;
+            db.ref(`typing/${currentChatId}`).set({
+                user: myName || myPhone,
+                time: firebase.database.ServerValue.TIMESTAMP
+            });
+            if (pcTypingTimeout) clearTimeout(pcTypingTimeout);
+            pcTypingTimeout = setTimeout(() => {
+                db.ref(`typing/${currentChatId}`).remove();
+            }, 3000);
+        }
+
+        let activeTypingRef = null;
+        function listenActiveChatTyping(chatId) {
+            if (activeTypingRef) activeTypingRef.off();
+            activeTypingRef = db.ref(`typing/${chatId}`);
+            activeTypingRef.on('value', snap => {
+                const data = snap.val();
+                const subEl = document.getElementById('activeChatSubtitle');
+                if (!subEl) return;
+                if (data && data.user && data.user !== myName) {
+                    const isRecent = !data.time || (Date.now() - data.time < 5000);
+                    if (isRecent) {
+                        const isGrp = chatId.startsWith('group_');
+                        subEl.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">✍️ ${isGrp ? (data.user + ' está escribiendo...') : 'escribiendo...'}</span>`;
+                        return;
+                    }
+                }
+                // Si nadie está escribiendo, restaurar estado online / última vez
+                if (window.currentActiveContactPhone) {
+                    updateActiveContactPresenceUI();
+                } else if (currentChatId && currentChatId.startsWith('group_')) {
+                    subEl.innerText = 'Grupo • Miembros ilimitados';
+                }
+            });
+        }
+
+        let lastActiveContactData = null;
+
+        function updateActiveContactPresenceUI() {
+            const subEl = document.getElementById('activeChatSubtitle');
+            if (!subEl) return;
+            const u = lastActiveContactData;
+            if (u && (u.online === true || u.status === 'Conectado' || u.status === 'Online')) {
+                subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">en línea</span>';
+            } else if (u && u.lastSeen) {
+                subEl.innerText = formatLastSeenText(u.lastSeen);
+            } else {
+                subEl.innerText = '';
+            }
+        }
+
         function listenActiveContactPresence(phone) {
             if (activeContactPresenceRef) activeContactPresenceRef.off();
+            window.currentActiveContactPhone = phone;
+            lastActiveContactData = null;
             if (!phone || phone === myPhone) return;
 
             activeContactPresenceRef = db.ref(`users/${phone}`);
             activeContactPresenceRef.on('value', snap => {
-                const u = snap.val();
+                lastActiveContactData = snap.val();
                 const subEl = document.getElementById('activeChatSubtitle');
-                if (!subEl) return;
-
-                if (u && (u.online === true || u.status === 'Conectado' || u.status === 'Online')) {
-                    subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">en línea</span>';
-                } else if (u && u.lastSeen) {
-                    subEl.innerText = formatLastSeenText(u.lastSeen);
-                } else {
-                    subEl.innerText = 'desconectado';
-                }
+                if (subEl && subEl.innerText.includes('escribiendo...')) return;
+                updateActiveContactPresenceUI();
             });
         }
 
@@ -2612,7 +2708,7 @@
             try {
                 // Solicitar micrófono y opcionalmente cámara
                 const constraints = {
-                    audio: true,
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                     video: callType === 'video' ? { width: 1280, height: 720 } : false
                 };
                 localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -2672,6 +2768,9 @@
                         message: { text: `[NEO_CALL]|${callType}|${callChannel}`, senderId: myPhone, timestamp: Date.now() }
                     })
                 }).catch(() => {});
+
+                // Iniciar conexión directa P2P WebRTC (WiFi/Datos directo, 0 MB en Firebase)
+                startWebRtcPeerConnection(callChannel, true);
 
                 // Escuchar respuesta
                 db.ref(`calls/${callId}/status`).on('value', snap => {
@@ -2740,12 +2839,13 @@
 
             try {
                 const constraints = {
-                    audio: true,
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                     video: currentCall.type === 'video' ? { width: 1280, height: 720 } : false
                 };
                 localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
 
                 db.ref(`calls/${currentCall.id}/status`).set('accepted');
+                startWebRtcPeerConnection(currentCall.channel || currentCall.id, false);
                 showActiveCallUI();
             } catch (err) {
                 alert('Error al acceder a micrófono o cámara: ' + err.message);
@@ -2820,12 +2920,121 @@
             showToast('Llamada terminada');
         }
 
+        let activeRtcPeer = null;
+        let activeRtcSignalingRef = null;
+
+        async function startWebRtcPeerConnection(channelId, isCaller) {
+            try {
+                if (activeRtcPeer) {
+                    try { activeRtcPeer.close(); } catch (_) {}
+                }
+                const rtcConfig = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+                const pc = new RTCPeerConnection(rtcConfig);
+                activeRtcPeer = pc;
+                const sigRef = db.ref(`calls_live/${channelId}/webrtc`);
+                activeRtcSignalingRef = sigRef;
+
+                if (localMediaStream) {
+                    localMediaStream.getTracks().forEach(track => pc.addTrack(track, localMediaStream));
+                }
+
+                pc.ontrack = (event) => {
+                    const remoteVid = document.getElementById('remoteVideoElement');
+                    if (remoteVid && event.streams && event.streams[0]) {
+                        remoteVid.srcObject = event.streams[0];
+                        remoteVid.style.display = (currentCall && currentCall.type === 'video') ? 'block' : 'none';
+                        remoteVid.play().catch(() => {});
+                    }
+                };
+
+                const myRole = isCaller ? 'caller' : 'callee';
+                const otherRole = isCaller ? 'callee' : 'caller';
+
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        sigRef.child(`${myRole}_candidates`).push(event.candidate.toJSON());
+                    }
+                };
+
+                if (isCaller) {
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    await sigRef.child('offer').set({ type: offer.type, sdp: offer.sdp });
+
+                    sigRef.child('answer').on('value', async (snap) => {
+                        const ans = snap.val();
+                        if (ans && !pc.currentRemoteDescription) {
+                            try { await pc.setRemoteDescription(new RTCSessionDescription(ans)); } catch (_) {}
+                        }
+                    });
+                } else {
+                    sigRef.child('offer').on('value', async (snap) => {
+                        const off = snap.val();
+                        if (off && !pc.currentRemoteDescription) {
+                            try {
+                                await pc.setRemoteDescription(new RTCSessionDescription(off));
+                                const answer = await pc.createAnswer();
+                                await pc.setLocalDescription(answer);
+                                await sigRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+                            } catch (_) {}
+                        }
+                    });
+                }
+
+                sigRef.child(`${otherRole}_candidates`).on('child_added', async (snap) => {
+                    const cand = snap.val();
+                    if (cand) {
+                        try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+                    }
+                });
+            } catch (e) {
+                console.warn('WebRTC P2P init warning:', e);
+            }
+        }
+
         function cleanupCall() {
             if (callTimerInterval) clearInterval(callTimerInterval);
             callTimerInterval = null;
             document.getElementById('activeCallOverlay').style.display = 'none';
             document.getElementById('outgoingCallOverlay').style.display = 'none';
             document.getElementById('incomingCallOverlay').style.display = 'none';
+
+            if (activeRtcPeer) {
+                try { activeRtcPeer.close(); } catch (_) {}
+                activeRtcPeer = null;
+            }
+            if (activeRtcSignalingRef) {
+                try {
+                    activeRtcSignalingRef.off();
+                    activeRtcSignalingRef.remove();
+                } catch (_) {}
+                activeRtcSignalingRef = null;
+            }
+
+            // Limpiar nodos de llamada en Firebase para dejar 0 KB de rastro
+            if (currentCall) {
+                const cId = currentCall.id;
+                const ch = currentCall.channel;
+                const rPhone = String(currentCall.receiverPhone || '').replace(/\D/g, '');
+                const cPhone = String(currentCall.callerPhone || '').replace(/\D/g, '');
+                setTimeout(() => {
+                    if (cId) db.ref(`calls/${cId}`).remove().catch(() => {});
+                    if (ch) db.ref(`calls_live/${ch}`).remove().catch(() => {});
+                    if (rPhone) {
+                        db.ref(`calls/${rPhone}`).remove().catch(() => {});
+                        if (rPhone.length > 10) db.ref(`calls/${rPhone.slice(-10)}`).remove().catch(() => {});
+                    }
+                    if (cPhone) {
+                        db.ref(`calls/${cPhone}`).remove().catch(() => {});
+                        if (cPhone.length > 10) db.ref(`calls/${cPhone.slice(-10)}`).remove().catch(() => {});
+                    }
+                }, 1500);
+            }
 
             if (localMediaStream) {
                 localMediaStream.getTracks().forEach(track => track.stop());
@@ -3068,7 +3277,7 @@
                             const canvas = document.createElement('canvas');
                             let w = img.width;
                             let h = img.height;
-                            const maxDim = 1280;
+                            const maxDim = 900;
                             if (w > maxDim || h > maxDim) {
                                 if (w > h) {
                                     h = Math.round((h * maxDim) / w);
@@ -3082,7 +3291,7 @@
                             canvas.height = h;
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0, w, h);
-                            const compressedB64 = canvas.toDataURL('image/jpeg', 0.72);
+                            const compressedB64 = canvas.toDataURL('image/jpeg', 0.58);
                             setTimeout(() => {
                                 dispatchMessageObject('[Media] ' + compressedB64);
                                 showToast(`✅ Foto optimizada enviada (${index + 1}/${total})`);
@@ -3424,74 +3633,599 @@
             }
         }
 
+        // CONVERSOR SEGURO DE BASE64 A BLOB URL (EVITA BLOQUEAR EL SPOOLER DE WINDOWS)
+        function safeDataUrlToBlobUrl(dataUrl, fallbackMime) {
+            try {
+                if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
+                const parts = dataUrl.split(',');
+                if (parts.length < 2) return dataUrl;
+                const mimeMatch = parts[0].match(/:(.*?);/);
+                const mime = (mimeMatch && mimeMatch[1]) ? mimeMatch[1] : (fallbackMime || 'image/jpeg');
+                const bstr = atob(parts[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while (n--) {
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+                const blob = new Blob([u8arr], { type: mime });
+                return URL.createObjectURL(blob);
+            } catch (e) {
+                console.error("Error convirtiendo a Blob URL:", e);
+                return dataUrl;
+            }
+        }
+
+        function openSafePrintTabForImage(imageSrc, docTitle) {
+            const cleanTitle = String(docTitle || 'Documento_NeoMessage').replace(/[<>:"/\\|?*]/g, '_').slice(0, 60);
+            const blobUrl = safeDataUrlToBlobUrl(imageSrc, 'image/jpeg');
+            const printWin = window.open('', '_blank');
+            if (!printWin) {
+                alert("Por favor permite las ventanas emergentes en tu navegador para abrir la vista de impresión segura.");
+                return;
+            }
+            // SIN @page NI window.close() AUTOMÁTICO:
+            // Respeta al 100% la configuración original del driver de la impresora en Windows y mantiene vivo el proceso hasta que termine la cola de impresión.
+            const html = [
+                '<!DOCTYPE html><html><head><meta charset="utf-8">',
+                '<title>' + cleanTitle + '</title>',
+                '<style>',
+                'body { margin: 0; padding: 0; background: #ffffff; color: #000000; font-family: Arial, sans-serif; }',
+                '.no-print { background: #0f172a; color: #ffffff; padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }',
+                '.no-print button { border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; margin-left: 8px; }',
+                '.print-area { padding: 8px; text-align: center; }',
+                'img { max-width: 100%; height: auto; display: inline-block; }',
+                '@media print { .no-print { display: none !important; } .print-area { padding: 0; } }',
+                '</style></head><body>',
+                '<div class="no-print">',
+                '<span>🖨️ <b>Vista de Impresión Segura</b> — Tu impresora usará su configuración predeterminada de Windows sin alteraciones.</span>',
+                '<div>',
+                '<button style="background:#00FF7F; color:#000;" onclick="window.print()">🖨️ Imprimir</button>',
+                '<button style="background:#334155; color:#fff;" onclick="window.close()">✕ Cerrar pestaña</button>',
+                '</div></div>',
+                '<div class="print-area">',
+                '<img id="safePrintImg" src="' + blobUrl + '" />',
+                '</div>',
+                '<script>',
+                'const imgEl = document.getElementById("safePrintImg");',
+                'imgEl.onload = function() { setTimeout(function() { window.focus(); window.print(); }, 500); };',
+                '<\/script>',
+                '
+    <!-- MODAL: PUNTO DE VENTA (POS BÁSICO OPCIONAL) CON CATÁLOGO, CLIENTES Y CORTE DEL DÍA -->
+    <div id="posStoreModal" class="modal-overlay" style="display: none; z-index: 100020;">
+        <div class="dialog-card" style="max-width: 760px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <div>
+                    <h3 style="color: #00FF7F; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
+                        <span>🛒</span> Punto de Venta (POS Básico) & Control de Tienda
+                    </h3>
+                    <div style="font-size:11px; color:#94A3B8; margin-top:2px;">100% Memoria Local (0 KB en Firebase) • Solo los tickets aplicados entran al Corte del Día</div>
+                </div>
+                <button onclick="document.getElementById('posStoreModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:20px; cursor:pointer;">✕</button>
+            </div>
+
+            <!-- SUB-TABS POS -->
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <button id="posTabBtn0" onclick="switchPosWebTab(0)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #00FF7F; background:#00FF7F; color:#000; font-weight:bold; font-size:12px; cursor:pointer;">🛍️ Nueva Venta</button>
+                <button id="posTabBtn1" onclick="switchPosWebTab(1)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">👥 Clientes</button>
+                <button id="posTabBtn2" onclick="switchPosWebTab(2)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📦 Catálogo</button>
+                <button id="posTabBtn3" onclick="switchPosWebTab(3)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📊 Corte del Día</button>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 0: NUEVA VENTA -->
+            <div id="posWebPane0" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:8px; flex:1;">
+                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">👤 Cliente:</span>
+                        <select id="posCustomerSelect" style="flex:1; background:#1E293B; color:#FFF; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:13px;"></select>
+                    </div>
+                    <button onclick="promptCreatePosCustomerWeb()" style="background:#10B981; color:#000; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Nuevo Cliente</button>
+                </div>
+
+                <input type="text" id="posProductSearchWeb" oninput="renderPosCatalogSaleWeb()" placeholder="🔍 Buscar producto o código del catálogo para marcar..." style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:9px 12px; color:#FFF; font-size:13px; margin-bottom:8px;">
+
+                <div id="posProductsSaleListWeb" style="flex:1; overflow-y:auto; max-height:280px; display:flex; flex-direction:column; gap:6px; padding-right:4px;"></div>
+
+                <div style="background:#0F172A; border:1px solid #00FF7F; border-radius:12px; padding:12px; margin-top:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div id="posCartCountWeb" style="font-size:12px; color:#94A3B8;">0 artículos marcados</div>
+                            <div id="posCartTotalWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">TOTAL: $0.00 MXN</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <label style="font-size:12px; color:#FFF; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                                <input type="checkbox" id="posApplyToCutCheckbox" checked>
+                                <span>✅ Aplicar al Corte (Pagado)</span>
+                            </label>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button onclick="submitPosSaleWeb(false)" style="background:#00FF7F; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">💾 Registrar Venta</button>
+                            <button onclick="submitPosSaleWeb(true)" style="background:#FFD700; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">📲 Guardar + Enviar Ticket</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 1: CLIENTES -->
+            <div id="posWebPane1" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Cartera de Clientes</span>
+                    <button onclick="promptCreatePosCustomerWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Crear Cliente</button>
+                </div>
+                <div id="posCustomersListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 2: CATÁLOGO -->
+            <div id="posWebPane2" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Catálogo de Productos de tu Tienda</span>
+                    <button onclick="promptAddPosProductWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Añadir Producto</button>
+                </div>
+                <div id="posCatalogManageListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 3: CORTE DEL DÍA -->
+            <div id="posWebPane3" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <div style="flex:1; background:#0F172A; border:1px solid #00FF7F; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Corte de Hoy (Aplicado)</div>
+                        <div id="posCutTodayWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">$0.00 MXN</div>
+                    </div>
+                    <div style="flex:1; background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Total Aplicado General</div>
+                        <div id="posCutAllPaidWeb" style="font-size:18px; font-weight:bold; color:#FFF;">$0.00 MXN</div>
+                    </div>
+                    <div style="flex:1; background:#0F172A; border:1px solid #F59E0B; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Sin Aplicar / Pendientes</div>
+                        <div id="posCutPendingWeb" style="font-size:18px; font-weight:bold; color:#F59E0B;">$0.00 MXN</div>
+                    </div>
+                </div>
+                <div style="font-size:11px; color:#CBD5E1; margin-bottom:8px;">
+                    💡 <b>Nota:</b> Los tickets que <b>NO se vendan</b> pueden eliminarse con <b>🗑️ Eliminar</b>. Solo los tickets con <b>✅ En Corte</b> suman al Corte del Día.
+                </div>
+                <div id="posSalesHistoryListWeb" style="flex:1; overflow-y:auto; max-height:320px; display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_POS_CATALOG_WEB = [
+            { codigo: 1, nombre: "IMPRESIONES B/N", precio: "1" },
+            { codigo: 2, nombre: "IMPRESIONES A COLOR LETRAS", precio: "2" },
+            { codigo: 3, nombre: "IMPRESIONES A COLOR IMÁGENES GDES", precio: "5" },
+            { codigo: 4, nombre: "CARGA DE BATERIA COCHE O MOTO", precio: "50" },
+            { codigo: 5, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 400 ML", precio: "24" },
+            { codigo: 6, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 850 ML", precio: "44" },
+            { codigo: 7, nombre: "AGUA CIEL PURIFICADA BOTTLE 1 LTS NR", precio: "16" },
+            { codigo: 8, nombre: "AGUA CRISTAL PURIFICADA 20 LTS", precio: "50" },
+            { codigo: 9, nombre: "AZUCAR KILO", precio: "22" },
+            { codigo: 10, nombre: "COCA COLA 600 ML", precio: "18" },
+            { codigo: 11, nombre: "COCA COLA 2.5 LTS", precio: "38" },
+            { codigo: 12, nombre: "HUEVO CONO 30 PZAS", precio: "85" },
+            { codigo: 13, nombre: "LECHE LALA ENTERA 1 LTS", precio: "26" }
+        ];
+
+        let posCartMapWeb = {}; // idx -> qty
+
+        function getPosCatalogWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_catalog');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                }
+            } catch (_) {}
+            return DEFAULT_POS_CATALOG_WEB.slice();
+        }
+
+        function savePosCatalogWeb(list) {
+            try { localStorage.setItem('neo_pos_catalog', JSON.stringify(list)); } catch (_) {}
+        }
+
+        function getPosCustomersWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_customers');
+                return raw ? JSON.parse(raw) : [];
+            } catch (_) { return []; }
+        }
+
+        function savePosCustomersWeb(list) {
+            try { localStorage.setItem('neo_pos_customers', JSON.stringify(list)); } catch (_) {}
+        }
+
+        function getPosSalesWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_sales');
+                return raw ? JSON.parse(raw) : [];
+            } catch (_) { return []; }
+        }
+
+        function savePosSalesWeb(list) {
+            try { localStorage.setItem('neo_pos_sales', JSON.stringify(list.slice(0, 500))); } catch (_) {}
+        }
+
+        function openPosStoreModal() {
+            // Sincronizar catálogo del bot desde Firebase 1 sola vez si existe
+            const cleanMy10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (cleanMy10) {
+                db.ref(`bot_configs/${cleanMy10}/catalogo`).once('value', snap => {
+                    const cat = snap.val();
+                    if (Array.isArray(cat) && cat.length > 0) {
+                        savePosCatalogWeb(cat);
+                        renderPosCatalogSaleWeb();
+                        renderPosCatalogManageWeb();
+                    }
+                });
+            }
+            document.getElementById('posStoreModal').style.display = 'flex';
+            switchPosWebTab(0);
+        }
+
+        function switchPosWebTab(idx) {
+            for (let i = 0; i < 4; i++) {
+                const pane = document.getElementById('posWebPane' + i);
+                const btn = document.getElementById('posTabBtn' + i);
+                if (pane) pane.style.display = (i === idx) ? 'flex' : 'none';
+                if (btn) {
+                    btn.style.background = (i === idx) ? '#00FF7F' : '#1E293B';
+                    btn.style.color = (i === idx) ? '#000' : '#FFF';
+                    btn.style.borderColor = (i === idx) ? '#00FF7F' : '#334155';
+                }
+            }
+            refreshPosCustomerSelectWeb();
+            if (idx === 0) renderPosCatalogSaleWeb();
+            else if (idx === 1) renderPosCustomersListWeb();
+            else if (idx === 2) renderPosCatalogManageWeb();
+            else if (idx === 3) renderPosSalesCutWeb();
+        }
+
+        function refreshPosCustomerSelectWeb() {
+            const sel = document.getElementById('posCustomerSelect');
+            if (!sel) return;
+            const currentVal = sel.value;
+            const custs = getPosCustomersWeb();
+            sel.innerHTML = '<option value="mostrador">Público en General (Mostrador)</option>';
+            custs.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.phone ? `${c.name} (📱 ${c.phone})` : c.name;
+                sel.appendChild(opt);
+            });
+            if (currentVal && Array.from(sel.options).some(o => o.value === currentVal)) {
+                sel.value = currentVal;
+            }
+        }
+
+        function promptCreatePosCustomerWeb() {
+            const name = prompt('👤 Nombre del Cliente:');
+            if (!name || !name.trim()) return;
+            const phone = prompt('📱 Teléfono de 10 dígitos (opcional, para enviarle tickets al chat):', '') || '';
+            const notes = prompt('📝 Nota o Dirección (opcional):', '') || '';
+            const custs = getPosCustomersWeb();
+            const newC = {
+                id: 'cli_' + Date.now(),
+                name: name.trim(),
+                phone: phone.replace(/\D/g, '').slice(-10),
+                notes: notes.trim(),
+                createdAt: Date.now()
+            };
+            custs.push(newC);
+            savePosCustomersWeb(custs);
+            refreshPosCustomerSelectWeb();
+            const sel = document.getElementById('posCustomerSelect');
+            if (sel) sel.value = newC.id;
+            renderPosCustomersListWeb();
+            showToast(`✅ Cliente "${newC.name}" creado`);
+        }
+
+        function changePosQtyWeb(idx, delta) {
+            const cur = posCartMapWeb[idx] || 0;
+            const next = cur + delta;
+            if (next <= 0) delete posCartMapWeb[idx];
+            else posCartMapWeb[idx] = next;
+            renderPosCatalogSaleWeb();
+        }
+
+        function renderPosCatalogSaleWeb() {
+            const container = document.getElementById('posProductsSaleListWeb');
+            if (!container) return;
+            const q = (document.getElementById('posProductSearchWeb').value || '').toLowerCase().trim();
+            const catalog = getPosCatalogWeb();
+            container.innerHTML = '';
+
+            let totalItems = 0;
+            let totalAmount = 0;
+
+            catalog.forEach((p, idx) => {
+                const qty = posCartMapWeb[idx] || 0;
+                const unitPrice = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
+                if (qty > 0) {
+                    totalItems += qty;
+                    totalAmount += qty * unitPrice;
+                }
+                const code = p.codigo || (idx + 1);
+                if (q && !String(p.nombre || '').toLowerCase().includes(q) && !String(code).includes(q)) return;
+
+                const row = document.createElement('div');
+                row.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-radius:8px; background:${qty > 0 ? '#064E3B' : '#1E293B'}; border:1px solid ${qty > 0 ? '#00FF7F' : '#334155'};`;
+                row.innerHTML = `
+                    <div>
+                        <div style="color:#FFF; font-weight:bold; font-size:13px;">[${code}] ${escapeHtml(p.nombre)}</div>
+                        <div style="color:#00FF7F; font-weight:bold; font-size:12px;">$${unitPrice.toFixed(2)} MXN</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button onclick="changePosQtyWeb(${idx}, -1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#334155; color:#FFF; font-weight:bold; cursor:pointer;">-</button>
+                        <span style="min-width:22px; text-align:center; color:${qty > 0 ? '#00FF7F' : '#94A3B8'}; font-weight:bold; font-size:14px;">${qty}</span>
+                        <button onclick="changePosQtyWeb(${idx}, 1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#00FF7F; color:#000; font-weight:bold; cursor:pointer;">+</button>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            document.getElementById('posCartCountWeb').innerText = `${totalItems} artículo(s) marcados`;
+            document.getElementById('posCartTotalWeb').innerText = `TOTAL: $${totalAmount.toFixed(2)} MXN`;
+        }
+
+        function submitPosSaleWeb(sendToChat) {
+            const catalog = getPosCatalogWeb();
+            const items = [];
+            Object.keys(posCartMapWeb).forEach(k => {
+                const idx = parseInt(k);
+                const qty = posCartMapWeb[idx] || 0;
+                const p = catalog[idx];
+                if (p && qty > 0) {
+                    const price = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
+                    items.push({
+                        codigo: p.codigo || (idx + 1),
+                        nombre: p.nombre,
+                        precioUnitario: price,
+                        cantidad: qty,
+                        subtotal: price * qty
+                    });
+                }
+            });
+
+            if (items.length === 0) {
+                alert('Marca al menos 1 producto del catálogo con el botón [+] para registrar la venta.');
+                return;
+            }
+
+            const selVal = document.getElementById('posCustomerSelect').value;
+            const custs = getPosCustomersWeb();
+            const cust = custs.find(c => c.id === selVal) || null;
+            const isPaid = document.getElementById('posApplyToCutCheckbox').checked;
+            const total = items.reduce((acc, it) => acc + it.subtotal, 0);
+            const sales = getPosSalesWeb();
+            const folio = '#POS-' + String(sales.length + 1).padStart(4, '0');
+
+            const record = {
+                id: 'sale_' + Date.now(),
+                folio: folio,
+                customerId: cust ? cust.id : 'mostrador',
+                customerName: cust ? cust.name : 'Público en General',
+                customerPhone: cust ? (cust.phone || '') : '',
+                items: items,
+                total: total,
+                isPaid: isPaid,
+                timestamp: Date.now()
+            };
+
+            sales.unshift(record);
+            savePosSalesWeb(sales);
+            posCartMapWeb = {};
+            renderPosCatalogSaleWeb();
+            showToast(`✅ Venta ${folio} registrada ($${total.toFixed(2)} MXN)`);
+
+            if (sendToChat) {
+                const targetPhone = record.customerPhone || currentRecipient;
+                if (!targetPhone) {
+                    alert('Venta guardada. Para enviarla por chat, selecciona un cliente con teléfono o abre primero el chat del cliente.');
+                    return;
+                }
+                const p10 = String(targetPhone).replace(/\D/g, '').slice(-10);
+                const my10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+                const ids = [my10, p10].sort();
+                const tChatId = `private_${ids[0]}_${ids[1]}`;
+                let ticket = `🧾 *NOTA DE VENTA ${record.folio}*\n👤 Cliente: *${record.customerName}*\n━━━━━━━━━━━━━━━━━━━━\n`;
+                record.items.forEach(it => {
+                    ticket += `• ${it.cantidad}x ${it.nombre} ($${it.precioUnitario.toFixed(2)}) = *$${it.subtotal.toFixed(2)}*\n`;
+                });
+                ticket += `━━━━━━━━━━━━━━━━━━━━\n💰 *TOTAL: $${record.total.toFixed(2)} MXN*\n📌 Estado: ${record.isPaid ? '✅ PAGADO' : '⏳ PENDIENTE POR COBRAR'}\n🙏 ¡Gracias por su compra!`;
+
+                selectChat({
+                    chatId: tChatId,
+                    recipientPhone: p10,
+                    name: record.customerName,
+                    lastText: ticket,
+                    timestamp: Date.now(),
+                    isSelf: false
+                });
+                dispatchMessageObject(ticket);
+                document.getElementById('posStoreModal').style.display = 'none';
+            }
+        }
+
+        function renderPosCustomersListWeb() {
+            const container = document.getElementById('posCustomersListWeb');
+            if (!container) return;
+            const custs = getPosCustomersWeb();
+            const sales = getPosSalesWeb();
+            container.innerHTML = '';
+
+            if (custs.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay clientes registrados. Haz clic en "➕ Crear Cliente".</div>';
+                return;
+            }
+
+            custs.forEach(c => {
+                const cSales = sales.filter(s => s.customerId === c.id);
+                const totalBought = cSales.reduce((a, b) => a + (b.total || 0), 0);
+                const pending = cSales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+                const prodsSummary = cSales.slice(0, 3).map(s => `${s.folio}: ` + (s.items || []).map(i => `${i.cantidad}x ${i.nombre}`).join(', ')).join(' | ');
+
+                const card = document.createElement('div');
+                card.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;';
+                card.innerHTML = `
+                    <div style="flex:1;">
+                        <div style="color:#FFF; font-weight:bold; font-size:14px;">👤 ${escapeHtml(c.name)} ${c.phone ? `<span style="color:#00FF7F; font-size:12px;">📱 ${escapeHtml(c.phone)}</span>` : ''}</div>
+                        ${c.notes ? `<div style="color:#94A3B8; font-size:12px;">📝 ${escapeHtml(c.notes)}</div>` : ''}
+                        <div style="color:#CBD5E1; font-size:12px; margin-top:4px;">🛍️ ${cSales.length} compra(s) • Total: <b>$${totalBought.toFixed(2)} MXN</b> ${pending > 0 ? `• <span style="color:#F59E0B; font-weight:bold;">⏳ Pendiente: $${pending.toFixed(2)}</span>` : ''}</div>
+                        ${prodsSummary ? `<div style="color:#94A3B8; font-size:11px; margin-top:3px;">📦 Últimas compras: ${escapeHtml(prodsSummary)}</div>` : ''}
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="document.getElementById('posCustomerSelect').value='${c.id}'; switchPosWebTab(0);" style="background:#00FF7F; color:#000; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">Venderle</button>
+                        <button onclick="deletePosCustomerWeb('${c.id}')" style="background:#EF4444; color:#FFF; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">🗑️</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function deletePosCustomerWeb(id) {
+            const custs = getPosCustomersWeb().filter(c => c.id !== id);
+            savePosCustomersWeb(custs);
+            renderPosCustomersListWeb();
+            refreshPosCustomerSelectWeb();
+        }
+
+        function promptAddPosProductWeb() {
+            const name = prompt('📦 Nombre del Producto o Servicio:');
+            if (!name || !name.trim()) return;
+            const price = prompt('💲 Precio en MXN (ej: 25):', '0');
+            if (price === null) return;
+            const catalog = getPosCatalogWeb();
+            catalog.push({
+                codigo: catalog.length + 1,
+                nombre: name.trim().toUpperCase(),
+                precio: String(parseFloat(price) || 0)
+            });
+            savePosCatalogWeb(catalog);
+            renderPosCatalogManageWeb();
+            showToast('✅ Producto añadido al catálogo');
+        }
+
+        function renderPosCatalogManageWeb() {
+            const container = document.getElementById('posCatalogManageListWeb');
+            if (!container) return;
+            const catalog = getPosCatalogWeb();
+            container.innerHTML = '';
+            catalog.forEach((p, idx) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;';
+                row.innerHTML = `
+                    <div>
+                        <span style="color:#FFF; font-weight:bold; font-size:13px;">[${p.codigo || (idx + 1)}] ${escapeHtml(p.nombre)}</span>
+                        <span style="color:#00FF7F; font-weight:bold; font-size:13px; margin-left:8px;">$${escapeHtml(String(p.precio))} MXN</span>
+                    </div>
+                    <button onclick="deletePosProductWeb(${idx})" style="background:rgba(239,68,68,0.2); color:#EF4444; border:1px solid #EF4444; padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer;">🗑️ Eliminar</button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function deletePosProductWeb(idx) {
+            const catalog = getPosCatalogWeb();
+            catalog.splice(idx, 1);
+            savePosCatalogWeb(catalog);
+            renderPosCatalogManageWeb();
+        }
+
+        function renderPosSalesCutWeb() {
+            const container = document.getElementById('posSalesHistoryListWeb');
+            if (!container) return;
+            const sales = getPosSalesWeb();
+            const nowStr = new Date().toDateString();
+
+            // SOLO LOS TICKETS APLICADOS (isPaid === true) ENTRAN AL CORTE DEL DÍA
+            const todayApplied = sales.filter(s => new Date(s.timestamp).toDateString() === nowStr && s.isPaid);
+            const todayCut = todayApplied.reduce((a, b) => a + (b.total || 0), 0);
+            const allApplied = sales.filter(s => s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+            const allPending = sales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+
+            document.getElementById('posCutTodayWeb').innerText = `$${todayCut.toFixed(2)} MXN`;
+            document.getElementById('posCutAllPaidWeb').innerText = `$${allApplied.toFixed(2)} MXN`;
+            document.getElementById('posCutPendingWeb').innerText = `$${allPending.toFixed(2)} MXN`;
+
+            container.innerHTML = '';
+            if (sales.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay ventas registradas aún.</div>';
+                return;
+            }
+
+            sales.forEach(s => {
+                const itemsText = (s.items || []).map(i => `${i.cantidad}x ${i.nombre} ($${Number(i.subtotal || 0).toFixed(2)})`).join(' • ');
+                const card = document.createElement('div');
+                card.style.cssText = `background:#1E293B; border:1px solid ${s.isPaid ? 'rgba(0,255,127,0.4)' : 'rgba(245,158,11,0.5)'}; border-radius:10px; padding:10px 12px;`;
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">${escapeHtml(s.folio)} • 👤 ${escapeHtml(s.customerName)}</span>
+                        <span style="color:#94A3B8; font-size:11px;">${new Date(s.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div style="color:#CBD5E1; font-size:12px; margin-bottom:8px;">${escapeHtml(itemsText)}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:${s.isPaid ? '#00FF7F' : '#F59E0B'}; font-weight:900; font-size:14px;">TOTAL: $${Number(s.total || 0).toFixed(2)} MXN</span>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="togglePosSaleAppliedWeb('${s.id}')" style="background:${s.isPaid ? '#065F46' : '#00FF7F'}; color:${s.isPaid ? '#FFF' : '#000'}; border:none; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
+                                ${s.isPaid ? '✅ En Corte' : '✅ Aplicar al Corte'}
+                            </button>
+                            <button onclick="deletePosSaleWeb('${s.id}')" style="background:rgba(239,68,68,0.15); color:#EF4444; border:1px solid #EF4444; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
+                                🗑️ Eliminar No Vendido
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function togglePosSaleAppliedWeb(saleId) {
+            const sales = getPosSalesWeb().map(s => {
+                if (s.id === saleId) s.isPaid = !s.isPaid;
+                return s;
+            });
+            savePosSalesWeb(sales);
+            renderPosSalesCutWeb();
+        }
+
+        function deletePosSaleWeb(saleId) {
+            const sales = getPosSalesWeb().filter(s => s.id !== saleId);
+            savePosSalesWeb(sales);
+            renderPosSalesCutWeb();
+            showToast('🗑️ Ticket eliminado (no entra al Corte del Día)');
+        }
+    </script>
+
+</body></html>'
+            ].join('');
+            printWin.document.open();
+            printWin.document.write(html);
+            printWin.document.close();
+        }
+
         function printCurrentImage() {
             const img = document.getElementById('lightboxImg');
             const titleEl = document.getElementById('lightboxTitle');
-            const title = titleEl ? titleEl.innerText : 'NeoMessage Documento';
+            const title = titleEl ? titleEl.innerText : 'Documento_NeoMessage';
             
             if (!img || !img.src) {
                 alert("No hay imagen para imprimir.");
                 return;
             }
-
-            const printWin = window.open('', '_blank');
-            if (!printWin) {
-                let printIframe = document.getElementById('printHiddenIframe');
-                if (!printIframe) {
-                    printIframe = document.createElement('iframe');
-                    printIframe.id = 'printHiddenIframe';
-                    printIframe.style.position = 'fixed';
-                    printIframe.style.width = '0';
-                    printIframe.style.height = '0';
-                    printIframe.style.border = 'none';
-                    document.body.appendChild(printIframe);
-                }
-                const doc = printIframe.contentWindow.document;
-                doc.open();
-                doc.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();}, 300);"/></body></html>');
-                doc.close();
-                return;
-            }
-
-            printWin.document.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();window.close();}, 300);"/></body></html>');
-            printWin.document.close();
+            openSafePrintTabForImage(img.src, title);
         }
 
         function printFileDirectly(fileName, fileUrl) {
             const lower = (fileName || '').toLowerCase();
             if (lower.endsWith('.pdf') || (fileUrl && fileUrl.includes('application/pdf'))) {
-                const iframe = document.createElement('iframe');
-                iframe.style.position = 'fixed';
-                iframe.style.right = '0';
-                iframe.style.bottom = '0';
-                iframe.style.width = '0';
-                iframe.style.height = '0';
-                iframe.style.border = '0';
-                iframe.src = fileUrl;
-                document.body.appendChild(iframe);
-                iframe.onload = () => {
-                    setTimeout(() => {
-                        try {
-                            iframe.contentWindow.focus();
-                            iframe.contentWindow.print();
-                        } catch(e) {
-                            window.open(fileUrl, '_blank');
-                        }
-                    }, 600);
-                };
+                // Abrir PDF como Blob nativo en una pestaña limpia del navegador (nunca en iframe 0x0 oculto que traba el spooler)
+                const pdfBlobUrl = safeDataUrlToBlobUrl(fileUrl, 'application/pdf');
+                window.open(pdfBlobUrl, '_blank');
             } else if (lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/) || (fileUrl && fileUrl.startsWith('data:image/'))) {
-                const win = window.open('', '_blank');
-                if (win) {
-                    win.document.write('<!DOCTYPE html><html><head><title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + fileUrl + '" onload="window.print();window.close();"/></body></html>');
-                    win.document.close();
-                } else {
-                    window.open(fileUrl, '_blank');
-                }
+                openSafePrintTabForImage(fileUrl, fileName || 'Imagen_NeoMessage');
             } else {
-                window.open(fileUrl, '_blank');
+                const safeUrl = safeDataUrlToBlobUrl(fileUrl, 'application/octet-stream');
+                window.open(safeUrl, '_blank');
             }
         }
-
 
         // ========================================================
         // 5. COPIAR Y PEGAR DIRECTO (Ctrl+V)
@@ -3500,7 +4234,48 @@
 
 
         // CONVERTIDOR MAESTRO DE TABLAS EXCEL / HOJAS DE CÁLCULO A IMAGEN HD
-        function convertExcelDataToImage(htmlString, plainTextString) {
+                // COMPRESOR MAESTRO DE IMÁGENES PEGADAS (Ctrl+V / Excel / Capturas)
+        // Optimiza igual que WhatsApp a máximo 1200px y JPEG 72%, fondo blanco puro (30KB - 60KB)
+                function compressPastedBlob(blob, callback) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let w = img.width;
+                    let h = img.height;
+                    // NITIDEZ HD IDÉNTICA A WHATSAPP (Hasta 1440px sin pérdida de definición en texto/números de Excel)
+                    const maxDim = 1440;
+                    if (w > maxDim || h > maxDim) {
+                        if (w > h) {
+                            h = Math.round((h * maxDim) / w);
+                            w = maxDim;
+                        } else {
+                            w = Math.round((w * maxDim) / h);
+                            h = maxDim;
+                        }
+                    }
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const compressedB64 = canvas.toDataURL('image/jpeg', 0.92);
+                    const sizeKb = Math.round((compressedB64.length * 0.75) / 1024);
+                    callback(compressedB64, sizeKb);
+                };
+                img.onerror = () => {
+                    showToast('⚠️ No se pudo procesar la imagen');
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(blob);
+        }
+
+                function convertExcelDataToImage(htmlString, plainTextString) {
             let rows = [];
             if (htmlString && htmlString.includes('<table')) {
                 try {
@@ -3530,7 +4305,6 @@
             const colCount = Math.max(...rows.map(r => r.length));
             if (colCount <= 1 && rows.length <= 1) return null;
 
-            // Normalizar columnas
             rows = rows.map(r => {
                 while (r.length < colCount) r.push('');
                 return r;
@@ -3538,74 +4312,79 @@
 
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            const scale = 2; // Alta resolución retina/DPI
-            const fontSize = 13;
+            const fontSize = 11;
             ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 
-            // Medir ancho óptimo por columna
-            const colWidths = new Array(colCount).fill(70);
-            const paddingX = 16;
-            const rowHeight = 34;
+            const colWidths = new Array(colCount).fill(55);
+            const paddingX = 10;
+            const rowHeight = 24;
 
             rows.forEach((r, rowIdx) => {
                 if (rowIdx === 0) ctx.font = `bold ${fontSize}px sans-serif`;
                 else ctx.font = `500 ${fontSize}px sans-serif`;
                 r.forEach((cell, colIdx) => {
                     const w = ctx.measureText(cell).width + paddingX * 2;
-                    if (w > colWidths[colIdx]) colWidths[colIdx] = Math.min(360, Math.ceil(w));
+                    if (w > colWidths[colIdx]) colWidths[colIdx] = Math.min(260, Math.ceil(w));
                 });
             });
 
-            const headerHeight = 42;
-            const bannerHeight = 36;
-            const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
-            const totalHeight = bannerHeight + headerHeight + (rows.length - 1) * rowHeight + 12;
+            const headerHeight = 32;
+            const bannerHeight = 28;
+            const rawTableWidth = colWidths.reduce((a, b) => a + b, 0);
 
-            canvas.width = totalTableWidth * scale;
-            canvas.height = totalHeight * scale;
+            // Escala HD nítida para lectura perfecta de números y códigos
+            let scale = 1.5;
+            if (rawTableWidth * scale > 1440) {
+                scale = 1440 / rawTableWidth;
+            }
+
+            const totalTableWidth = rawTableWidth;
+            const totalHeight = bannerHeight + headerHeight + (rows.length - 1) * rowHeight + 8;
+
+            canvas.width = Math.round(totalTableWidth * scale);
+            canvas.height = Math.round(totalHeight * scale);
             ctx.scale(scale, scale);
 
-            // Fondo general blanco puro
+            // Fondo blanco
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(0, 0, totalTableWidth, totalHeight);
 
-            // Banner superior verde oficial de Microsoft Excel
+            // Banner superior verde oficial de Excel
             ctx.fillStyle = '#107C41';
             ctx.fillRect(0, 0, totalTableWidth, bannerHeight);
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px sans-serif';
-            ctx.fillText('📊 HOJA DE CÁLCULO / TABLA EXCEL', 16, 23);
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText('📊 HOJA DE CÁLCULO / TABLA EXCEL', 12, 18);
 
-            // Cabecera de la tabla
+            // Cabecera
             let currentY = bannerHeight;
             ctx.fillStyle = '#0B532E';
             ctx.fillRect(0, currentY, totalTableWidth, headerHeight);
 
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px sans-serif';
+            ctx.font = 'bold 11px sans-serif';
             let currentX = 0;
             rows[0].forEach((headerText, colIdx) => {
                 const isNum = !isNaN(parseFloat(headerText)) && isFinite(headerText);
                 if (isNum) {
                     ctx.textAlign = 'right';
-                    ctx.fillText(headerText, currentX + colWidths[colIdx] - paddingX, currentY + 26);
+                    ctx.fillText(headerText, currentX + colWidths[colIdx] - paddingX, currentY + 20);
                 } else {
                     ctx.textAlign = 'left';
-                    ctx.fillText(headerText, currentX + paddingX, currentY + 26);
+                    ctx.fillText(headerText, currentX + paddingX, currentY + 20);
                 }
                 currentX += colWidths[colIdx];
             });
 
-            // Filas de datos
+            // Filas
             currentY += headerHeight;
-            ctx.font = '500 12px sans-serif';
+            ctx.font = '500 11px sans-serif';
 
             for (let i = 1; i < rows.length; i++) {
                 const isEven = i % 2 === 0;
                 ctx.fillStyle = isEven ? '#F4F9F6' : '#FFFFFF';
                 ctx.fillRect(0, currentY, totalTableWidth, rowHeight);
 
-                // Línea inferior de fila
                 ctx.strokeStyle = '#E2E8F0';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
@@ -3619,13 +4398,12 @@
                     const isNum = !isNaN(parseFloat(cellText.replace(/[$,]/g, ''))) && cellText.trim() !== '';
                     if (isNum) {
                         ctx.textAlign = 'right';
-                        ctx.fillText(cellText, currentX + colWidths[colIdx] - paddingX, currentY + 22);
+                        ctx.fillText(cellText, currentX + colWidths[colIdx] - paddingX, currentY + 17);
                     } else {
                         ctx.textAlign = 'left';
-                        ctx.fillText(cellText, currentX + paddingX, currentY + 22);
+                        ctx.fillText(cellText, currentX + paddingX, currentY + 17);
                     }
 
-                    // Línea divisoria vertical
                     ctx.strokeStyle = '#E2E8F0';
                     ctx.beginPath();
                     ctx.moveTo(currentX + colWidths[colIdx], currentY);
@@ -3638,51 +4416,52 @@
                 currentY += rowHeight;
             }
 
-            return canvas.toDataURL('image/png');
+            return canvas.toDataURL('image/jpeg', 0.92);
         }
 
-        window.addEventListener('paste', (e) => {
+                window.addEventListener('paste', (e) => {
             if (!currentChatId) return;
             const clip = e.clipboardData || e.originalEvent.clipboardData;
             if (!clip) return;
 
-            // 1. Verificar si viene como imagen directa
+            // 1. PRIORIDAD IGUAL A WHATSAPP: Usar la imagen nativa exacta que Excel/Windows pone en el portapapeles (con su formato, colores y nitidez original)
             const items = clip.items;
-            let foundImage = false;
             for (let i = 0; i < items.length; i++) {
                 if (items[i].type.indexOf('image') !== -1) {
-                    foundImage = true;
+                    e.preventDefault();
                     const blob = items[i].getAsFile();
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        pendingPastedImageB64 = event.target.result;
+                    compressPastedBlob(blob, (compressedB64, sizeKb) => {
+                        pendingPastedImageB64 = compressedB64;
                         document.getElementById('pastedImagePreview').src = pendingPastedImageB64;
                         document.getElementById('pastedImageCaption').value = '';
+                        const badge = document.getElementById('pasteSizeBadge');
+                        if (badge) badge.innerText = '✨ HD Nítida (' + sizeKb + ' KB)';
                         document.getElementById('pastePreviewModal').style.display = 'flex';
                         document.getElementById('pastedImageCaption').focus();
-                    };
-                    reader.readAsDataURL(blob);
-                    e.preventDefault();
-                    break;
+                        showToast('✨ Imagen de Excel lista en alta nitidez (~' + sizeKb + ' KB)');
+                    });
+                    return;
                 }
             }
 
-            // 2. Si no fue imagen directa, comprobar si es una tabla de Excel copiada
-            if (!foundImage) {
-                const htmlData = clip.getData('text/html') || '';
-                const plainText = clip.getData('text/plain') || '';
+            // 2. RESPALDO: Si se copió una tabla desde navegador o texto sin imagen nativa
+            const htmlData = clip.getData('text/html') || '';
+            const plainText = clip.getData('text/plain') || '';
 
-                if ((htmlData && htmlData.includes('<table')) || (plainText && plainText.includes('\t') && plainText.includes('\n'))) {
-                    const tableImgB64 = convertExcelDataToImage(htmlData, plainText);
-                    if (tableImgB64) {
-                        e.preventDefault();
-                        pendingPastedImageB64 = tableImgB64;
-                        document.getElementById('pastedImagePreview').src = pendingPastedImageB64;
-                        document.getElementById('pastedImageCaption').value = '📊 Tabla copiada de Excel';
-                        document.getElementById('pastePreviewModal').style.display = 'flex';
-                        document.getElementById('pastedImageCaption').focus();
-                        showToast('📊 ¡Tabla de Excel convertida a imagen lista para enviar!');
-                    }
+            if ((htmlData && htmlData.includes('<table')) || (plainText && plainText.includes('\t') && plainText.includes('\n'))) {
+                const tableImgB64 = convertExcelDataToImage(htmlData, plainText);
+                if (tableImgB64) {
+                    e.preventDefault();
+                    pendingPastedImageB64 = tableImgB64;
+                    const sizeKb = Math.round((tableImgB64.length * 0.75) / 1024);
+                    document.getElementById('pastedImagePreview').src = pendingPastedImageB64;
+                    document.getElementById('pastedImageCaption').value = '📊 Tabla de Excel';
+                    const badge = document.getElementById('pasteSizeBadge');
+                    if (badge) badge.innerText = '✨ HD Nítida (' + sizeKb + ' KB)';
+                    document.getElementById('pastePreviewModal').style.display = 'flex';
+                    document.getElementById('pastedImageCaption').focus();
+                    showToast('📊 Tabla convertida en alta nitidez (~' + sizeKb + ' KB)');
+                    return;
                 }
             }
         });
@@ -3690,11 +4469,11 @@
         function sendPastedImage() {
             if (!pendingPastedImageB64 || !currentChatId) return;
             const caption = document.getElementById('pastedImageCaption').value.trim();
-            const textToSend = caption ? `[Media] ${pendingPastedImageB64}
-${caption}` : `[Media] ${pendingPastedImageB64}`;
+            const textToSend = caption ? ('[Media] ' + pendingPastedImageB64 + '\n' + caption) : ('[Media] ' + pendingPastedImageB64);
+            const approxKb = Math.round((pendingPastedImageB64.length * 0.75) / 1024);
             dispatchMessageObject(textToSend);
             cancelPastedImage();
-            showToast('🖼️ Imagen pegada enviada');
+            showToast('🖼️ Imagen enviada con éxito (~' + approxKb + ' KB)');
         }
 
         function cancelPastedImage() {
@@ -3717,9 +4496,11 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             if (val.length > 0) {
                 btnSend.style.display = 'flex';
                 btnVoice.style.display = 'none';
+                handleTypingEvent();
             } else {
                 btnSend.style.display = 'none';
                 btnVoice.style.display = 'flex';
+                if (currentChatId) db.ref(`typing/${currentChatId}`).remove();
             }
         }
 
@@ -3971,6 +4752,26 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
 
         // INICIALIZACIÓN DE LA APLICACIÓN
         function initApp() {
+        // CONEXIÓN Y DESCONEXIÓN AUTOMÁTICA EN PC
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true && myPhone) {
+                const uRef = db.ref(`users/${myPhone}`);
+                uRef.update({ online: true, status: 'Conectado', lastSeen: firebase.database.ServerValue.TIMESTAMP });
+                uRef.child('online').onDisconnect().set(false);
+                uRef.child('status').onDisconnect().set('Desconectado');
+                uRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+            }
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (!myPhone) return;
+            const uRef = db.ref(`users/${myPhone}`);
+            if (document.visibilityState === 'visible') {
+                uRef.update({ online: true, status: 'Conectado', lastSeen: Date.now() });
+            } else {
+                uRef.update({ online: false, status: 'Desconectado', lastSeen: Date.now() });
+            }
+        });
+
             const savedTheme = localStorage.getItem('neo_theme') || 'default';
             setAppTheme(savedTheme, false);
 
@@ -4382,133 +5183,355 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             }
         };
 
+        // HELPER: VALIDAR NOMBRE REAL DE PERSONA Y RESOLVER POR 10 DÍGITOS
+        function isValidPersonNameWeb(n) {
+            if (!n || typeof n !== 'string') return false;
+            const t = n.trim();
+            if (!t) return false;
+            const low = t.toLowerCase();
+            if (low === 'neo' || low === 'contacto' || low === 'chat' || low === 'usuario' || low === 'usuario neomessage' || low.startsWith('contacto (') || low.startsWith('usuario ')) return false;
+            return /[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(t);
+        }
+
+        function findUserInMapByPhone(phone) {
+            const p10 = String(phone || '').replace(/\D/g, '').slice(-10);
+            if (!p10) return null;
+            if (usersMap[phone]) return usersMap[phone];
+            if (usersMap[p10]) return usersMap[p10];
+            const matchKey = Object.keys(usersMap).find(k => String(k).replace(/\D/g, '').slice(-10) === p10);
+            return matchKey ? usersMap[matchKey] : null;
+        }
+
+        function resolveContactNameWeb(phone, fallbackName) {
+            const p10 = String(phone || '').replace(/\D/g, '').slice(-10);
+            const u = findUserInMapByPhone(p10);
+            const saved = mySavedContacts.find(c => String(c.id || '').replace(/\D/g, '').slice(-10) === p10);
+            const regName = (u && isValidPersonNameWeb(u.name)) ? u.name.trim() : null;
+            const savedName = (saved && isValidPersonNameWeb(saved.name)) ? saved.name.trim() : null;
+            const fbName = isValidPersonNameWeb(fallbackName) ? fallbackName.trim() : null;
+            if (regName && savedName && regName.toLowerCase() !== savedName.toLowerCase()) {
+                return `${regName} (${savedName})`;
+            }
+            return regName || savedName || fbName || p10 || String(phone || '');
+        }
+
         // ESCUCHAR CONTACTOS GUARDADOS
         function listenToUserContacts() {
             db.ref(`users/${myPhone}/contacts`).on('value', snap => {
                 const raw = snap.val() || {};
                 const list = [];
+                const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
                 Object.keys(raw).forEach(k => {
                     const c = raw[k];
-                    const clean = (c.id || k).replace(/\D/g, '');
-                    if (clean && clean !== myPhone) {
-                        list.push({ id: clean, name: c.name || `Contacto (${clean})` });
+                    const clean = String((c && c.id) || k).replace(/\D/g, '').slice(-10);
+                    if (clean && clean !== myP10) {
+                        list.push({ id: clean, name: (c && c.name) ? c.name : clean });
                     }
                 });
                 mySavedContacts = list;
+                renderChatsList();
                 renderContactsList();
             });
         }
 
-        // ESCUCHAR CHATS ACTIVOS
-        function listenToUserChats() {
-            db.ref('chats').on('value', snap => {
-                const list = [];
-                const raw = snap.val() || {};
+        // ESCUCHAR CHATS ACTIVOS (MODO ULTRA-LIGERO: CERO DESCARGA MASIVA DE FIREBASE + RESPALDO LOCAL)
+        const watchedChatIdsWeb = new Set();
 
-                const selfChatId = `private_${myPhone}_${myPhone}`;
-                let selfLastText = 'Notas y archivos personales';
-                let selfTime = Date.now();
+        function getMyClean10Web() {
+            return String(myPhone || '').replace(/\D/g, '').slice(-10) || 'default';
+        }
 
-                if (raw[selfChatId] && raw[selfChatId].messages) {
-                    const mList = Object.values(raw[selfChatId].messages);
-                    if (mList.length > 0) {
-                        const lastM = mList[mList.length - 1];
-                        selfLastText = formatPreviewText(lastM.text);
-                        selfTime = lastM.timestamp || Date.now();
+        function getDeletedForMeSetWeb() {
+            try {
+                const raw = localStorage.getItem('neo_deleted_for_me_' + getMyClean10Web());
+                const arr = raw ? JSON.parse(raw) : [];
+                return new Set(Array.isArray(arr) ? arr : []);
+            } catch (_) { return new Set(); }
+        }
+
+        function markMsgDeletedForMeWeb(chatId, msgId) {
+            if (!msgId) return;
+            try {
+                const set = getDeletedForMeSetWeb();
+                set.add(msgId);
+                const arr = Array.from(set).slice(-2000);
+                localStorage.setItem('neo_deleted_for_me_' + getMyClean10Web(), JSON.stringify(arr));
+                if (chatId) {
+                    const raw = localStorage.getItem('neo_web_msgs_' + chatId);
+                    const map = raw ? JSON.parse(raw) : {};
+                    if (map && map[msgId]) {
+                        delete map[msgId];
+                        localStorage.setItem('neo_web_msgs_' + chatId, JSON.stringify(map));
                     }
                 }
+            } catch (_) {}
+        }
 
-                list.push({
-                    chatId: selfChatId,
-                    recipientPhone: myPhone,
-                    name: 'Mis Notas Personales (Tú)',
-                    lastText: selfLastText,
-                    timestamp: selfTime,
-                    isSelf: true
-                });
+        function getChatClearedAtWeb(chatId) {
+            if (!chatId) return 0;
+            try {
+                return Number(localStorage.getItem('neo_cleared_chat_' + getMyClean10Web() + '_' + chatId) || '0') || 0;
+            } catch (_) { return 0; }
+        }
 
-                Object.keys(raw).forEach(cId => {
-                    if (cId === selfChatId) return;
-                    if (cId.includes(myPhone)) {
-                        const parts = cId.replace('private_', '').split('_');
-                        const otherPhone = parts[0] === myPhone ? parts[1] : parts[0];
-                        if (!otherPhone) return;
+        function markChatClearedLocallyWeb(chatId) {
+            if (!chatId) return;
+            try {
+                const nowTs = Date.now();
+                localStorage.setItem('neo_cleared_chat_' + getMyClean10Web() + '_' + chatId, String(nowTs));
+                const raw = localStorage.getItem('neo_web_msgs_' + chatId);
+                const map = raw ? JSON.parse(raw) : {};
+                const set = getDeletedForMeSetWeb();
+                Object.keys(map || {}).forEach(id => set.add(id));
+                localStorage.setItem('neo_deleted_for_me_' + getMyClean10Web(), JSON.stringify(Array.from(set).slice(-2000)));
+                localStorage.removeItem('neo_web_msgs_' + chatId);
+            } catch (_) {}
+        }
 
-                        const msgs = raw[cId].messages ? Object.values(raw[cId].messages) : [];
-                        let lastText = 'Conversación abierta';
-                        let time = Date.now();
+        function isMsgHiddenForMeWeb(chatId, msgId, timestamp) {
+            if (msgId && getDeletedForMeSetWeb().has(msgId)) return true;
+            const clearedAt = getChatClearedAtWeb(chatId);
+            const ts = Number(timestamp) || 0;
+            if (clearedAt > 0 && ts > 0 && ts <= clearedAt) return true;
+            return false;
+        }
 
-                        if (msgs.length > 0) {
-                            const lastM = msgs[msgs.length - 1];
-                            lastText = formatPreviewText(lastM.text);
-                            time = lastM.timestamp || Date.now();
-                        }
-
-                        const saved = mySavedContacts.find(c => c.id === otherPhone);
-                        const userEntry = usersMap[otherPhone];
-                        const contactName = saved ? saved.name : (userEntry && userEntry.name ? userEntry.name : otherPhone);
-
-                        list.push({
-                            chatId: cId,
-                            recipientPhone: otherPhone,
-                            name: contactName,
-                            lastText: lastText,
-                            timestamp: time,
-                            isSelf: false
-                        });
+        function getLocalChatMessages(chatId) {
+            try {
+                const raw = localStorage.getItem('neo_web_msgs_' + chatId);
+                const parsed = raw ? JSON.parse(raw) : {};
+                const filtered = {};
+                Object.keys(parsed || {}).forEach(k => {
+                    const m = parsed[k];
+                    if (m && !isMsgHiddenForMeWeb(chatId, m.id || k, m.timestamp)) {
+                        filtered[k] = m;
                     }
                 });
+                return filtered;
+            } catch (_) { return {}; }
+        }
 
-                // Integrar Grupos Ilimitados
-                db.ref('groups').once('value', gSnap => {
-                    const groupsData = gSnap.val() || {};
-                    Object.values(groupsData).forEach(g => {
-                        if (g && g.id && (!g.members || g.members.includes(myPhone) || g.createdBy === myPhone)) {
-                            const grpChatId = g.id;
-                            const msgs = (raw[grpChatId] && raw[grpChatId].messages) ? Object.values(raw[grpChatId].messages) : [];
-                            let lastText = g.description || 'Grupo masivo';
-                            let time = g.createdAt || Date.now();
-                            if (msgs.length > 0) {
-                                const lastM = msgs[msgs.length - 1];
-                                lastText = formatPreviewText(lastM.text);
-                                time = lastM.timestamp || time;
-                            }
-                            // Evitar duplicados
-                            if (!list.some(item => item.chatId === grpChatId)) {
-                                list.push({
-                                    chatId: grpChatId,
-                                    recipientPhone: grpChatId,
-                                    name: g.name || 'Grupo',
-                                    lastText: lastText,
-                                    timestamp: time,
-                                    isGroup: true,
-                                    isSelf: false
-                                });
-                            }
-                        }
-                    });
+        function saveLocalChatMessages(chatId, msgsMap) {
+            try {
+                const entries = Object.values(msgsMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-80);
+                const pruned = {};
+                entries.forEach(m => { if (m && m.id) pruned[m.id] = m; });
+                localStorage.setItem('neo_web_msgs_' + chatId, JSON.stringify(pruned));
+            } catch (_) {}
+        }
 
-                    list.sort((a, b) => {
-                        if (a.isSelf) return -1;
-                        if (b.isSelf) return 1;
-                        return b.timestamp - a.timestamp;
-                    });
+        function saveLocalConversationsWeb() {
+            try {
+                const cleanMy = String(myPhone || '').replace(/\D/g, '').slice(-10);
+                if (!cleanMy) return;
+                localStorage.setItem('neo_web_convs_' + cleanMy, JSON.stringify(conversations));
+            } catch (_) {}
+        }
 
-                    conversations = list;
-                    renderChatsList();
+        function upsertConversationWeb(entry) {
+            const idx = conversations.findIndex(c => c.chatId === entry.chatId);
+            if (idx !== -1) {
+                conversations[idx] = Object.assign({}, conversations[idx], entry);
+            } else {
+                conversations.push(entry);
+            }
+            conversations.sort((a, b) => {
+                if (a.isSelf) return -1;
+                if (b.isSelf) return 1;
+                return (b.timestamp || 0) - (a.timestamp || 0);
+            });
+            saveLocalConversationsWeb();
+            renderChatsList();
+            renderContactsList();
+        }
+
+        function attachLightweightChatWatcher(cId, otherPhone, isGroup, groupTitle) {
+            if (!cId || watchedChatIdsWeb.has(cId)) return;
+            watchedChatIdsWeb.add(cId);
+            const myCleanPhone = String(myPhone || '').replace(/\D/g, '').slice(-10);
+
+            // Cargar vista previa desde el respaldo local inmediato si existe
+            const localMap = getLocalChatMessages(cId);
+            const localList = Object.values(localMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            if (localList.length > 0) {
+                const lastM = localList[localList.length - 1];
+                let peerName = null;
+                for (let i = localList.length - 1; i >= 0; i--) {
+                    const sId = String(localList[i].senderId || '').replace(/\D/g, '').slice(-10);
+                    if (sId && sId !== myCleanPhone && isValidPersonNameWeb(localList[i].senderName)) {
+                        peerName = localList[i].senderName.trim();
+                        break;
+                    }
+                }
+                upsertConversationWeb({
+                    chatId: cId,
+                    recipientPhone: isGroup ? cId : otherPhone,
+                    name: isGroup ? (groupTitle || 'Grupo') : resolveContactNameWeb(otherPhone, peerName),
+                    peerSenderName: peerName,
+                    lastText: formatPreviewText(lastM.text),
+                    timestamp: lastM.timestamp || 0,
+                    isGroup: !!isGroup,
+                    isSelf: false
+                });
+            }
+
+            // Escuchar únicamente el último mensaje (.limitToLast(1)) para no descargar nunca todo el árbol
+            db.ref(`chats/${cId}/messages`).limitToLast(1).on('value', snap => {
+                const val = snap.val();
+                if (!val) return;
+                const lastM = Object.values(val)[0];
+                if (!lastM) return;
+                if (isMsgHiddenForMeWeb(cId, lastM.id, lastM.timestamp)) return;
+
+                // Guardar en el respaldo local de la PC
+                const mapNow = getLocalChatMessages(cId);
+                if (lastM.id) {
+                    mapNow[lastM.id] = lastM;
+                    saveLocalChatMessages(cId, mapNow);
+                }
+
+                const sId = String(lastM.senderId || '').replace(/\D/g, '').slice(-10);
+                const peerName = (sId && sId !== myCleanPhone && isValidPersonNameWeb(lastM.senderName)) ? lastM.senderName.trim() : null;
+
+                upsertConversationWeb({
+                    chatId: cId,
+                    recipientPhone: isGroup ? cId : otherPhone,
+                    name: isGroup ? (groupTitle || 'Grupo') : resolveContactNameWeb(otherPhone, peerName),
+                    peerSenderName: peerName,
+                    lastText: formatPreviewText(lastM.text),
+                    timestamp: lastM.timestamp || Date.now(),
+                    isGroup: !!isGroup,
+                    isSelf: false
                 });
             });
         }
 
-        // RENDERIZAR CHATS CON BOTÓN PARA ELIMINAR RASTRO
+        function listenToUserChats() {
+            const myCleanPhone = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (!myCleanPhone) return;
+
+            // 1. Restaurar conversaciones respaldadas localmente en esta PC
+            try {
+                const cachedConvs = JSON.parse(localStorage.getItem('neo_web_convs_' + myCleanPhone) || '[]');
+                if (Array.isArray(cachedConvs) && cachedConvs.length > 0) {
+                    conversations = cachedConvs;
+                }
+            } catch (_) {}
+
+            const selfChatId = `private_${myPhone}_${myPhone}`;
+            if (!conversations.some(c => c.chatId === selfChatId)) {
+                conversations.unshift({
+                    chatId: selfChatId,
+                    recipientPhone: myPhone,
+                    name: 'Mis Notas Personales (Tú)',
+                    lastText: 'Notas y archivos personales',
+                    timestamp: 0,
+                    isSelf: true
+                });
+            }
+
+            // Vigilar conversaciones ya conocidas localmente
+            conversations.forEach(c => {
+                if (!c.isSelf && c.chatId) {
+                    attachLightweightChatWatcher(c.chatId, c.recipientPhone, c.isGroup, c.name);
+                }
+            });
+
+            // 2. Vigilar contactos guardados de este usuario (.limitToLast(1) por contacto)
+            db.ref(`users/${myPhone}/contacts`).on('value', cSnap => {
+                const rawC = cSnap.val() || {};
+                Object.keys(rawC).forEach(k => {
+                    const p10 = String((rawC[k] && rawC[k].id) || k).replace(/\D/g, '').slice(-10);
+                    if (p10 && p10.length === 10 && p10 !== myCleanPhone) {
+                        const ids = [myCleanPhone, p10].sort();
+                        attachLightweightChatWatcher(`private_${ids[0]}_${ids[1]}`, p10, false, null);
+                    }
+                });
+            });
+
+            // 3. Vigilar usuarios registrados para descubrir chats existentes con este usuario sin descargar todo 'chats'
+            db.ref('users').once('value', uSnap => {
+                const uData = uSnap.val() || {};
+                Object.keys(uData).forEach(k => {
+                    const p10 = String((uData[k] && uData[k].id) || k).replace(/\D/g, '').slice(-10);
+                    if (p10 && p10.length === 10 && p10 !== myCleanPhone) {
+                        const ids = [myCleanPhone, p10].sort();
+                        attachLightweightChatWatcher(`private_${ids[0]}_${ids[1]}`, p10, false, null);
+                    }
+                });
+            });
+
+            // 4. Escuchar avisos ligeros entrantes en inbox/{myCleanPhone} (< 200 bytes)
+            db.ref(`inbox/${myCleanPhone}`).on('child_added', snap => {
+                const notice = snap.val();
+                if (!notice) return;
+                const cId = notice.chatId || '';
+                if (notice.text === '[DELETED]' && cId && notice.id) {
+                    const mapNow = getLocalChatMessages(cId);
+                    if (mapNow[notice.id]) {
+                        mapNow[notice.id].text = '[DELETED]';
+                        mapNow[notice.id].deleted = true;
+                        mapNow[notice.id].isDeletedForEveryone = true;
+                        saveLocalChatMessages(cId, mapNow);
+                    }
+                    try { snap.ref.remove(); } catch (_) {}
+                    return;
+                }
+                const sPhone = String(notice.senderId || '').replace(/\D/g, '').slice(-10);
+                if (cId && sPhone) {
+                    attachLightweightChatWatcher(cId, sPhone, cId.startsWith('group_'), notice.senderName);
+                    upsertConversationWeb({
+                        chatId: cId,
+                        recipientPhone: sPhone,
+                        name: resolveContactNameWeb(sPhone, notice.senderName),
+                        peerSenderName: notice.senderName,
+                        lastText: formatPreviewText(notice.text || 'Nuevo mensaje'),
+                        timestamp: notice.timestamp || Date.now(),
+                        isSelf: false
+                    });
+                }
+            });
+
+            // 5. Integrar Grupos Ilimitados
+            db.ref('groups').on('value', gSnap => {
+                const groupsData = gSnap.val() || {};
+                Object.values(groupsData).forEach(g => {
+                    if (g && g.id && (!g.members || g.members.includes(myPhone) || g.createdBy === myPhone)) {
+                        attachLightweightChatWatcher(g.id, g.id, true, g.name || 'Grupo');
+                        if (!conversations.some(item => item.chatId === g.id)) {
+                            upsertConversationWeb({
+                                chatId: g.id,
+                                recipientPhone: g.id,
+                                name: g.name || 'Grupo',
+                                lastText: g.description || 'Grupo masivo',
+                                timestamp: g.createdAt || 0,
+                                isGroup: true,
+                                isSelf: false
+                            });
+                        }
+                    }
+                });
+                renderChatsList();
+                renderContactsList();
+            });
+        }
+
+        // RENDERIZAR CHATS CON NOMBRE Y NÚMERO SIEMPRE VISIBLES
         function renderChatsList(filterQuery = '') {
             const container = document.getElementById('tabChats');
             if (!container) return;
             container.innerHTML = '';
 
+            // Actualizar dinámicamente los nombres con usersMap y mySavedContacts antes de filtrar/mostrar
+            conversations.forEach(item => {
+                if (!item.isSelf && !item.isGroup) {
+                    item.name = resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
+                }
+            });
+
             const q = filterQuery.toLowerCase().trim();
             let filtered = conversations.filter(c => 
-                c.name.toLowerCase().includes(q) || c.recipientPhone.includes(q) || c.lastText.toLowerCase().includes(q)
+                (c.name && c.name.toLowerCase().includes(q)) || (c.recipientPhone && c.recipientPhone.includes(q)) || (c.lastText && c.lastText.toLowerCase().includes(q))
             );
 
             if (currentChatFilter === 'groups') {
@@ -4528,23 +5551,29 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 const row = document.createElement('div');
                 row.className = `chat-row ${currentChatId === item.chatId ? 'active' : ''}`;
                 
+                const displayName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
+                const p10 = (!item.isSelf && !item.isGroup && item.recipientPhone) ? String(item.recipientPhone).replace(/\D/g, '').slice(-10) : '';
+                const showPhoneBadge = p10 && !displayName.includes(p10);
                 const timeStr = formatTime(item.timestamp);
-                const initial = item.isSelf ? '📌' : (item.name ? item.name.charAt(0).toUpperCase() : '#');
+                const initial = item.isSelf ? '📌' : (displayName ? displayName.charAt(0).toUpperCase() : '#');
                 const avatarBg = item.isSelf ? 'background: linear-gradient(135deg, var(--neon-green), #00BFFF); color: #000;' : '';
 
-                const u = usersMap[item.recipientPhone];
+                const u = findUserInMapByPhone(item.recipientPhone);
                 const photoStyle = (u && (u.photoUrl || u.profilePhoto)) ? `background-image: url(${u.photoUrl || u.profilePhoto});` : '';
 
                 row.innerHTML = `
                     <div class="chat-avatar" style="${avatarBg} ${photoStyle}">${photoStyle ? '' : initial}</div>
                     <div class="chat-meta">
                         <div class="chat-title-row">
-                            <span class="chat-name">${escapeHtml(item.name)}</span>
+                            <span class="chat-name" style="display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis;">
+                                <span>${escapeHtml(displayName)}</span>
+                                ${showPhoneBadge ? `<span style="font-size:11px; color:#00FF7F; font-weight:600; flex-shrink:0;">📱 ${escapeHtml(p10)}</span>` : ''}
+                            </span>
                             <span class="chat-time">${timeStr}</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
-                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(item.name)}')" title="Vaciar mensajes del chat">🗑️</button>` : ''}
+                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🗑️</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -4554,21 +5583,34 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             });
         }
 
-        // VACIAR HISTORIAL DEL CHAT (SIN ELIMINAR EL CONTACTO)
+        // VACIAR HISTORIAL DEL CHAT SOLO EN MI DISPOSITIVO (SIN AFECTAR AL OTRO USUARIO NI ELIMINAR EL CONTACTO)
         function clearChatHistory(chatId, recipientPhone, displayName) {
-            if (confirm(`🧹 ¿Vaciar mensajes de este chat con ${displayName}?\n\nSe eliminará el historial de mensajes de la conversación, pero el contacto seguirá guardado y podrás volver a escribirle cuando gustes.`)) {
-                // 1. Borrar únicamente los mensajes del chat en Firebase
-                db.ref(`chats/${chatId}/messages`).remove();
+            if (confirm(`🧹 ¿Vaciar mensajes de este chat con ${displayName} solo en tu PC?\n\nSe limpiará el historial únicamente en tu dispositivo (el otro usuario conservará su historial intacto) y el contacto seguirá guardado.`)) {
+                // 1. Marcar como vaciado localmente en esta PC (NUNCA borrar de Firebase para no borrarle el historial al otro usuario)
+                markChatClearedLocallyWeb(chatId);
 
                 // 2. Si estaba abierto en pantalla, limpiar la vista de mensajes
                 if (currentChatId === chatId) {
                     const mList = document.getElementById('messagesList');
-                    if (mList) mList.innerHTML = '';
+                    if (mList) {
+                        mList.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:40px;">🧹 Historial vaciado en tu dispositivo.</div>';
+                    }
                 }
 
-                // NO BORRAMOS EL CONTACTO DE users/${myPhone}/contacts! Se conserva para que siempre pueda escribirle.
-                showToast(`🧹 Mensajes del chat con ${displayName} vaciados`);
+                // 3. Actualizar la vista previa local en la lista de conversaciones
+                const idx = conversations.findIndex(c => c.chatId === chatId);
+                if (idx !== -1) {
+                    conversations[idx].lastText = 'Chat vaciado';
+                    saveLocalConversationsWeb();
+                    renderChatsList();
+                }
+
+                showToast(`🧹 Chat con ${displayName} vaciado solo en tu PC`);
             }
+        }
+
+        function deleteChatWithNoTrace(chatId, recipientPhone, displayName) {
+            clearChatHistory(chatId, recipientPhone, displayName || 'este contacto');
         }
 
         function handleChatHeaderClick() {
@@ -4705,46 +5747,52 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             });
         }
 
-        // RENDERIZAR TODOS LOS CONTACTOS (UNIFICANDO USUARIOS REGISTRADOS Y GUARDADOS)
+        // RENDERIZAR CONTACTOS DEL USUARIO (PRIVACIDAD ESTRICTA + NOMBRE Y NÚMERO SIEMPRE VISIBLES)
         function renderContactsList(filterQuery = '') {
             const container = document.getElementById('tabContacts');
             if (!container) return;
             container.innerHTML = '';
 
             const q = filterQuery.toLowerCase().trim();
-
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
             const combinedMap = new Map();
 
-            // 1. Usuarios registrados en NeoMessage
-            Object.keys(usersMap).forEach(p => {
-                if (p !== myPhone) {
-                    const u = usersMap[p] || {};
-                    combinedMap.set(p, {
-                        id: p,
-                        name: u.name || ('Usuario ' + p.slice(-4)),
-                        status: u.status || 'En línea',
-                        photo: u.photoUrl || u.profilePhoto || null,
-                        isSaved: false
-                    });
+            // 1. Contactos con conversación activa de este usuario
+            conversations.forEach(conv => {
+                if (!conv.isSelf && !conv.isGroup && conv.recipientPhone) {
+                    const p10 = String(conv.recipientPhone).replace(/\D/g, '').slice(-10);
+                    if (p10 && p10 !== myP10) {
+                        const u = findUserInMapByPhone(p10) || {};
+                        const resolvedName = resolveContactNameWeb(p10, conv.peerSenderName || conv.name);
+                        combinedMap.set(p10, {
+                            id: p10,
+                            name: resolvedName,
+                            status: u.status || 'En línea',
+                            photo: u.photoUrl || u.profilePhoto || null,
+                            isSaved: true
+                        });
+                    }
                 }
             });
 
-            // 2. Sobrescribir con nombres de contactos guardados
+            // 2. Contactos guardados / sincronizados desde la agenda del celular de este usuario
             mySavedContacts.forEach(c => {
-                if (c && c.id && c.id !== myPhone) {
-                    const existing = combinedMap.get(c.id);
-                    combinedMap.set(c.id, {
-                        id: c.id,
-                        name: c.name || (existing ? existing.name : ('Contacto ' + c.id.slice(-4))),
-                        status: existing ? existing.status : 'En línea',
-                        photo: existing ? existing.photo : null,
+                const p10 = String((c && c.id) || '').replace(/\D/g, '').slice(-10);
+                if (p10 && p10 !== myP10) {
+                    const u = findUserInMapByPhone(p10) || {};
+                    const resolvedName = resolveContactNameWeb(p10, c.name);
+                    combinedMap.set(p10, {
+                        id: p10,
+                        name: resolvedName,
+                        status: u.status || 'En línea',
+                        photo: u.photoUrl || u.profilePhoto || null,
                         isSaved: true
                     });
                 }
             });
 
-            const list = Array.from(combinedMap.values());
-            const filtered = list.filter(c => c.name.toLowerCase().includes(q) || c.id.includes(q));
+            const list = Array.from(combinedMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const filtered = list.filter(c => (c.name && c.name.toLowerCase().includes(q)) || c.id.includes(q));
 
             const addBtnRow = document.createElement('div');
             addBtnRow.style.padding = '12px 16px';
@@ -4758,7 +5806,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             if (filtered.length === 0) {
                 const emptyDiv = document.createElement('div');
                 emptyDiv.style.cssText = 'padding: 30px; text-align: center; color: #64748B; font-size: 13px;';
-                emptyDiv.innerText = 'No se encontraron contactos en NeoMessage.';
+                emptyDiv.innerText = 'Tus contactos guardados y de tu celular aparecerán aquí.';
                 container.appendChild(emptyDiv);
                 return;
             }
@@ -4774,9 +5822,9 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name">${escapeHtml(c.name)}</span>
-                            ${c.isSaved ? '<span style="font-size:10px; color:#10B981; font-weight:bold;">Guardado</span>' : '<span style="font-size:10px; color:#38BDF8;">NeoMessage</span>'}
+                            <span style="font-size:11px; color:#00FF7F; font-weight:bold;">📱 ${escapeHtml(c.id)}</span>
                         </div>
-                        <span class="chat-last-msg">${c.id} • ${escapeHtml(c.status)}</span>
+                        <span class="chat-last-msg">Tel: ${escapeHtml(c.id)} • ${escapeHtml(c.status)}</span>
                     </div>
                 `;
 
@@ -4795,27 +5843,38 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             });
         }
 
-        // RENDERIZAR USUARIOS EN EL MODAL DE NUEVO CONTACTO
+        // RENDERIZAR CONTACTOS EN EL MODAL DE NUEVO CONTACTO (SIN MOSTRAR DESCONOCIDOS A MENOS QUE BUSQUE)
         function renderModalRegisteredUsers(query = '') {
             const listEl = document.getElementById('modalRegisteredUsersList');
             if (!listEl) return;
             listEl.innerHTML = '';
             const q = query.toLowerCase().trim();
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+
+            const myKnownPhones = new Set();
+            mySavedContacts.forEach(c => {
+                const p10 = String((c && c.id) || '').replace(/\D/g, '').slice(-10);
+                if (p10) myKnownPhones.add(p10);
+            });
+            conversations.forEach(conv => {
+                if (!conv.isSelf && !conv.isGroup && conv.recipientPhone) {
+                    const p10 = String(conv.recipientPhone).replace(/\D/g, '').slice(-10);
+                    if (p10) myKnownPhones.add(p10);
+                }
+            });
 
             const users = Object.keys(usersMap)
-                .filter(p => p !== myPhone)
-                .map(p => {
-                    const u = usersMap[p] || {};
-                    const saved = mySavedContacts.find(c => c.id === p);
-                    return {
-                        id: p,
-                        name: saved ? saved.name : (u.name || ('Usuario ' + p.slice(-4)))
-                    };
-                })
+                .map(p => String(p).replace(/\D/g, '').slice(-10))
+                .filter((p10, idx, arr) => p10 && p10 !== myP10 && arr.indexOf(p10) === idx)
+                .filter(p10 => myKnownPhones.has(p10) || q.length >= 3)
+                .map(p10 => ({
+                    id: p10,
+                    name: resolveContactNameWeb(p10, null)
+                }))
                 .filter(u => u.name.toLowerCase().includes(q) || u.id.includes(q));
 
             if (users.length === 0) {
-                listEl.innerHTML = '<div style="color: #64748B; font-size: 12px; text-align: center; padding: 8px;">No hay otros usuarios registrados aún.</div>';
+                listEl.innerHTML = '<div style="color: #64748B; font-size: 12px; text-align: center; padding: 8px;">Ingresa el nombre y número arriba o escribe al menos 3 dígitos/letras para buscar.</div>';
                 return;
             }
 
@@ -4825,7 +5884,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 item.innerHTML = `
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div class="chat-avatar" style="width: 26px; height: 26px; font-size: 11px; margin: 0;">${u.name.charAt(0).toUpperCase()}</div>
-                        <span style="color: #FFF; font-size: 13px;">${escapeHtml(u.name)} <small style="color: #94A3B8;">(${u.id})</small></span>
+                        <span style="color: #FFF; font-size: 13px; font-weight: 600;">${escapeHtml(u.name)} <small style="color: #00FF7F; font-weight: bold;">📱 ${escapeHtml(u.id)}</small></span>
                     </div>
                     <button style="background: #10B981; color: #000; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;">Chatear</button>
                 `;
@@ -4845,7 +5904,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             });
         }
 
-        // GESTOR DE INSTALACIÓN (PWA O DESCARGA DIRECTA DE LA ÚLTIMA VERSIÓN APK)
+                // GESTOR DE INSTALACIÓN (PWA O DESCARGA CON QR DE LA VERSIÓN MÁS RECIENTE)
         let deferredPrompt = null;
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
@@ -4854,7 +5913,15 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             if (btn) btn.style.display = 'flex';
         });
 
+        function openInstallAppModal() {
+            document.getElementById('installAppModal').style.display = 'flex';
+        }
+
         function triggerPwaInstall() {
+            openInstallAppModal();
+        }
+
+        function executePwaInstall() {
             if (deferredPrompt) {
                 deferredPrompt.prompt();
                 deferredPrompt.userChoice.then((choiceResult) => {
@@ -4864,8 +5931,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     deferredPrompt = null;
                 });
             } else {
-                showToast('📥 Descargando la versión más reciente de NeoMessage...');
-                window.location.href = 'https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk';
+                showToast('ℹ️ Para instalar en PC, usa el icono de instalación en la barra de tu navegador.');
             }
         }
 
@@ -4916,15 +5982,17 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
         function selectChat(item) {
             currentChatId = item.chatId;
             currentRecipient = item.recipientPhone;
-            currentContactName = item.name;
+            const resolvedName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
+            const p10 = (!item.isSelf && !item.isGroup && item.recipientPhone) ? String(item.recipientPhone).replace(/\D/g, '').slice(-10) : '';
+            currentContactName = resolvedName;
 
             document.getElementById('emptyPlaceholder').style.display = 'none';
             document.getElementById('statusWelcomePane').style.display = 'none';
             document.getElementById('activeChatBox').style.display = 'flex';
-            document.getElementById('activeChatName').innerText = item.name;
+            document.getElementById('activeChatName').innerText = (p10 && !resolvedName.includes(p10)) ? `${resolvedName} • 📱 ${p10}` : resolvedName;
 
             const activeAv = document.getElementById('activeAvatar');
-            const u = usersMap[item.recipientPhone];
+            const u = findUserInMapByPhone(item.recipientPhone);
             if (u && (u.photoUrl || u.profilePhoto)) {
                 activeAv.style.backgroundImage = `url(${u.photoUrl || u.profilePhoto})`;
                 activeAv.style.backgroundSize = 'cover';
@@ -4939,8 +6007,10 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 document.getElementById('activeChatSubtitle').innerText = 'Espacio personal cifrado';
             } else if (item.isGroup || item.recipientPhone.startsWith('group_')) {
                 document.getElementById('activeChatSubtitle').innerText = 'Grupo • Miembros ilimitados';
+                listenActiveChatTyping(currentChatId);
             } else {
                 listenActiveContactPresence(item.recipientPhone);
+                listenActiveChatTyping(currentChatId);
             }
 
             updateBlockedStatusUI();
@@ -4951,11 +6021,34 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             const messagesContainer = document.getElementById('messagesList');
             messagesContainer.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:12px; margin-top:20px;">Cargando mensajes...</div>';
 
-            messagesListener = db.ref(`chats/${currentChatId}/messages`);
+            messagesListener = db.ref(`chats/${currentChatId}/messages`).limitToLast(50);
             messagesListener.on('value', snap => {
                 messagesContainer.innerHTML = '';
-                const msgs = snap.val() || {};
-                const list = Object.values(msgs).sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
+                const cloudMsgs = snap.val() || {};
+                const localMsgs = getLocalChatMessages(currentChatId);
+                const mergedMap = Object.assign({}, localMsgs);
+                const myClean10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+
+                Object.keys(cloudMsgs).forEach(k => {
+                    const cm = cloudMsgs[k];
+                    if (cm) {
+                        const mid = cm.id || k;
+                        cm.id = mid;
+                        if (isMsgHiddenForMeWeb(currentChatId, mid, cm.timestamp)) return;
+                        mergedMap[mid] = cm;
+                        // Si el mensaje ya fue recibido por nosotros o tiene más de 10 minutos, limpiarlo de Firebase tras respaldarlo localmente
+                        const sClean10 = String(cm.senderId || '').replace(/\D/g, '').slice(-10);
+                        const ageMs = Date.now() - (Number(cm.timestamp) || 0);
+                        if ((sClean10 && sClean10 !== myClean10 && ageMs > 15000) || ageMs > 10 * 60 * 1000) {
+                            setTimeout(() => {
+                                db.ref(`chats/${currentChatId}/messages/${mid}`).remove().catch(() => {});
+                            }, 5000);
+                        }
+                    }
+                });
+
+                saveLocalChatMessages(currentChatId, mergedMap);
+                const list = Object.values(mergedMap).sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
 
                 if (list.length === 0) {
                     messagesContainer.innerHTML = `
@@ -4966,7 +6059,28 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     return;
                 }
 
+                let lastDateKey = '';
                 list.forEach(m => {
+                    const ts = Number(m.timestamp) || 0;
+                    if (ts > 0) {
+                        const d = new Date(ts);
+                        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                        if (dateKey !== lastDateKey) {
+                            lastDateKey = dateKey;
+                            const now = new Date();
+                            const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+                            const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                            const yestKey = `${yest.getFullYear()}-${yest.getMonth()}-${yest.getDate()}`;
+                            let label = '';
+                            if (dateKey === todayKey) label = 'HOY';
+                            else if (dateKey === yestKey) label = 'AYER';
+                            else label = d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase();
+                            const sep = document.createElement('div');
+                            sep.style.cssText = 'display:flex; justify-content:center; width:100%; margin:12px 0 8px 0; pointer-events:none;';
+                            sep.innerHTML = `<span style="background:rgba(30,41,59,0.92); color:#94A3B8; font-size:11px; font-weight:700; padding:5px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); box-shadow:0 2px 6px rgba(0,0,0,0.25); letter-spacing:0.4px;">${label}</span>`;
+                            messagesContainer.appendChild(sep);
+                        }
+                    }
                     renderMessageBubble(m);
                     // Marcar como leído
                     const senderClean = (m.senderId || '').replace(/\D/g, '');
@@ -4996,11 +6110,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
 
         function clearActiveChatMessages() {
             if (!currentChatId) return;
-            if (confirm(`¿Vaciar todos los mensajes de esta conversación?\nLos mensajes desaparecerán tanto en tu PC como en tu celular.`)) {
-                db.ref(`chats/${currentChatId}/messages`).remove().then(() => {
-                    showToast('Mensajes vaciados');
-                });
-            }
+            clearChatHistory(currentChatId, currentRecipient, currentContactName || 'este chat');
         }
 
         function deleteActiveChatEntirely() {
@@ -5008,14 +6118,73 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             deleteChatWithNoTrace(currentChatId, currentRecipient, currentContactName);
         }
 
+        function deleteMessageForMeWeb(msgId) {
+            if (!currentChatId || !msgId) return;
+            markMsgDeletedForMeWeb(currentChatId, msgId);
+            const bubble = document.getElementById('msg_' + msgId);
+            if (bubble) bubble.remove();
+            const remaining = Object.values(getLocalChatMessages(currentChatId)).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            const idx = conversations.findIndex(c => c.chatId === currentChatId);
+            if (idx !== -1) {
+                conversations[idx].lastText = remaining.length > 0 ? formatPreviewText(remaining[remaining.length - 1].text) : 'Mensaje eliminado';
+                saveLocalConversationsWeb();
+                renderChatsList();
+            }
+            showToast('🗑️ Mensaje eliminado para ti (solo en tu PC)');
+        }
+
         function deleteSingleMessage(msgId) {
             if (!currentChatId || !msgId) return;
-            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Eliminar para todos (deja aviso de mensaje eliminado)\n• Cancelar: No eliminar");
+            const localMap = getLocalChatMessages(currentChatId);
+            const existingMsg = localMap[msgId];
+            const isTargetMine = (contextTargetMsg && contextTargetMsg.id === msgId && contextTargetMsg.isMine) ||
+                                 (existingMsg && isSameSender(existingMsg.senderId, myPhone));
+            if (!isTargetMine) {
+                showToast('⚠️ Solo puedes eliminar para todos los mensajes que tú enviaste');
+                return;
+            }
+            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Se eliminará para ti y para el otro usuario\n• Cancelar: No eliminar");
             if (opt) {
-                db.ref(`chats/${currentChatId}/messages/${msgId}`).update({
+                const updatedPayload = Object.assign({}, existingMsg || {}, {
+                    id: msgId,
+                    senderId: (existingMsg && existingMsg.senderId) || myPhone,
+                    senderName: (existingMsg && existingMsg.senderName) || myName || myPhone,
+                    timestamp: (existingMsg && existingMsg.timestamp) || Date.now(),
                     text: '[DELETED]',
-                    deleted: true
-                }).then(() => {
+                    deleted: true,
+                    isDeletedForEveryone: true
+                });
+                localMap[msgId] = updatedPayload;
+                saveLocalChatMessages(currentChatId, localMap);
+
+                const bubble = document.getElementById('msg_' + msgId);
+                if (bubble) {
+                    const delDiv = bubble.querySelector('.msg-text, .msg-deleted, img, audio, video');
+                    if (delDiv) {
+                        bubble.innerHTML = `
+                            <div class="msg-deleted">
+                                <span style="font-size:14px;">🚫</span>
+                                <span>Eliminaste este mensaje.</span>
+                            </div>
+                            <div class="msg-footer">
+                                <span>${formatTime(updatedPayload.timestamp)}</span>
+                            </div>
+                        `;
+                    }
+                }
+
+                db.ref(`chats/${currentChatId}/messages/${msgId}`).update(updatedPayload).then(() => {
+                    const rec10 = String(currentRecipient || '').replace(/\D/g, '').slice(-10);
+                    if (rec10 && rec10.length === 10 && !currentChatId.startsWith('group_')) {
+                        db.ref(`inbox/${rec10}/${msgId}`).set({
+                            id: msgId,
+                            chatId: currentChatId,
+                            senderId: myPhone,
+                            senderName: myName || myPhone,
+                            text: '[DELETED]',
+                            timestamp: updatedPayload.timestamp
+                        }).catch(() => {});
+                    }
                     showToast('🚫 Mensaje eliminado para todos');
                 });
             }
@@ -5081,7 +6250,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             }
 
             // 1. MENSAJES ELIMINADOS
-            if (text === '[DELETED]' || msg.deleted) {
+            if (text === '[DELETED]' || msg.deleted || msg.isDeletedForEveryone || text === '🚫 Este mensaje fue eliminado') {
                 b.innerHTML = `
                     ${menuBtnHtml}
                     <div class="msg-deleted">
@@ -5348,7 +6517,14 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 `;
             } else if (text.startsWith('[Media]') || text.startsWith('data:image/')) {
                 // 7. FOTO ADJUNTA CON VISUALIZACIÓN HD Y DESCARGA NATIVA
-                const src = text.startsWith('[Media]') ? text.replace('[Media] ', '').trim() : text.trim();
+                const rawContent = text.startsWith('[Media]') ? text.replace('[Media] ', '').trim() : text.trim();
+                let src = rawContent;
+                let caption = '';
+                if (rawContent.includes('\n')) {
+                    const splitIdx = rawContent.indexOf('\n');
+                    src = rawContent.substring(0, splitIdx).trim();
+                    caption = rawContent.substring(splitIdx + 1).trim();
+                }
                 const photoName = `foto_${msg.timestamp || Date.now()}.jpg`;
                 b.innerHTML = `
                     ${quoteHtml}
@@ -5453,6 +6629,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
 
         // ENVIAR MENSAJE
         function sendMessage() {
+            if (currentChatId) db.ref(`typing/${currentChatId}`).remove();
             const input = document.getElementById('messageInput');
             const txt = input.value.trim();
             if (!txt || !currentChatId) return;
@@ -5487,8 +6664,25 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 cancelReply();
             }
 
-            // 1. Firebase
+            // 0. Respaldo inmediato en almacenamiento local de esta PC
+            const localMap = getLocalChatMessages(currentChatId);
+            localMap[msgId] = msgObj;
+            saveLocalChatMessages(currentChatId, localMap);
+
+            // 1. Firebase (entrega en tiempo real + aviso ligero < 200 bytes en inbox)
             newRef.set(msgObj);
+            const cleanRecip10 = String(currentRecipient || '').replace(/\D/g, '').slice(-10);
+            const myClean10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (cleanRecip10 && cleanRecip10.length === 10 && cleanRecip10 !== myClean10 && !String(currentChatId).startsWith('group_')) {
+                db.ref(`inbox/${cleanRecip10}/${msgId}`).set({
+                    id: msgId,
+                    chatId: currentChatId,
+                    senderId: myPhone,
+                    senderName: myName,
+                    text: formatPreviewText(textPayload).slice(0, 80),
+                    timestamp: msgObj.timestamp
+                });
+            }
 
             // 2. Relay local hacia el destinatario (<1ms)
             fetch('/send', {
@@ -5986,6 +7180,8 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             
             const isTextOnly = !text.startsWith('[Media]') && !text.startsWith('[File]') && !text.startsWith('[Document]|') && !text.startsWith('[Audio]') && !text.startsWith('[Video]') && !text.startsWith('[Sticker]') && !text.startsWith('[DELETED]');
             
+            const delForMeBtn = document.getElementById('contextDeleteForMeBtn');
+            if (delForMeBtn) delForMeBtn.style.display = 'flex';
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
             const editBtn = document.getElementById('contextEditBtn');
@@ -6048,8 +7244,19 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             document.getElementById('msgContextMenu').style.display = 'none';
         }
 
+        function triggerDeleteForMeFromContext() {
+            if (!contextTargetMsg) return;
+            deleteMessageForMeWeb(contextTargetMsg.id);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
         function triggerDeleteFromContext() {
             if (!contextTargetMsg) return;
+            if (!contextTargetMsg.isMine) {
+                showToast('⚠️ Solo puedes eliminar para todos los mensajes que tú enviaste');
+                document.getElementById('msgContextMenu').style.display = 'none';
+                return;
+            }
             deleteSingleMessage(contextTargetMsg.id);
             document.getElementById('msgContextMenu').style.display = 'none';
         }
@@ -6361,8 +7568,12 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             <span>⭐</span>
             <span>Destacar</span>
         </div>
-        <div class="context-item danger" id="contextDeleteBtn" onclick="triggerDeleteFromContext()">
+        <div class="context-item" id="contextDeleteForMeBtn" onclick="triggerDeleteForMeFromContext()">
             <span>🗑️</span>
+            <span>Eliminar para mí</span>
+        </div>
+        <div class="context-item danger" id="contextDeleteBtn" onclick="triggerDeleteFromContext()">
+            <span>🚫</span>
             <span>Eliminar para todos</span>
         </div>
     </div>

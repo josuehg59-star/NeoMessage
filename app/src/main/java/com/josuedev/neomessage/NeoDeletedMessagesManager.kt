@@ -51,6 +51,29 @@ object NeoDeletedMessagesManager {
         val set = getSet(context)
         return set.contains(messageId)
     }
+
+    private const val KEY_CLEARED_PREFIX = "cleared_chat_ts_"
+
+    fun markChatClearedNow(context: Context, chatId: String, timestamp: Long = System.currentTimeMillis()) {
+        if (chatId.isBlank()) return
+        synchronized(this) {
+            val sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            sp.edit().putLong(KEY_CLEARED_PREFIX + chatId, timestamp).apply()
+        }
+    }
+
+    fun getChatClearedTimestamp(context: Context, chatId: String): Long {
+        if (chatId.isBlank()) return 0L
+        val sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return sp.getLong(KEY_CLEARED_PREFIX + chatId, 0L)
+    }
+
+    fun isMessageHiddenForMe(context: Context, chatId: String, messageId: String, timestamp: Long): Boolean {
+        if (isDeletedForMe(context, messageId)) return true
+        val clearedAt = getChatClearedTimestamp(context, chatId)
+        if (clearedAt > 0L && timestamp > 0L && timestamp <= clearedAt) return true
+        return false
+    }
 }
 
 /**

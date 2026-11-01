@@ -5237,10 +5237,77 @@
         // ESCUCHAR CHATS ACTIVOS (MODO ULTRA-LIGERO: CERO DESCARGA MASIVA DE FIREBASE + RESPALDO LOCAL)
         const watchedChatIdsWeb = new Set();
 
+        function getMyClean10Web() {
+            return String(myPhone || '').replace(/\D/g, '').slice(-10) || 'default';
+        }
+
+        function getDeletedForMeSetWeb() {
+            try {
+                const raw = localStorage.getItem('neo_deleted_for_me_' + getMyClean10Web());
+                const arr = raw ? JSON.parse(raw) : [];
+                return new Set(Array.isArray(arr) ? arr : []);
+            } catch (_) { return new Set(); }
+        }
+
+        function markMsgDeletedForMeWeb(chatId, msgId) {
+            if (!msgId) return;
+            try {
+                const set = getDeletedForMeSetWeb();
+                set.add(msgId);
+                const arr = Array.from(set).slice(-2000);
+                localStorage.setItem('neo_deleted_for_me_' + getMyClean10Web(), JSON.stringify(arr));
+                if (chatId) {
+                    const raw = localStorage.getItem('neo_web_msgs_' + chatId);
+                    const map = raw ? JSON.parse(raw) : {};
+                    if (map && map[msgId]) {
+                        delete map[msgId];
+                        localStorage.setItem('neo_web_msgs_' + chatId, JSON.stringify(map));
+                    }
+                }
+            } catch (_) {}
+        }
+
+        function getChatClearedAtWeb(chatId) {
+            if (!chatId) return 0;
+            try {
+                return Number(localStorage.getItem('neo_cleared_chat_' + getMyClean10Web() + '_' + chatId) || '0') || 0;
+            } catch (_) { return 0; }
+        }
+
+        function markChatClearedLocallyWeb(chatId) {
+            if (!chatId) return;
+            try {
+                const nowTs = Date.now();
+                localStorage.setItem('neo_cleared_chat_' + getMyClean10Web() + '_' + chatId, String(nowTs));
+                const raw = localStorage.getItem('neo_web_msgs_' + chatId);
+                const map = raw ? JSON.parse(raw) : {};
+                const set = getDeletedForMeSetWeb();
+                Object.keys(map || {}).forEach(id => set.add(id));
+                localStorage.setItem('neo_deleted_for_me_' + getMyClean10Web(), JSON.stringify(Array.from(set).slice(-2000)));
+                localStorage.removeItem('neo_web_msgs_' + chatId);
+            } catch (_) {}
+        }
+
+        function isMsgHiddenForMeWeb(chatId, msgId, timestamp) {
+            if (msgId && getDeletedForMeSetWeb().has(msgId)) return true;
+            const clearedAt = getChatClearedAtWeb(chatId);
+            const ts = Number(timestamp) || 0;
+            if (clearedAt > 0 && ts > 0 && ts <= clearedAt) return true;
+            return false;
+        }
+
         function getLocalChatMessages(chatId) {
             try {
                 const raw = localStorage.getItem('neo_web_msgs_' + chatId);
-                return raw ? JSON.parse(raw) : {};
+                const parsed = raw ? JSON.parse(raw) : {};
+                const filtered = {};
+                Object.keys(parsed || {}).forEach(k => {
+                    const m = parsed[k];
+                    if (m && !isMsgHiddenForMeWeb(chatId, m.id || k, m.timestamp)) {
+                        filtered[k] = m;
+                    }
+                });
+                return filtered;
             } catch (_) { return {}; }
         }
 
@@ -5314,6 +5381,7 @@
                 if (!val) return;
                 const lastM = Object.values(val)[0];
                 if (!lastM) return;
+                if (isMsgHiddenForMeWeb(cId, lastM.id, lastM.timestamp)) return;
 
                 // Guardar en el respaldo local de la PC
                 const mapNow = getLocalChatMessages(cId);
@@ -5398,6 +5466,17 @@
                 const notice = snap.val();
                 if (!notice) return;
                 const cId = notice.chatId || '';
+                if (notice.text === '[DELETED]' && cId && notice.id) {
+                    const mapNow = getLocalChatMessages(cId);
+                    if (mapNow[notice.id]) {
+                        mapNow[notice.id].text = '[DELETED]';
+                        mapNow[notice.id].deleted = true;
+                        mapNow[notice.id].isDeletedForEveryone = true;
+                        saveLocalChatMessages(cId, mapNow);
+                    }
+                    try { snap.ref.remove(); } catch (_) {}
+                    return;
+                }
                 const sPhone = String(notice.senderId || '').replace(/\D/g, '').slice(-10);
                 if (cId && sPhone) {
                     attachLightweightChatWatcher(cId, sPhone, cId.startsWith('group_'), notice.senderName);
@@ -5504,21 +5583,34 @@
             });
         }
 
-        // VACIAR HISTORIAL DEL CHAT (SIN ELIMINAR EL CONTACTO)
+        // VACIAR HISTORIAL DEL CHAT SOLO EN MI DISPOSITIVO (SIN AFECTAR AL OTRO USUARIO NI ELIMINAR EL CONTACTO)
         function clearChatHistory(chatId, recipientPhone, displayName) {
-            if (confirm(`🧹 ¿Vaciar mensajes de este chat con ${displayName}?\n\nSe eliminará el historial de mensajes de la conversación, pero el contacto seguirá guardado y podrás volver a escribirle cuando gustes.`)) {
-                // 1. Borrar únicamente los mensajes del chat en Firebase
-                db.ref(`chats/${chatId}/messages`).remove();
+            if (confirm(`🧹 ¿Vaciar mensajes de este chat con ${displayName} solo en tu PC?\n\nSe limpiará el historial únicamente en tu dispositivo (el otro usuario conservará su historial intacto) y el contacto seguirá guardado.`)) {
+                // 1. Marcar como vaciado localmente en esta PC (NUNCA borrar de Firebase para no borrarle el historial al otro usuario)
+                markChatClearedLocallyWeb(chatId);
 
                 // 2. Si estaba abierto en pantalla, limpiar la vista de mensajes
                 if (currentChatId === chatId) {
                     const mList = document.getElementById('messagesList');
-                    if (mList) mList.innerHTML = '';
+                    if (mList) {
+                        mList.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:40px;">🧹 Historial vaciado en tu dispositivo.</div>';
+                    }
                 }
 
-                // NO BORRAMOS EL CONTACTO DE users/${myPhone}/contacts! Se conserva para que siempre pueda escribirle.
-                showToast(`🧹 Mensajes del chat con ${displayName} vaciados`);
+                // 3. Actualizar la vista previa local en la lista de conversaciones
+                const idx = conversations.findIndex(c => c.chatId === chatId);
+                if (idx !== -1) {
+                    conversations[idx].lastText = 'Chat vaciado';
+                    saveLocalConversationsWeb();
+                    renderChatsList();
+                }
+
+                showToast(`🧹 Chat con ${displayName} vaciado solo en tu PC`);
             }
+        }
+
+        function deleteChatWithNoTrace(chatId, recipientPhone, displayName) {
+            clearChatHistory(chatId, recipientPhone, displayName || 'este contacto');
         }
 
         function handleChatHeaderClick() {
@@ -5942,6 +6034,7 @@
                     if (cm) {
                         const mid = cm.id || k;
                         cm.id = mid;
+                        if (isMsgHiddenForMeWeb(currentChatId, mid, cm.timestamp)) return;
                         mergedMap[mid] = cm;
                         // Si el mensaje ya fue recibido por nosotros o tiene más de 10 minutos, limpiarlo de Firebase tras respaldarlo localmente
                         const sClean10 = String(cm.senderId || '').replace(/\D/g, '').slice(-10);
@@ -6017,11 +6110,7 @@
 
         function clearActiveChatMessages() {
             if (!currentChatId) return;
-            if (confirm(`¿Vaciar todos los mensajes de esta conversación?\nLos mensajes desaparecerán tanto en tu PC como en tu celular.`)) {
-                db.ref(`chats/${currentChatId}/messages`).remove().then(() => {
-                    showToast('Mensajes vaciados');
-                });
-            }
+            clearChatHistory(currentChatId, currentRecipient, currentContactName || 'este chat');
         }
 
         function deleteActiveChatEntirely() {
@@ -6029,14 +6118,73 @@
             deleteChatWithNoTrace(currentChatId, currentRecipient, currentContactName);
         }
 
+        function deleteMessageForMeWeb(msgId) {
+            if (!currentChatId || !msgId) return;
+            markMsgDeletedForMeWeb(currentChatId, msgId);
+            const bubble = document.getElementById('msg_' + msgId);
+            if (bubble) bubble.remove();
+            const remaining = Object.values(getLocalChatMessages(currentChatId)).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            const idx = conversations.findIndex(c => c.chatId === currentChatId);
+            if (idx !== -1) {
+                conversations[idx].lastText = remaining.length > 0 ? formatPreviewText(remaining[remaining.length - 1].text) : 'Mensaje eliminado';
+                saveLocalConversationsWeb();
+                renderChatsList();
+            }
+            showToast('🗑️ Mensaje eliminado para ti (solo en tu PC)');
+        }
+
         function deleteSingleMessage(msgId) {
             if (!currentChatId || !msgId) return;
-            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Eliminar para todos (deja aviso de mensaje eliminado)\n• Cancelar: No eliminar");
+            const localMap = getLocalChatMessages(currentChatId);
+            const existingMsg = localMap[msgId];
+            const isTargetMine = (contextTargetMsg && contextTargetMsg.id === msgId && contextTargetMsg.isMine) ||
+                                 (existingMsg && isSameSender(existingMsg.senderId, myPhone));
+            if (!isTargetMine) {
+                showToast('⚠️ Solo puedes eliminar para todos los mensajes que tú enviaste');
+                return;
+            }
+            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Se eliminará para ti y para el otro usuario\n• Cancelar: No eliminar");
             if (opt) {
-                db.ref(`chats/${currentChatId}/messages/${msgId}`).update({
+                const updatedPayload = Object.assign({}, existingMsg || {}, {
+                    id: msgId,
+                    senderId: (existingMsg && existingMsg.senderId) || myPhone,
+                    senderName: (existingMsg && existingMsg.senderName) || myName || myPhone,
+                    timestamp: (existingMsg && existingMsg.timestamp) || Date.now(),
                     text: '[DELETED]',
-                    deleted: true
-                }).then(() => {
+                    deleted: true,
+                    isDeletedForEveryone: true
+                });
+                localMap[msgId] = updatedPayload;
+                saveLocalChatMessages(currentChatId, localMap);
+
+                const bubble = document.getElementById('msg_' + msgId);
+                if (bubble) {
+                    const delDiv = bubble.querySelector('.msg-text, .msg-deleted, img, audio, video');
+                    if (delDiv) {
+                        bubble.innerHTML = `
+                            <div class="msg-deleted">
+                                <span style="font-size:14px;">🚫</span>
+                                <span>Eliminaste este mensaje.</span>
+                            </div>
+                            <div class="msg-footer">
+                                <span>${formatTime(updatedPayload.timestamp)}</span>
+                            </div>
+                        `;
+                    }
+                }
+
+                db.ref(`chats/${currentChatId}/messages/${msgId}`).update(updatedPayload).then(() => {
+                    const rec10 = String(currentRecipient || '').replace(/\D/g, '').slice(-10);
+                    if (rec10 && rec10.length === 10 && !currentChatId.startsWith('group_')) {
+                        db.ref(`inbox/${rec10}/${msgId}`).set({
+                            id: msgId,
+                            chatId: currentChatId,
+                            senderId: myPhone,
+                            senderName: myName || myPhone,
+                            text: '[DELETED]',
+                            timestamp: updatedPayload.timestamp
+                        }).catch(() => {});
+                    }
                     showToast('🚫 Mensaje eliminado para todos');
                 });
             }
@@ -6102,7 +6250,7 @@
             }
 
             // 1. MENSAJES ELIMINADOS
-            if (text === '[DELETED]' || msg.deleted) {
+            if (text === '[DELETED]' || msg.deleted || msg.isDeletedForEveryone || text === '🚫 Este mensaje fue eliminado') {
                 b.innerHTML = `
                     ${menuBtnHtml}
                     <div class="msg-deleted">
@@ -7032,6 +7180,8 @@
             
             const isTextOnly = !text.startsWith('[Media]') && !text.startsWith('[File]') && !text.startsWith('[Document]|') && !text.startsWith('[Audio]') && !text.startsWith('[Video]') && !text.startsWith('[Sticker]') && !text.startsWith('[DELETED]');
             
+            const delForMeBtn = document.getElementById('contextDeleteForMeBtn');
+            if (delForMeBtn) delForMeBtn.style.display = 'flex';
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
             const editBtn = document.getElementById('contextEditBtn');
@@ -7094,8 +7244,19 @@
             document.getElementById('msgContextMenu').style.display = 'none';
         }
 
+        function triggerDeleteForMeFromContext() {
+            if (!contextTargetMsg) return;
+            deleteMessageForMeWeb(contextTargetMsg.id);
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
         function triggerDeleteFromContext() {
             if (!contextTargetMsg) return;
+            if (!contextTargetMsg.isMine) {
+                showToast('⚠️ Solo puedes eliminar para todos los mensajes que tú enviaste');
+                document.getElementById('msgContextMenu').style.display = 'none';
+                return;
+            }
             deleteSingleMessage(contextTargetMsg.id);
             document.getElementById('msgContextMenu').style.display = 'none';
         }
@@ -7407,8 +7568,12 @@
             <span>⭐</span>
             <span>Destacar</span>
         </div>
-        <div class="context-item danger" id="contextDeleteBtn" onclick="triggerDeleteFromContext()">
+        <div class="context-item" id="contextDeleteForMeBtn" onclick="triggerDeleteForMeFromContext()">
             <span>🗑️</span>
+            <span>Eliminar para mí</span>
+        </div>
+        <div class="context-item danger" id="contextDeleteBtn" onclick="triggerDeleteFromContext()">
+            <span>🚫</span>
             <span>Eliminar para todos</span>
         </div>
     </div>

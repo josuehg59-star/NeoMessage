@@ -853,7 +853,7 @@ fun ChatsListScreen(
                                     .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                                         override fun onDataChange(msgSnap: com.google.firebase.database.DataSnapshot) {
                                             val lastMsgObj = msgSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
-                                            if (lastMsgObj != null) {
+                                            if (lastMsgObj != null && !NeoDeletedMessagesManager.isMessageHiddenForMe(context, chatId, lastMsgObj.id, lastMsgObj.timestamp)) {
                                                 val cleanSender = NeoUtils.sanitizeId(lastMsgObj.senderId)
                                                 val cleanMe = NeoUtils.sanitizeId(myCleanId)
                                                 val peerSenderName = if (cleanSender.takeLast(10) != cleanMe.takeLast(10)) lastMsgObj.senderName else null
@@ -1201,18 +1201,28 @@ fun ChatsListScreen(
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
                 containerColor = NeoTheme.Card,
-                title = { Text("Vaciar Conversación", color = Color.White, fontWeight = FontWeight.Bold) },
-                text = { Text("¿Deseas vaciar los mensajes con ${selectedChatAction!!.first}? Se limpiará el historial de mensajes, pero el contacto se mantendrá guardado en tu lista para que puedas volver a escribirle cuando quieras.", color = Color.LightGray) },
+                title = { Text("Vaciar Conversación (Solo en mi cel)", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = { Text("¿Deseas vaciar los mensajes con ${selectedChatAction!!.first} en tu celular? Se limpiará únicamente de tu teléfono sin borrar el historial del otro usuario, y el contacto se mantendrá guardado.", color = Color.LightGray) },
                 confirmButton = {
                     Button(onClick = {
-                        val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-                        db.getReference("chats").child(selectedChatAction!!.second).removeValue()
-                        db.getReference("typing").child(selectedChatAction!!.second).removeValue()
+                        val targetChatId = selectedChatAction!!.second
+                        NeoDeletedMessagesManager.markChatClearedNow(context, targetChatId)
+                        Thread {
+                            try {
+                                kotlinx.coroutines.runBlocking {
+                                    AppDatabase.getDatabase(context).messageDao().clearChat(targetChatId)
+                                }
+                            } catch (_: Exception) {}
+                        }.start()
+                        val existingIdx = found.indexOfFirst { it.chatId == targetChatId }
+                        if (existingIdx != -1) {
+                            found[existingIdx] = found[existingIdx].copy(lastMsg = "Chat vaciado")
+                        }
                         showDeleteDialog = false
                         selectedChatAction = null
-                        Toast.makeText(context, "Historial de mensajes vaciado.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "🧹 Historial vaciado solo en tu celular.", Toast.LENGTH_SHORT).show()
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
-                        Text("VACIAR MENSAJES")
+                        Text("VACIAR EN MI CEL")
                     }
                 },
                 dismissButton = {
@@ -1290,7 +1300,7 @@ fun ChatsListScreen(
                             Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(0.7f))
                         ) {
-                            Text("ELIMINAR PERMANENTE", color = Color.White)
+                            Text("VACIAR CHAT (SOLO EN MI CEL)", color = Color.White)
                         }
                     }
                 },

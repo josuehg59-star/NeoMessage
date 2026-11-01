@@ -261,7 +261,7 @@ class NeoForegroundService : Service() {
                                 }
                         }
 
-                        if (lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(msgId)) {
+                        if (lastSenderClean.takeLast(10) != cleanMyId.takeLast(10) && !notifiedMsgIds.contains(msgId) && textPreview != "[DELETED]" && !textPreview.contains("Este mensaje fue eliminado")) {
                             notifiedMsgIds.add(msgId)
                             NeoBotManager.dispatchAutoReplyIfNeeded(
                                 context = this@NeoForegroundService,

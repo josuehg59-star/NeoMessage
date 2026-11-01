@@ -214,7 +214,7 @@ fun ChatRoomScreen(
                 dao?.getMessagesForChat(chatId)?.collect { entities ->
                     withContext(Dispatchers.Main) {
                         for (e in entities) {
-                            if (NeoDeletedMessagesManager.isDeletedForMe(context, e.id)) continue
+                            if (NeoDeletedMessagesManager.isMessageHiddenForMe(context, chatId, e.id, e.timestamp)) continue
                             val cloud = e.toCloud()
                             val idx = firebaseMessages.indexOfFirst { it.id == cloud.id }
                             if (idx == -1) {
@@ -235,7 +235,7 @@ fun ChatRoomScreen(
                 override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                     val m = snapshot.getValue(CloudMessage::class.java)
                     if (m != null) {
-                        if (NeoDeletedMessagesManager.isDeletedForMe(context, m.id)) return
+                        if (NeoDeletedMessagesManager.isMessageHiddenForMe(context, chatId, m.id, m.timestamp)) return
                         val idx = firebaseMessages.indexOfFirst { it.id == m.id }
                         if (idx == -1) {
                             firebaseMessages.add(m)
@@ -274,6 +274,7 @@ fun ChatRoomScreen(
                 override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
                     val m = snapshot.getValue(CloudMessage::class.java)
                     if (m != null) {
+                        if (NeoDeletedMessagesManager.isMessageHiddenForMe(context, chatId, m.id, m.timestamp)) return
                         val index = firebaseMessages.indexOfFirst { it.id == m.id }
                         if (index != -1) firebaseMessages[index] = m else firebaseMessages.add(m)
                         firebaseMessages.sortBy { it.timestamp }
@@ -851,15 +852,17 @@ fun ChatRoomScreen(
                                 showMoreMenu = false
                                 Toast.makeText(context, if(showGhostMode) "MODO FANTASMA ACTIVADO: Mensajes efímeros." else "MODO FANTASMA DESACTIVADO", Toast.LENGTH_SHORT).show()
                             })
-                            DropdownMenuItem(text = { Text("🗑️ Vaciar chat", color = Color.Red) }, onClick = { 
+                            DropdownMenuItem(text = { Text("🗑️ Vaciar chat (solo en mi cel)", color = Color.Red) }, onClick = { 
                                 showMoreMenu = false
                                 coroutineScope.launch { 
-                                    try { database.removeValue() } catch (_: Exception) {}
+                                    NeoDeletedMessagesManager.markChatClearedNow(context, chatId)
+                                    firebaseMessages.forEach { msg -> NeoDeletedMessagesManager.markDeletedForMe(context, msg.id) }
                                     try { typingDb.removeValue() } catch (_: Exception) {}
                                     coroutineScope.launch(Dispatchers.IO) {
                                         try { dao?.clearChat(chatId) } catch (_: Exception) {}
                                     }
                                     firebaseMessages.clear()
+                                    Toast.makeText(context, "🧹 Chat vaciado solo en tu celular", Toast.LENGTH_SHORT).show()
                                 } 
                             })
                             DropdownMenuItem(text = { Text(if (isOtherBlocked.value) "Desbloquear contacto" else "Bloquear contacto", color = if(isOtherBlocked.value) NeoTheme.Green else Color.Red) }, onClick = { 
@@ -1492,12 +1495,14 @@ fun ChatRoomScreen(
             },
             onClearChat = {
                 coroutineScope.launch {
-                    try { database.removeValue() } catch (_: Exception) {}
+                    NeoDeletedMessagesManager.markChatClearedNow(context, chatId)
+                    firebaseMessages.forEach { msg -> NeoDeletedMessagesManager.markDeletedForMe(context, msg.id) }
                     try { typingDb.removeValue() } catch (_: Exception) {}
                     coroutineScope.launch(Dispatchers.IO) {
                         try { dao?.clearChat(chatId) } catch (_: Exception) {}
                     }
                     firebaseMessages.clear()
+                    Toast.makeText(context, "🧹 Chat vaciado solo en tu celular", Toast.LENGTH_SHORT).show()
                 }
             },
             onOpenDisappearingDialog = { showDisappearingDialog = true },
@@ -1773,12 +1778,29 @@ fun ChatRoomScreen(
                                     try { dao?.insertMessage(updatedMsg.toEntity(chatId)) } catch (_: Exception) {}
                                     try {
                                         val updates = mapOf<String, Any>(
+                                            "id" to mid,
+                                            "senderId" to targetMsg.senderId,
+                                            "senderName" to targetMsg.senderName,
+                                            "timestamp" to targetMsg.timestamp,
                                             "isDeletedForEveryone" to true,
                                             "deleted" to true,
                                             "text" to "🚫 Este mensaje fue eliminado",
                                             "reactions" to emptyMap<String, String>()
                                         )
                                         database.child(mid).updateChildren(updates)
+                                        val rec10 = otherCleanId.takeLast(10)
+                                        if (rec10.length == 10 && !chatId.startsWith("group_")) {
+                                            FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                                .getReference("inbox").child(rec10).child(mid)
+                                                .setValue(mapOf(
+                                                    "id" to mid,
+                                                    "chatId" to chatId,
+                                                    "senderId" to cleanMyId,
+                                                    "senderName" to targetMsg.senderName,
+                                                    "text" to "[DELETED]",
+                                                    "timestamp" to targetMsg.timestamp
+                                                ))
+                                        }
                                     } catch (_: Exception) {}
                                 }
                                 Toast.makeText(context, "🚫 Mensaje eliminado para todos", Toast.LENGTH_SHORT).show()
