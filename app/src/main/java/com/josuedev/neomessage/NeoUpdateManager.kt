@@ -58,7 +58,7 @@ object NeoUpdateManager {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val serverCode = snapshot.child("versionCode").getValue(Long::class.java)?.toInt() ?: 0
                     val versionName = snapshot.child("versionName").getValue(String::class.java) ?: ""
-                    val apkUrl = snapshot.child("apkUrl").getValue(String::class.java) ?: ""
+                    val apkUrl = snapshot.child("apkUrl").getValue(String::class.java) ?: snapshot.child("downloadUrl").getValue(String::class.java) ?: "https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk"
                     val changelog = snapshot.child("changelog").getValue(String::class.java) ?: "Mejoras de rendimiento y nuevas funciones."
                     val isMandatory = snapshot.child("isMandatory").getValue(Boolean::class.java) ?: false
 
