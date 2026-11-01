@@ -428,20 +428,22 @@ fun ContactsScreen(
                 }
             }
 
-            // 3. PRIVACIDAD TOTAL ESTILO WHATSAPP:
-            // Solo los contactos guardados en ESTE celular que tengan la app instalada
-            val neoContacts = myDeviceContacts.filter { (phone10, _) ->
-                registeredMap.containsKey(phone10)
-            }.map { (phone10, localInfo) ->
-                val regInfo = registeredMap[phone10]
+                        // 3. REUNIR TODOS LOS USUARIOS CON CUENTA NEOMESSAGE INSTALADA
+            // Se muestran todos los usuarios registrados en la red, priorizando el nombre que tú le diste en tu agenda
+            val allNeoUsers = users.map { regUser ->
+                val regId = regUser["id"] ?: ""
+                val phone10 = NeoUtils.sanitizeId(regId).takeLast(10)
+                val localInfo = myDeviceContacts[phone10]
+                val displayName = localInfo?.get("name") ?: regUser["name"] ?: phone10
                 mapOf(
-                    "id" to phone10,
-                    "name" to (localInfo["name"] ?: regInfo?.get("name") ?: "Contacto"),
-                    "photoUrl" to (regInfo?.get("photoUrl") ?: ""),
-                    "status" to (regInfo?.get("status") ?: "En línea")
+                    "id" to regId,
+                    "phone10" to phone10,
+                    "name" to displayName,
+                    "photoUrl" to (regUser["photoUrl"] ?: ""),
+                    "status" to (regUser["status"] ?: "En línea"),
+                    "isSaved" to (localInfo != null).toString()
                 )
-            }
-            val allNeoUsers = neoContacts
+            }.distinctBy { it["id"] }
 
             val filtered = if (searchQuery.isEmpty()) {
                 allNeoUsers

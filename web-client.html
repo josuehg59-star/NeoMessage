@@ -2031,11 +2031,54 @@
                 <button style="flex: 1; background: #334155; border: none; color: #FFF; padding: 12px; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('addContactModal').style.display='none'">Cancelar</button>
                 <button style="flex: 1; background: var(--accent); border: none; color: #FFF; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;" onclick="saveNewContact()">Guardar Contacto</button>
             </div>
+
+            <div style="margin-top: 20px; border-top: 1px solid #334155; padding-top: 14px;">
+                <h4 style="color: #38BDF8; margin: 0 0 8px 0; font-size: 13px;">👥 O Selecciona un Usuario Registrado:</h4>
+                <input type="text" id="filterModalUsers" oninput="renderModalRegisteredUsers(this.value)" placeholder="Buscar por nombre o número..." style="width: 100%; padding: 8px 12px; background: #0F172A; border: 1px solid #334155; border-radius: 6px; color: #FFF; font-size: 12px; margin-bottom: 8px;">
+                <div id="modalRegisteredUsersList" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+                    <!-- Lista de usuarios registrados -->
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- CONTENEDOR PRINCIPAL ESCRITORIO -->
     
+    <!-- MODAL: INFORMACIÓN Y GESTIÓN DE INTEGRANTES DE GRUPO -->
+    <div id="groupInfoModal" class="modal-overlay" style="display: none; z-index: 1000;">
+        <div class="dialog-card" style="max-width: 520px; max-height: 85vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="color: var(--neon-green); margin: 0;" id="groupInfoTitle">👥 Información del Grupo</h3>
+                <button onclick="document.getElementById('groupInfoModal').style.display='none'" style="background: none; border: none; color: #94A3B8; font-size: 20px; cursor: pointer;">✕</button>
+            </div>
+            
+            <div style="text-align: center; margin-bottom: 16px;">
+                <div class="chat-avatar" id="groupInfoAvatar" style="width: 64px; height: 64px; font-size: 28px; margin: 0 auto 8px auto; background: linear-gradient(135deg, #10B981, #06B6D4); color: #000;">👥</div>
+                <h4 id="groupInfoName" style="color: #FFF; margin: 0 0 4px 0; font-size: 18px;">Grupo</h4>
+                <div id="groupInfoMembersCount" style="color: #94A3B8; font-size: 13px;">0 integrantes</div>
+            </div>
+
+            <!-- SECCIÓN: AGREGAR NUEVO INTEGRANTE -->
+            <div style="background: #1E293B; border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+                <label style="color: #38BDF8; font-size: 12px; font-weight: bold; display: block; margin-bottom: 6px;">➕ Añadir Nuevo Integrante al Grupo</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="tel" id="newGroupMemberPhone" placeholder="Número de 10 dígitos (Ej: 9611234567)" style="flex: 1; padding: 8px 12px; background: #0F172A; border: 1px solid #334155; border-radius: 6px; color: #FFF; font-size: 13px;">
+                    <button onclick="addMemberToCurrentGroup()" style="background: #10B981; border: none; color: #000; font-weight: bold; padding: 8px 14px; border-radius: 6px; cursor: pointer;">Añadir</button>
+                </div>
+            </div>
+
+            <!-- LISTA DE INTEGRANTES CON OPCIÓN DE ELIMINAR -->
+            <label style="color: #94A3B8; font-size: 12px; font-weight: bold; margin-bottom: 6px;">Integrantes del Grupo:</label>
+            <div id="groupMembersListContainer" style="flex: 1; overflow-y: auto; max-height: 280px; display: flex; flex-direction: column; gap: 6px; padding-right: 4px;">
+                <!-- Renderizado dinámico de integrantes -->
+            </div>
+
+            <div style="margin-top: 14px; text-align: right;">
+                <button onclick="document.getElementById('groupInfoModal').style.display='none'" style="background: #334155; color: #FFF; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: CREAR GRUPO ILIMITADO (HASTA 1,000,000+ MIEMBROS) -->
     <div id="createGroupModal" class="modal-overlay" style="display: none;">
         <div class="dialog-card" style="max-width: 480px;">
@@ -2283,7 +2326,7 @@
             <!-- SALA DE CHAT ACTIVA -->
             <div id="activeChatBox" style="display: none; flex-direction: column; height: 100%; position: relative; z-index: 2;">
                 <div class="chat-header">
-                    <div class="chat-header-info" onclick="toggleDropdownMenu()">
+                    <div class="chat-header-info" onclick="handleChatHeaderClick()">
                         <div class="chat-avatar" id="activeAvatar" style="width: 40px; height: 40px; font-size: 16px; margin: 0;">C</div>
                         <div>
                             <div class="chat-header-name" id="activeChatName">Contacto</div>
@@ -2302,10 +2345,11 @@
                         
                         <!-- MENÚ DESPLEGABLE CON ACCIONES COMPLETAS -->
                         <div class="dropdown-menu" id="chatDropdownMenu">
-                            <div class="dropdown-item" onclick="openCreateGroupModal(); toggleDropdownMenu();">👥 Crear Grupo con este Contacto</div>
-                            <div class="dropdown-item" onclick="openQuoteModal(); toggleDropdownMenu();">📋 Enviar Cotización</div>
-                            <div class="dropdown-item" onclick="clearActiveChatMessages(); toggleDropdownMenu();">🗑️ Vaciar Mensajes del Chat</div>
-                            <div class="dropdown-item danger" onclick="deleteActiveChatEntirely(); toggleDropdownMenu();">❌ Eliminar Chat y Borrar Todo Rastro</div>
+                            <div class="dropdown-item" id="menuItemViewGroup" onclick="openGroupInfo(); toggleDropdownMenu();" style="display: none;">👥 Ver Integrantes del Grupo</div>
+                            <div class="dropdown-item" id="menuItemAddGroupMember" onclick="openGroupInfo(); toggleDropdownMenu();" style="display: none;">➕ Añadir Integrante al Grupo</div>
+                            <div class="dropdown-item" id="menuItemCreateGroup" onclick="openCreateGroupModal(); toggleDropdownMenu();">👥 Crear Grupo con este Contacto</div>
+                            <div class="dropdown-item" id="menuItemQuote" onclick="openQuoteModal(); toggleDropdownMenu();">📋 Enviar Cotización</div>
+                            <div class="dropdown-item" onclick="clearActiveChatMessages(); toggleDropdownMenu();">🧹 Vaciar Mensajes del Chat</div>
                             <div class="dropdown-item danger" id="btnBlockToggle" onclick="toggleBlockContact(); toggleDropdownMenu();">🚫 Bloquear Contacto</div>
                         </div>
                     </div>
@@ -4275,6 +4319,20 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
 
         function toggleDropdownMenu() {
             const m = document.getElementById('chatDropdownMenu');
+            const isGroup = currentChatId && currentChatId.startsWith('group_');
+            
+            const itemViewGroup = document.getElementById('menuItemViewGroup');
+            const itemAddGroup = document.getElementById('menuItemAddGroupMember');
+            const itemCreateGroup = document.getElementById('menuItemCreateGroup');
+            const itemQuote = document.getElementById('menuItemQuote');
+            const itemBlock = document.getElementById('btnBlockToggle');
+
+            if (itemViewGroup) itemViewGroup.style.display = isGroup ? 'block' : 'none';
+            if (itemAddGroup) itemAddGroup.style.display = isGroup ? 'block' : 'none';
+            if (itemCreateGroup) itemCreateGroup.style.display = isGroup ? 'none' : 'block';
+            if (itemQuote) itemQuote.style.display = isGroup ? 'none' : 'block';
+            if (itemBlock) itemBlock.style.display = isGroup ? 'none' : 'block';
+
             m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
 
@@ -4447,7 +4505,7 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
-                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(item.name)}')" title="Eliminar y borrar todo rastro del número">🗑️</button>` : ''}
+                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(item.name)}')" title="Vaciar mensajes del chat">🗑️</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -4457,35 +4515,157 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             });
         }
 
-        // ELIMINAR CHAT Y BORRAR TODO RASTRO DEL NÚMERO (PARA QUE NADIE SEPA CON QUIÉN SE HABLÓ)
-        function deleteChatWithNoTrace(chatId, recipientPhone, displayName) {
-            if (confirm(`🔒 ¿ELIMINAR ESTE CHAT Y BORRAR TODO RASTRO?\n\nSe borrará la conversación y el número ${recipientPhone} de tu historial. Nadie podrá ver que te comunicaste con este contacto.`)) {
-                // 1. Borrar todos los mensajes en Firebase
-                db.ref(`chats/${chatId}`).remove();
+        // VACIAR HISTORIAL DEL CHAT (SIN ELIMINAR EL CONTACTO)
+        function clearChatHistory(chatId, recipientPhone, displayName) {
+            if (confirm(`🧹 ¿Vaciar mensajes de este chat con ${displayName}?\n\nSe eliminará el historial de mensajes de la conversación, pero el contacto seguirá guardado y podrás volver a escribirle cuando gustes.`)) {
+                // 1. Borrar únicamente los mensajes del chat en Firebase
+                db.ref(`chats/${chatId}/messages`).remove();
 
-                // 2. Borrar de contactos guardados
-                db.ref(`users/${myPhone}/contacts/${recipientPhone}`).remove();
-
-                // 3. Borrar de archivados si existía
-                db.ref(`users/${myPhone}/archived/${chatId}`).remove();
-
-                // 4. Si estaba abierto en pantalla, cerrarlo
+                // 2. Si estaba abierto en pantalla, limpiar la vista de mensajes
                 if (currentChatId === chatId) {
-                    currentChatId = '';
-                    currentRecipient = '';
-                    document.getElementById('activeChatBox').style.display = 'none';
-                    document.getElementById('emptyPlaceholder').style.display = 'flex';
+                    const mList = document.getElementById('messagesList');
+                    if (mList) mList.innerHTML = '';
                 }
 
-                // 5. Quitar de la lista local
-                conversations = conversations.filter(c => c.chatId !== chatId);
-                renderChatsList();
-
-                showToast(`🔒 Chat con ${displayName} borrado sin dejar rastro`);
+                // NO BORRAMOS EL CONTACTO DE users/${myPhone}/contacts! Se conserva para que siempre pueda escribirle.
+                showToast(`🧹 Mensajes del chat con ${displayName} vaciados`);
             }
         }
 
-        // RENDERIZAR CONTACTOS
+        function handleChatHeaderClick() {
+            if (currentChatId && currentChatId.startsWith('group_')) {
+                openGroupInfo(currentChatId);
+            } else {
+                toggleDropdownMenu();
+            }
+        }
+
+        // INFORMACIÓN Y GESTIÓN DE INTEGRANTES DEL GRUPO
+        function openGroupInfo(groupId) {
+            if (!groupId) groupId = currentChatId;
+            if (!groupId || !groupId.startsWith('group_')) return;
+
+            db.ref('groups/' + groupId).once('value', snap => {
+                const group = snap.val();
+                if (!group) return;
+
+                document.getElementById('groupInfoTitle').innerText = '👥 ' + (group.name || 'Grupo');
+                document.getElementById('groupInfoName').innerText = group.name || 'Grupo';
+                
+                let members = group.members || [];
+                if (!Array.isArray(members)) {
+                    members = typeof members === 'object' ? Object.values(members) : [group.createdBy || myPhone];
+                }
+                const uniqueMembers = Array.from(new Set([group.createdBy, ...members])).filter(Boolean);
+                document.getElementById('groupInfoMembersCount').innerText = uniqueMembers.length + ' participante(s)';
+
+                const container = document.getElementById('groupMembersListContainer');
+                container.innerHTML = '';
+
+                const isCreator = (group.createdBy === myPhone);
+
+                uniqueMembers.forEach(memberPhone => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #0F172A; border-radius: 8px;';
+
+                    const userEntry = usersMap[memberPhone];
+                    const saved = mySavedContacts.find(c => c.id === memberPhone);
+                    const dispName = (memberPhone === myPhone) ? (myName + ' (Tú)') : (saved ? saved.name : (userEntry && userEntry.name ? userEntry.name : ('Usuario ' + memberPhone.slice(-4))));
+
+                    const isThisCreator = (group.createdBy === memberPhone);
+
+                    row.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="chat-avatar" style="width: 34px; height: 34px; font-size: 14px; margin: 0;">${dispName.charAt(0).toUpperCase()}</div>
+                            <div>
+                                <div style="color: #FFF; font-weight: bold; font-size: 13px;">${escapeHtml(dispName)} ${isThisCreator ? '<span style="background: #F59E0B; color: #000; font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: bold; margin-left: 6px;">Creador</span>' : ''}</div>
+                                <div style="color: #64748B; font-size: 11px;">${memberPhone}</div>
+                            </div>
+                        </div>
+                        ${!isThisCreator && (isCreator || memberPhone === myPhone) ? `
+                            <button onclick="removeMemberFromGroup('${groupId}', '${memberPhone}', '${escapeHtml(dispName)}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #EF4444; color: #EF4444; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;" title="Eliminar del grupo">
+                                ${memberPhone === myPhone ? 'Salir' : '❌ Eliminar'}
+                            </button>
+                        ` : ''}
+                    `;
+                    container.appendChild(row);
+                });
+
+                document.getElementById('groupInfoModal').style.display = 'flex';
+            });
+        }
+
+        function addMemberToCurrentGroup() {
+            const input = document.getElementById('newGroupMemberPhone');
+            const phone = input.value.replace(/\D/g, '');
+            if (phone.length < 10) {
+                alert('Ingresa un número telefónico válido de 10 dígitos.');
+                return;
+            }
+            const groupId = currentChatId;
+            if (!groupId || !groupId.startsWith('group_')) return;
+
+            db.ref('groups/' + groupId).once('value', snap => {
+                const group = snap.val();
+                if (!group) return;
+                let members = group.members || [];
+                if (!Array.isArray(members)) members = Object.values(members);
+
+                if (members.includes(phone)) {
+                    alert('Este número ya es integrante del grupo.');
+                    return;
+                }
+
+                members.push(phone);
+                db.ref('groups/' + groupId + '/members').set(members).then(() => {
+                    input.value = '';
+                    const userEntry = usersMap[phone];
+                    const addedName = userEntry && userEntry.name ? userEntry.name : phone;
+                    db.ref('chats/' + groupId + '/messages').push().set({
+                        id: 'sys_' + Date.now(),
+                        text: `📢 ${addedName} ha sido añadido al grupo.`,
+                        timestamp: Date.now(),
+                        senderId: 'SYSTEM',
+                        senderName: 'Sistema'
+                    });
+                    showToast('✅ Integrante añadido al grupo');
+                    openGroupInfo(groupId);
+                });
+            });
+        }
+
+        function removeMemberFromGroup(groupId, memberPhone, memberName) {
+            if (!confirm(`¿Eliminar a ${memberName} de este grupo?`)) return;
+
+            db.ref('groups/' + groupId).once('value', snap => {
+                const group = snap.val();
+                if (!group) return;
+                let members = group.members || [];
+                if (!Array.isArray(members)) members = Object.values(members);
+
+                const newMembers = members.filter(p => p !== memberPhone);
+                db.ref('groups/' + groupId + '/members').set(newMembers).then(() => {
+                    db.ref('chats/' + groupId + '/messages').push().set({
+                        id: 'sys_' + Date.now(),
+                        text: `📢 ${memberName} ha sido eliminado del grupo.`,
+                        timestamp: Date.now(),
+                        senderId: 'SYSTEM',
+                        senderName: 'Sistema'
+                    });
+                    showToast(`Integración de ${memberName} eliminada`);
+                    if (memberPhone === myPhone) {
+                        document.getElementById('groupInfoModal').style.display = 'none';
+                        currentChatId = '';
+                        document.getElementById('activeChatBox').style.display = 'none';
+                        document.getElementById('emptyPlaceholder').style.display = 'flex';
+                    } else {
+                        openGroupInfo(groupId);
+                    }
+                });
+            });
+        }
+
+        // RENDERIZAR TODOS LOS CONTACTOS (UNIFICANDO USUARIOS REGISTRADOS Y GUARDADOS)
         function renderContactsList(filterQuery = '') {
             const container = document.getElementById('tabContacts');
             if (!container) return;
@@ -4493,58 +4673,77 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
 
             const q = filterQuery.toLowerCase().trim();
 
-            let list = mySavedContacts;
-            if (list.length === 0 && Object.keys(usersMap).length > 0) {
-                list = Object.keys(usersMap)
-                    .filter(p => p !== myPhone)
-                    .map(p => ({
-                        id: p,
-                        name: (usersMap[p] && usersMap[p].name) ? usersMap[p].name : ('Contacto ' + p.slice(-4))
-                    }));
-            }
+            const combinedMap = new Map();
 
+            // 1. Usuarios registrados en NeoMessage
+            Object.keys(usersMap).forEach(p => {
+                if (p !== myPhone) {
+                    const u = usersMap[p] || {};
+                    combinedMap.set(p, {
+                        id: p,
+                        name: u.name || ('Usuario ' + p.slice(-4)),
+                        status: u.status || 'En línea',
+                        photo: u.photoUrl || u.profilePhoto || null,
+                        isSaved: false
+                    });
+                }
+            });
+
+            // 2. Sobrescribir con nombres de contactos guardados
+            mySavedContacts.forEach(c => {
+                if (c && c.id && c.id !== myPhone) {
+                    const existing = combinedMap.get(c.id);
+                    combinedMap.set(c.id, {
+                        id: c.id,
+                        name: c.name || (existing ? existing.name : ('Contacto ' + c.id.slice(-4))),
+                        status: existing ? existing.status : 'En línea',
+                        photo: existing ? existing.photo : null,
+                        isSaved: true
+                    });
+                }
+            });
+
+            const list = Array.from(combinedMap.values());
             const filtered = list.filter(c => c.name.toLowerCase().includes(q) || c.id.includes(q));
 
             const addBtnRow = document.createElement('div');
             addBtnRow.style.padding = '12px 16px';
             addBtnRow.innerHTML = `
-                <button class="btn-primary" style="padding:10px; font-size:13px;" onclick="openAddContactModal()">
-                    ➕ Añadir Nuevo Contacto
+                <button onclick="openAddContactModal()" style="width: 100%; background: #10B981; color: #000; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <span>➕ Añadir Nuevo Contacto / Iniciar Chat</span>
                 </button>
             `;
             container.appendChild(addBtnRow);
 
             if (filtered.length === 0) {
-                const empty = document.createElement('div');
-                empty.style.cssText = 'text-align:center; padding:24px; color:var(--text-secondary); font-size:13px;';
-                empty.innerText = 'No hay contactos registrados.';
-                container.appendChild(empty);
+                const emptyDiv = document.createElement('div');
+                emptyDiv.style.cssText = 'padding: 30px; text-align: center; color: #64748B; font-size: 13px;';
+                emptyDiv.innerText = 'No se encontraron contactos en NeoMessage.';
+                container.appendChild(emptyDiv);
                 return;
             }
 
             filtered.forEach(c => {
                 const row = document.createElement('div');
                 row.className = `chat-row ${currentRecipient === c.id ? 'active' : ''}`;
-                const initial = c.name.charAt(0).toUpperCase();
-
-                const u = usersMap[c.id];
-                const photoStyle = (u && (u.photoUrl || u.profilePhoto)) ? `background-image: url(${u.photoUrl || u.profilePhoto});` : '';
+                const initial = (c.name || 'U').charAt(0).toUpperCase();
+                const photoStyle = c.photo ? `background-image: url(${c.photo});` : '';
 
                 row.innerHTML = `
                     <div class="chat-avatar" style="${photoStyle}">${photoStyle ? '' : initial}</div>
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name">${escapeHtml(c.name)}</span>
+                            ${c.isSaved ? '<span style="font-size:10px; color:#10B981; font-weight:bold;">Guardado</span>' : '<span style="font-size:10px; color:#38BDF8;">NeoMessage</span>'}
                         </div>
-                        <div class="chat-last-msg">${c.id}</div>
+                        <span class="chat-last-msg">${c.id} • ${escapeHtml(c.status)}</span>
                     </div>
                 `;
 
                 row.onclick = () => {
                     const ids = [myPhone, c.id].sort();
-                    const cId = `private_${ids[0]}_${ids[1]}`;
                     selectChat({
-                        chatId: cId,
+                        chatId: `private_${ids[0]}_${ids[1]}`,
                         recipientPhone: c.id,
                         name: c.name,
                         lastText: '',
@@ -4556,9 +4755,84 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             });
         }
 
+        // RENDERIZAR USUARIOS EN EL MODAL DE NUEVO CONTACTO
+        function renderModalRegisteredUsers(query = '') {
+            const listEl = document.getElementById('modalRegisteredUsersList');
+            if (!listEl) return;
+            listEl.innerHTML = '';
+            const q = query.toLowerCase().trim();
+
+            const users = Object.keys(usersMap)
+                .filter(p => p !== myPhone)
+                .map(p => {
+                    const u = usersMap[p] || {};
+                    const saved = mySavedContacts.find(c => c.id === p);
+                    return {
+                        id: p,
+                        name: saved ? saved.name : (u.name || ('Usuario ' + p.slice(-4)))
+                    };
+                })
+                .filter(u => u.name.toLowerCase().includes(q) || u.id.includes(q));
+
+            if (users.length === 0) {
+                listEl.innerHTML = '<div style="color: #64748B; font-size: 12px; text-align: center; padding: 8px;">No hay otros usuarios registrados aún.</div>';
+                return;
+            }
+
+            users.forEach(u => {
+                const item = document.createElement('div');
+                item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: #1E293B; border-radius: 6px; cursor: pointer;';
+                item.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="chat-avatar" style="width: 26px; height: 26px; font-size: 11px; margin: 0;">${u.name.charAt(0).toUpperCase()}</div>
+                        <span style="color: #FFF; font-size: 13px;">${escapeHtml(u.name)} <small style="color: #94A3B8;">(${u.id})</small></span>
+                    </div>
+                    <button style="background: #10B981; color: #000; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;">Chatear</button>
+                `;
+                item.onclick = () => {
+                    document.getElementById('addContactModal').style.display = 'none';
+                    const ids = [myPhone, u.id].sort();
+                    selectChat({
+                        chatId: `private_${ids[0]}_${ids[1]}`,
+                        recipientPhone: u.id,
+                        name: u.name,
+                        lastText: '',
+                        timestamp: Date.now(),
+                        isSelf: false
+                    });
+                };
+                listEl.appendChild(item);
+            });
+        }
+
+        // GESTOR DE INSTALACIÓN (PWA O DESCARGA DIRECTA DE LA ÚLTIMA VERSIÓN APK)
+        let deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const btn = document.getElementById('pwaInstallHeaderBtn');
+            if (btn) btn.style.display = 'flex';
+        });
+
+        function triggerPwaInstall() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        showToast('✅ Instalando NeoMessage...');
+                    }
+                    deferredPrompt = null;
+                });
+            } else {
+                showToast('📥 Descargando la versión más reciente de NeoMessage...');
+                window.location.href = 'https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk';
+            }
+        }
+
         // GUARDAR CONTACTO
         function openAddContactModal() {
             document.getElementById('addContactModal').style.display = 'flex';
+            renderModalRegisteredUsers('');
             document.getElementById('newContactName').focus();
         }
 
@@ -6377,13 +6651,14 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             }
         }
 
-        async function executeWikipediaSearch() {
+        async function executeWikipediaSearch(customQuery) {
             const input = document.getElementById('wikiSearchInput');
-            const q = input.value.trim();
+            const q = (typeof customQuery === 'string' && customQuery) ? customQuery : input.value.trim();
             if (!q) {
                 alert('Escribe el tema o palabra que deseas buscar en Wikipedia.');
                 return;
             }
+            input.value = q;
 
             const resBox = document.getElementById('wikiResultBox');
             const loadBox = document.getElementById('wikiLoading');
@@ -6391,36 +6666,76 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             loadBox.style.display = 'block';
 
             try {
-                const cleanQuery = q.replace(/\s+/g, '_');
-                const url = 'https://es.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(cleanQuery);
-                const res = await fetch(url);
-                if (!res.ok) {
-                    throw new Error('No se encontró un artículo exacto con ese nombre.');
-                }
+                // 1. Consulta con resolución automática de redirecciones e imágenes
+                const queryUrl = 'https://es.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&titles=' + encodeURIComponent(q) + '&pithumbsize=300&redirects=1&format=json&origin=*';
+                const res = await fetch(queryUrl);
                 const data = await res.json();
-                currentWikiResult = data;
+                
+                let page = null;
+                if (data.query && data.query.pages) {
+                    const pages = Object.values(data.query.pages);
+                    if (pages.length > 0 && pages[0].pageid && pages[0].extract) {
+                        page = pages[0];
+                    }
+                }
 
-                document.getElementById('wikiTitle').innerText = data.title || q;
-                document.getElementById('wikiDescription').innerText = data.description || 'Artículo de Wikipedia';
-                document.getElementById('wikiExtract').innerText = data.extract || 'Sin resumen disponible.';
+                // 2. Si no fue un artículo directo, buscar por palabras clave
+                if (!page) {
+                    const searchUrl = 'https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + encodeURIComponent(q) + '&format=json&origin=*';
+                    const sRes = await fetch(searchUrl);
+                    const sData = await sRes.json();
+                    
+                    if (sData.query && sData.query.search && sData.query.search.length > 0) {
+                        const bestTitle = sData.query.search[0].title;
+                        const bestUrl = 'https://es.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&titles=' + encodeURIComponent(bestTitle) + '&pithumbsize=300&redirects=1&format=json&origin=*';
+                        const bestRes = await fetch(bestUrl);
+                        const bestData = await bestRes.json();
+                        if (bestData.query && bestData.query.pages) {
+                            const bPages = Object.values(bestData.query.pages);
+                            if (bPages.length > 0 && bPages[0].pageid) {
+                                page = bPages[0];
+                            }
+                        }
+                    }
+                }
+
+                if (!page || !page.title) {
+                    throw new Error('No se encontraron artículos en Wikipedia sobre "' + q + '".');
+                }
+
+                const title = page.title;
+                const extract = page.extract ? page.extract : 'Artículo de Wikipedia';
+                const pageUrl = 'https://es.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/\s+/g, '_'));
+                const thumbUrl = (page.thumbnail && page.thumbnail.source) ? page.thumbnail.source : '';
+
+                currentWikiResult = {
+                    title: title,
+                    extract: extract,
+                    pageUrl: pageUrl,
+                    thumbUrl: thumbUrl
+                };
+
+                document.getElementById('wikiTitle').innerText = title;
+                document.getElementById('wikiDescription').innerText = 'Artículo Oficial de Wikipedia';
+                document.getElementById('wikiExtract').innerText = extract;
 
                 const imgEl = document.getElementById('wikiImg');
-                if (data.thumbnail && data.thumbnail.source) {
-                    imgEl.src = data.thumbnail.source;
+                if (thumbUrl) {
+                    imgEl.src = thumbUrl;
                     imgEl.style.display = 'block';
                 } else {
                     imgEl.style.display = 'none';
                 }
 
-                const pageUrl = (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) ? data.content_urls.desktop.page : 'https://es.wikipedia.org/wiki/' + encodeURIComponent(cleanQuery);
                 document.getElementById('btnWikiOpenBrowser').onclick = function() { window.open(pageUrl, '_blank'); };
-                document.getElementById('btnWikiShareChat').onclick = function() { shareWikipediaArticleInChat(data, pageUrl); };
+                document.getElementById('btnWikiShareChat').onclick = function() { shareWikipediaArticleInChat(currentWikiResult, pageUrl); };
 
                 loadBox.style.display = 'none';
                 resBox.style.display = 'block';
+
             } catch (err) {
                 loadBox.style.display = 'none';
-                alert('Wikipedia: ' + err.message + '\n\nIntenta con un término más específico (ejemplo: "Revolución Mexicana" en vez de solo "Revolución").');
+                alert('Wikipedia: ' + err.message + '\n\nPrueba con un término general o palabra clave.');
             }
         }
 
@@ -6430,8 +6745,9 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                 return;
             }
             const title = data.title || 'Artículo de Wikipedia';
-            const extract = (data.extract || '').substring(0, 300);
-            const imgUrl = (data.thumbnail && data.thumbnail.source) ? data.thumbnail.source : '';
+            const rawExtract = data.extract || '';
+            const extract = rawExtract.length > 250 ? rawExtract.substring(0, 247) + '...' : rawExtract;
+            const imgUrl = (data.thumbUrl || (data.thumbnail && data.thumbnail.source)) ? (data.thumbUrl || data.thumbnail.source) : '';
 
             const payload = '[WIKIPEDIA]|' + title + '|' + extract + '|' + pageUrl + '|' + imgUrl;
             dispatchMessageObject(payload);
@@ -6439,8 +6755,6 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
             showToast('📖 Artículo de Wikipedia compartido en el chat');
         }
 
-
-        // ==============================================================================
         // 4. TRANSCRIPTOR DE NOTAS DE VOZ A TEXTO EN PANTALLA
         // ==============================================================================
         function transcribeAudio(msgId, audioSrc) {

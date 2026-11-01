@@ -1,5 +1,7 @@
 package com.josuedev.neomessage
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -138,6 +140,7 @@ fun ChatRoomScreen(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val isGroup = chatId.startsWith("group_") || (!chatId.startsWith("private_") && !chatId.startsWith("self_"))
     val database = remember { NetworkConfig.getDatabaseReference("chats").child(chatId).child("messages") }
     val typingDb = remember { NetworkConfig.getDatabaseReference(NetworkConfig.PATH_TYPING).child(chatId) }
     
@@ -924,6 +927,16 @@ fun ChatRoomScreen(
                         ) {
                             Box {
                                 Column(modifier = Modifier.padding(12.dp).widthIn(max = 280.dp)) {
+                                if (isGroup && !isMine) {
+                                    val senderDisplayName = if (msg.senderName.isNotBlank() && msg.senderName != "Neo") msg.senderName else msg.senderId
+                                    Text(
+                                        text = senderDisplayName,
+                                        color = Color(0xFF38BDF8),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 3.dp)
+                                    )
+                                }
                                 if (msg.isDeletedForEveryone) {
                                     Text("🚫 Este mensaje fue eliminado", color = textSubColor.copy(0.6f), fontSize = 14.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                                 } else if (msg.expiryTime != null && msg.expiryTime < System.currentTimeMillis()) {
@@ -1313,7 +1326,15 @@ fun ChatRoomScreen(
         )
     }
 
-    if (showContactInfoScreen) {
+        if (showContactInfoScreen) {
+        if (isGroup) {
+            GroupInfoModal(
+                groupName = chatName,
+                groupId = chatId,
+                myId = cleanMyId,
+                onDismiss = { showContactInfoScreen = false }
+            )
+        } else {
         ContactInfoScreen(
             contactName = chatName,
             contactPhone = otherCleanId,
@@ -1383,6 +1404,7 @@ fun ChatRoomScreen(
                 Toast.makeText(context, "Para crear un grupo ve a la pestaña Comunidades", Toast.LENGTH_LONG).show()
             }
         )
+        }
     }
 
     if (activeZoomBitmap != null) {
@@ -2550,6 +2572,244 @@ fun FullScreenImageViewer(
                     Icon(Icons.Default.ZoomIn, contentDescription = "Acercar (+)", tint = Color(0xFF00FF7F))
                 }
             }
+        }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupInfoModal(
+    groupName: String,
+    groupId: String,
+    myId: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val spContacts = remember { context.getSharedPreferences("NeoContacts", Context.MODE_PRIVATE) }
+    var groupData by remember { mutableStateOf<NeoGroup?>(null) }
+    var showAddMemberDialog by remember { mutableStateOf(false) }
+    var newMemberPhone by remember { mutableStateOf("") }
+    var memberToRemove by remember { mutableStateOf<String?>(null) }
+    var memberToRemoveName by remember { mutableStateOf("") }
+
+    LaunchedEffect(groupId) {
+        val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+        db.getReference("groups").child(groupId).addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                groupData = snapshot.getValue(NeoGroup::class.java)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Información del Grupo", color = Color.White, fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = NeoTheme.Card)
+                )
+            },
+            containerColor = NeoTheme.Dark
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                NeoUniversalAvatar(
+                    photoSource = null,
+                    fallbackName = groupName,
+                    modifier = Modifier.size(90.dp),
+                    fontSize = 32
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(groupName, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                val members = groupData?.members ?: emptyList()
+                val totalCount = (members + (groupData?.createdBy ?: "")).filter { it.isNotBlank() }.distinct().size
+                Text("Grupo • $totalCount participantes", color = Color.Gray, fontSize = 14.sp)
+
+                Spacer(Modifier.height(24.dp))
+
+                Surface(
+                    color = NeoTheme.Card,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Integrantes ($totalCount)", color = NeoTheme.Green, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            IconButton(onClick = { showAddMemberDialog = true }) {
+                                Icon(Icons.Filled.PersonAdd, contentDescription = "Añadir", tint = NeoTheme.Green)
+                            }
+                        }
+                        HorizontalDivider(color = NeoTheme.Border, modifier = Modifier.padding(vertical = 8.dp))
+
+                        val allMembers = (listOfNotNull(groupData?.createdBy) + members).filter { it.isNotBlank() }.distinct()
+                        allMembers.forEach { memberPhone ->
+                            val clean = NeoUtils.sanitizeId(memberPhone)
+                            val isCreator = clean.takeLast(10) == NeoUtils.sanitizeId(groupData?.createdBy ?: "").takeLast(10)
+                            val isMe = clean.takeLast(10) == NeoUtils.sanitizeId(myId).takeLast(10)
+                            val contactName = spContacts.getString(clean.takeLast(10), memberPhone) ?: memberPhone
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                NeoUniversalAvatar(
+                                    photoSource = null,
+                                    fallbackName = contactName,
+                                    modifier = Modifier.size(40.dp),
+                                    fontSize = 16
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isMe) "$contactName (Tú)" else contactName,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(memberPhone, color = Color.Gray, fontSize = 12.sp)
+                                }
+                                if (isCreator) {
+                                    Surface(
+                                        color = NeoTheme.Green.copy(0.2f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            "Creador",
+                                            color = NeoTheme.Green,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                } else {
+                                    val amICreator = NeoUtils.sanitizeId(groupData?.createdBy ?: "").takeLast(10) == NeoUtils.sanitizeId(myId).takeLast(10)
+                                    if (amICreator || isMe) {
+                                        IconButton(
+                                            onClick = {
+                                                memberToRemove = memberPhone
+                                                memberToRemoveName = if (isMe) "ti mismo" else contactName
+                                            }
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.PersonRemove,
+                                                contentDescription = "Eliminar integrante",
+                                                tint = Color(0xFFEF4444)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showAddMemberDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddMemberDialog = false },
+                title = { Text("Añadir participante", color = Color.White) },
+                text = {
+                    Column {
+                        Text("Ingresa el número de teléfono del contacto:", color = Color.Gray, fontSize = 13.sp)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = newMemberPhone,
+                            onValueChange = { newMemberPhone = it },
+                            placeholder = { Text("Ej: 9611234567") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val cleanNew = NeoUtils.sanitizeId(newMemberPhone).trim()
+                            if (cleanNew.length >= 7) {
+                                val current = groupData?.members?.toMutableList() ?: mutableListOf()
+                                if (!current.contains(cleanNew)) {
+                                    current.add(cleanNew)
+                                    FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                        .getReference("groups").child(groupId).child("members").setValue(current)
+                                    Toast.makeText(context, "Integrante añadido", Toast.LENGTH_SHORT).show()
+                                }
+                                showAddMemberDialog = false
+                                newMemberPhone = ""
+                            } else {
+                                Toast.makeText(context, "Número inválido", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NeoTheme.Green)
+                    ) {
+                        Text("AÑADIR", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddMemberDialog = false }) { Text("CANCELAR", color = Color.Gray) }
+                }
+            )
+        }
+
+        if (memberToRemove != null) {
+            AlertDialog(
+                onDismissRequest = { memberToRemove = null },
+                containerColor = NeoTheme.Card,
+                title = { Text("Eliminar Integrante", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = { Text("¿Deseas eliminar a $memberToRemoveName de este grupo?", color = Color.LightGray) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val targetPhone = memberToRemove ?: ""
+                            val targetClean = NeoUtils.sanitizeId(targetPhone).takeLast(10)
+                            val current = groupData?.members?.toMutableList() ?: mutableListOf()
+                            current.removeAll { NeoUtils.sanitizeId(it).takeLast(10) == targetClean }
+                            val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                            db.getReference("groups").child(groupId).child("members").setValue(current)
+
+                            val sysId = "sys_${System.currentTimeMillis()}"
+                            val sysMsg = CloudMessage(
+                                id = sysId,
+                                text = "📢 $memberToRemoveName ha sido eliminado del grupo.",
+                                timestamp = System.currentTimeMillis(),
+                                senderId = "SYSTEM",
+                                senderName = "Sistema"
+                            )
+                            db.getReference("chats").child(groupId).child("messages").child(sysId).setValue(sysMsg)
+                            Toast.makeText(context, "$memberToRemoveName eliminado del grupo", Toast.LENGTH_SHORT).show()
+                            memberToRemove = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    ) {
+                        Text("ELIMINAR", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { memberToRemove = null }) {
+                        Text("CANCELAR", color = Color.Gray)
+                    }
+                }
+            )
         }
     }
 }

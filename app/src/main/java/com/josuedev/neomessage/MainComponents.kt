@@ -313,6 +313,10 @@ fun ChatsListScreen(
         fun updateEntry(entry: NeoChatEntry) {
             val idx = found.indexOfFirst { it.chatId == entry.chatId }
             if (idx != -1) {
+                val existing = found[idx]
+                if (existing.lastMsg == entry.lastMsg && existing.timestamp == entry.timestamp && existing.name == entry.name) {
+                    return
+                }
                 found.removeAt(idx)
             }
             found.add(0, entry)
@@ -493,7 +497,18 @@ fun ChatsListScreen(
 
     val expandedChats by remember(found.toList(), archivedIds.toList(), lockedIds.toList()) {
         derivedStateOf {
-            found.sortedByDescending { it.timestamp }.map { entry ->
+            val list = found.toMutableList()
+            archivedIds.forEach { aId ->
+                if (list.none { it.chatId == aId }) {
+                    val parts = aId.replace("private_", "").split("_")
+                    val otherPhone = if (parts.size == 2) {
+                        if (parts[0] == myCleanId) parts[1] else parts[0]
+                    } else aId
+                    val name = spContacts.getString(otherPhone, otherPhone) ?: otherPhone
+                    list.add(NeoChatEntry(name, aId, "Chat archivado", System.currentTimeMillis()))
+                }
+            }
+            list.sortedByDescending { it.timestamp }.map { entry ->
                 val (name, id, lastMsg, _) = entry
                 val isFav = name.contains("Neo") || id.contains("owner")
                 val isUnread = lastMsg.length % 2 == 0 
@@ -794,8 +809,8 @@ fun ChatsListScreen(
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
                 containerColor = NeoTheme.Card,
-                title = { Text("Eliminar Conversación", color = Color.White, fontWeight = FontWeight.Bold) },
-                text = { Text("¿Deseas purgar todo el registro con ${selectedChatAction!!.first}? Esta acción limpiará el historial encriptado.", color = Color.LightGray) },
+                title = { Text("Vaciar Conversación", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = { Text("¿Deseas vaciar los mensajes con ${selectedChatAction!!.first}? Se limpiará el historial de mensajes, pero el contacto se mantendrá guardado en tu lista para que puedas volver a escribirle cuando quieras.", color = Color.LightGray) },
                 confirmButton = {
                     Button(onClick = {
                         val db = com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
@@ -803,9 +818,9 @@ fun ChatsListScreen(
                         db.getReference("typing").child(selectedChatAction!!.second).removeValue()
                         showDeleteDialog = false
                         selectedChatAction = null
-                        Toast.makeText(context, "Registro purgado.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Historial de mensajes vaciado.", Toast.LENGTH_SHORT).show()
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
-                        Text("PURGAR HISTORIAL")
+                        Text("VACIAR MENSAJES")
                     }
                 },
                 dismissButton = {
@@ -985,18 +1000,6 @@ fun ChatsListScreen(
         }
         
         Column(Modifier.padding(padding).fillMaxSize()) {
-
-            // Asegurar que todos los chats archivados aparezcan en la lista para poder abrirlos
-            archivedIds.forEach { aId ->
-                if (found.none { it.chatId == aId }) {
-                    val parts = aId.replace("private_", "").split("_")
-                    val otherPhone = if (parts.size == 2) {
-                        if (parts[0] == myCleanId) parts[1] else parts[0]
-                    } else aId
-                    val name = spContacts.getString(otherPhone, otherPhone) ?: otherPhone
-                    found.add(NeoChatEntry(name, aId, "Chat archivado", System.currentTimeMillis()))
-                }
-            }
 
             val archivedCount = maxOf(archivedIds.size, found.count { archivedIds.contains(it.chatId) })
             BackHandler(enabled = selectedFilter == "Archivados") {
