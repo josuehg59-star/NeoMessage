@@ -31,7 +31,7 @@ object NeoUtils {
     }
 
     // --- PROTOCOLO DE AHORRO DE DATOS NEO (DATASAVER) ---
-    fun compressImage(context: Context, uri: Uri, quality: Int = 85, maxDimension: Int = 2048): ByteArray? {
+    fun compressImage(context: Context, uri: Uri, quality: Int = 72, maxDimension: Int = 1280): ByteArray? {
         return try {
             val getStream = {
                 if (uri.scheme == "file") {
@@ -49,9 +49,7 @@ object NeoUtils {
             var inSampleSize = 1
             var w = boundsOpts.outWidth
             var h = boundsOpts.outHeight
-            while (w > maxDimension * 2 || h > maxDimension * 2) {
-                w /= 2
-                h /= 2
+            while (w / inSampleSize > maxDimension || h / inSampleSize > maxDimension) {
                 inSampleSize *= 2
             }
 

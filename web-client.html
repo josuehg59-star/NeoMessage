@@ -3056,21 +3056,60 @@
             if (!input.files || input.files.length === 0 || !currentChatId) return;
             const files = Array.from(input.files);
             const total = files.length;
-            showToast(`📷 Preparando ${total} archivo(s) multimedia...`);
+            showToast(`📷 Optimizando ${total} foto(s) estilo WhatsApp...`);
 
             files.forEach((file, index) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    setTimeout(() => {
-                        if (file.type.startsWith('video/')) {
+                if (file.type.startsWith('image/')) {
+                    // COMPRESIÓN ESTÁNDAR WHATSAPP (MÁXIMO 1280PX Y 72% CALIDAD)
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let w = img.width;
+                            let h = img.height;
+                            const maxDim = 1280;
+                            if (w > maxDim || h > maxDim) {
+                                if (w > h) {
+                                    h = Math.round((h * maxDim) / w);
+                                    w = maxDim;
+                                } else {
+                                    w = Math.round((w * maxDim) / h);
+                                    h = maxDim;
+                                }
+                            }
+                            canvas.width = w;
+                            canvas.height = h;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, w, h);
+                            const compressedB64 = canvas.toDataURL('image/jpeg', 0.72);
+                            setTimeout(() => {
+                                dispatchMessageObject('[Media] ' + compressedB64);
+                                showToast(`✅ Foto optimizada enviada (${index + 1}/${total})`);
+                            }, index * 200);
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                } else if (file.type.startsWith('video/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        setTimeout(() => {
                             dispatchMessageObject('[Video] ' + e.target.result);
-                        } else {
-                            dispatchMessageObject('[Media] ' + e.target.result);
-                        }
-                        showToast(`✅ Multimedia (${index + 1}/${total}): ${file.name}`);
-                    }, index * 250);
-                };
-                reader.readAsDataURL(file);
+                            showToast(`✅ Video enviado (${index + 1}/${total}): ${file.name}`);
+                        }, index * 250);
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        setTimeout(() => {
+                            dispatchMessageObject('[Document]|' + file.name + '|' + formatFileSize(file.size) + '|' + e.target.result);
+                            showToast(`✅ Archivo enviado (${index + 1}/${total}): ${file.name}`);
+                        }, index * 250);
+                    };
+                    reader.readAsDataURL(file);
+                }
             });
             input.value = '';
         }

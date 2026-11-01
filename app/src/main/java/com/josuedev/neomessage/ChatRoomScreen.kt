@@ -451,7 +451,7 @@ fun ChatRoomScreen(
             
             coroutineScope.launch(Dispatchers.IO) {
                 try {
-                    val compressedBytes = NeoUtils.compressImage(context, uri, quality = 88, maxDimension = 2048)
+                    val compressedBytes = NeoUtils.compressImage(context, uri, quality = 72, maxDimension = 1280)
                     if (compressedBytes == null) {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "No se pudo procesar la imagen seleccionada", Toast.LENGTH_SHORT).show()
@@ -1869,32 +1869,70 @@ fun MessageContent(
             }
         }
         text.startsWith("[Media]") -> {
-            val content = text.substringAfter("[Media]").trim()
-            val bitmap = remember(content) {
-                if (content.startsWith("data:image")) {
-                    try {
-                        val base64Data = content.substringAfter("base64,")
-                        val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                    } catch (_: Exception) { null }
-                } else null
+            val mediaContent = text.substringAfter("[Media]").trim()
+            var decodedBitmap by remember(mediaContent) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+            var isDecoding by remember(mediaContent) { mutableStateOf(mediaContent.startsWith("data:image")) }
+
+            LaunchedEffect(mediaContent) {
+                if (mediaContent.startsWith("data:image")) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val base64Data = mediaContent.substringAfter("base64,")
+                            val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                            
+                            val boundsOptions = android.graphics.BitmapFactory.Options().apply {
+                                inJustDecodeBounds = true
+                            }
+                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
+
+                            var sampleSize = 1
+                            val maxDimension = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
+                            while (maxDimension / sampleSize > 1200) {
+                                sampleSize *= 2
+                            }
+
+                            val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+                                inSampleSize = sampleSize
+                                inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                            }
+                            val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+                            if (bmp != null) {
+                                decodedBitmap = bmp.asImageBitmap()
+                            }
+                        } catch (_: Exception) {}
+                        isDecoding = false
+                    }
+                } else {
+                    isDecoding = false
+                }
             }
 
-            if (bitmap != null) {
+            if (decodedBitmap != null) {
                 Image(
-                    bitmap = bitmap,
+                    bitmap = decodedBitmap!!,
                     contentDescription = "Imagen",
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 160.dp, max = 340.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF1E293B))
-                        .clickable { onImageClick?.invoke(bitmap) },
+                        .clickable { onImageClick?.invoke(decodedBitmap!!) },
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
+            } else if (isDecoding) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF1E293B)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = NeoTheme.Green, modifier = Modifier.size(32.dp))
+                }
             } else {
                 AsyncImage(
-                    model = content,
+                    model = mediaContent,
                     contentDescription = "Imagen",
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2587,6 +2625,7 @@ fun GroupInfoModal(
 ) {
     val context = LocalContext.current
     val spContacts = remember { context.getSharedPreferences("NeoContacts", Context.MODE_PRIVATE) }
+    val networkUserNames = remember { mutableStateMapOf<String, String>() }
     var groupData by remember { mutableStateOf<NeoGroup?>(null) }
     var showAddMemberDialog by remember { mutableStateOf(false) }
     var newMemberPhone by remember { mutableStateOf("") }
@@ -2595,6 +2634,18 @@ fun GroupInfoModal(
 
     LaunchedEffect(groupId) {
         val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+        db.getReference("users").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                snapshot.children.forEach { child ->
+                    val uid = child.key ?: ""
+                    val uName = child.child("name").getValue(String::class.java)
+                    if (!uName.isNullOrBlank()) {
+                        networkUserNames[uid.takeLast(10)] = uName
+                    }
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
         db.getReference("groups").child(groupId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 groupData = snapshot.getValue(NeoGroup::class.java)
@@ -2664,7 +2715,7 @@ fun GroupInfoModal(
                             val clean = NeoUtils.sanitizeId(memberPhone)
                             val isCreator = clean.takeLast(10) == NeoUtils.sanitizeId(groupData?.createdBy ?: "").takeLast(10)
                             val isMe = clean.takeLast(10) == NeoUtils.sanitizeId(myId).takeLast(10)
-                            val contactName = spContacts.getString(clean.takeLast(10), memberPhone) ?: memberPhone
+                            val contactName = spContacts.getString(clean.takeLast(10), null) ?: networkUserNames[clean.takeLast(10)] ?: memberPhone
 
                             Row(
                                 modifier = Modifier
