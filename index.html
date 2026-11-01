@@ -4568,9 +4568,10 @@ ${caption}` : `[Media] ${pendingPastedImageB64}`;
                     const row = document.createElement('div');
                     row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #0F172A; border-radius: 8px;';
 
-                    const userEntry = usersMap[memberPhone];
-                    const saved = mySavedContacts.find(c => c.id === memberPhone);
-                    const dispName = (memberPhone === myPhone) ? (myName + ' (Tú)') : (saved ? saved.name : (userEntry && userEntry.name ? userEntry.name : ('Usuario ' + memberPhone.slice(-4))));
+                    const clean10 = memberPhone.replace(/\D/g, '').slice(-10);
+                    const userEntry = usersMap[memberPhone] || usersMap[clean10] || Object.values(usersMap).find(u => (u.id || '').replace(/\D/g, '').slice(-10) === clean10);
+                    const saved = mySavedContacts.find(c => c.id === memberPhone || c.id.replace(/\D/g, '').slice(-10) === clean10);
+                    const dispName = (clean10 === myPhone.slice(-10)) ? (myName + ' (Tú)') : (saved ? saved.name : (userEntry && userEntry.name ? userEntry.name : (memberPhone)));
 
                     const isThisCreator = (group.createdBy === memberPhone);
 
