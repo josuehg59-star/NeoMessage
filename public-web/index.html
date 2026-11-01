@@ -3280,6 +3280,137 @@
         }
 
         // ========================================================
+        // CONVERTIR A PDF E IMPRESIÓN DIRECTA
+        // ========================================================
+        function convertCurrentImageToPdf() {
+            const img = document.getElementById('lightboxImg');
+            const titleEl = document.getElementById('lightboxTitle');
+            const safeTitle = (titleEl ? titleEl.innerText : 'NeoMessage_Tarea_' + Date.now()).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+            
+            if (!img || !img.src) {
+                alert("No hay imagen disponible para convertir a PDF.");
+                return;
+            }
+            
+            if (typeof showNotification === 'function') {
+                showNotification("📄 Generando documento PDF...", "info");
+            }
+
+            try {
+                const jsPdfClass = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+                if (jsPdfClass) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth || img.width || 800;
+                    canvas.height = img.naturalHeight || img.height || 600;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+                    const isLandscape = canvas.width > canvas.height;
+                    const pdf = new jsPdfClass({
+                        orientation: isLandscape ? 'landscape' : 'portrait',
+                        unit: 'pt',
+                        format: 'letter'
+                    });
+
+                    const pageWidth = pdf.internal.pageSize.getWidth();
+                    const pageHeight = pdf.internal.pageSize.getHeight();
+                    const margin = 28;
+                    const availW = pageWidth - (margin * 2);
+                    const availH = pageHeight - (margin * 2);
+
+                    const scale = Math.min(availW / canvas.width, availH / canvas.height);
+                    const finalW = canvas.width * scale;
+                    const finalH = canvas.height * scale;
+                    const posX = (pageWidth - finalW) / 2;
+                    const posY = (pageHeight - finalH) / 2;
+
+                    pdf.addImage(imgData, 'JPEG', posX, posY, finalW, finalH);
+                    const fileName = safeTitle.replace(/\.[^/.]+$/, "") + ".pdf";
+                    pdf.save(fileName);
+
+                    if (typeof showNotification === 'function') {
+                        showNotification("✅ ¡Documento PDF guardado con éxito!", "success");
+                    }
+                } else {
+                    printCurrentImage();
+                }
+            } catch (err) {
+                console.error("Error al generar PDF:", err);
+                printCurrentImage();
+            }
+        }
+
+        function printCurrentImage() {
+            const img = document.getElementById('lightboxImg');
+            const titleEl = document.getElementById('lightboxTitle');
+            const title = titleEl ? titleEl.innerText : 'NeoMessage Documento';
+            
+            if (!img || !img.src) {
+                alert("No hay imagen para imprimir.");
+                return;
+            }
+
+            const printWin = window.open('', '_blank');
+            if (!printWin) {
+                let printIframe = document.getElementById('printHiddenIframe');
+                if (!printIframe) {
+                    printIframe = document.createElement('iframe');
+                    printIframe.id = 'printHiddenIframe';
+                    printIframe.style.position = 'fixed';
+                    printIframe.style.width = '0';
+                    printIframe.style.height = '0';
+                    printIframe.style.border = 'none';
+                    document.body.appendChild(printIframe);
+                }
+                const doc = printIframe.contentWindow.document;
+                doc.open();
+                doc.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();}, 300);"/></body></html>');
+                doc.close();
+                return;
+            }
+
+            printWin.document.write('<!DOCTYPE html><html><head><title>' + title + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + img.src + '" onload="setTimeout(function(){window.print();window.close();}, 300);"/></body></html>');
+            printWin.document.close();
+        }
+
+        function printFileDirectly(fileName, fileUrl) {
+            const lower = (fileName || '').toLowerCase();
+            if (lower.endsWith('.pdf') || (fileUrl && fileUrl.includes('application/pdf'))) {
+                const iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = '0';
+                iframe.src = fileUrl;
+                document.body.appendChild(iframe);
+                iframe.onload = () => {
+                    setTimeout(() => {
+                        try {
+                            iframe.contentWindow.focus();
+                            iframe.contentWindow.print();
+                        } catch(e) {
+                            window.open(fileUrl, '_blank');
+                        }
+                    }, 600);
+                };
+            } else if (lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/) || (fileUrl && fileUrl.startsWith('data:image/'))) {
+                const win = window.open('', '_blank');
+                if (win) {
+                    win.document.write('<!DOCTYPE html><html><head><title>Imprimir - ' + (fileName || 'NeoMessage') + '</title><style>@page{size:auto;margin:10mm;}body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;}img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src="' + fileUrl + '" onload="window.print();window.close();"/></body></html>');
+                    win.document.close();
+                } else {
+                    window.open(fileUrl, '_blank');
+                }
+            } else {
+                window.open(fileUrl, '_blank');
+            }
+        }
+
+
+        // ========================================================
         // 5. COPIAR Y PEGAR DIRECTO (Ctrl+V)
         // ========================================================
         let pendingPastedImageB64 = null;
