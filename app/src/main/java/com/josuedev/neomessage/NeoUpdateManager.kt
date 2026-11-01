@@ -1,11 +1,9 @@
 package com.josuedev.neomessage
 
-import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -31,6 +29,15 @@ data class UpdateInfo(
 )
 
 object NeoUpdateManager {
+    @Volatile
+    private var isDownloading = false
+
+    @Volatile
+    private var pendingInstallFile: File? = null
+
+    @Volatile
+    private var lastAutoTriggeredVersion = 0
+
     /**
      * Obtiene el versionCode real instalado en el sistema Android (nunca hardcodeado)
      */
@@ -43,24 +50,28 @@ object NeoUpdateManager {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionCode
             }
         } catch (_: Exception) {
-            35
+            50
         }
     }
 
     /**
-     * Consulta Firebase o el servidor para ver si hay una versión más reciente
+     * Escucha en tiempo real Firebase para detectar nuevas versiones al instante
      */
     fun checkForUpdates(context: Context, onUpdateAvailable: (UpdateInfo) -> Unit) {
         try {
-            val localCode = getLocalVersionCode(context)
             val db = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
-            db.getReference("app_updates").addListenerForSingleValueEvent(object : ValueEventListener {
+            db.getReference("app_updates").addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
+                    val localCode = getLocalVersionCode(context)
                     val serverCode = snapshot.child("versionCode").getValue(Long::class.java)?.toInt() ?: 0
                     val versionName = snapshot.child("versionName").getValue(String::class.java) ?: ""
-                    val apkUrl = snapshot.child("apkUrl").getValue(String::class.java) ?: snapshot.child("downloadUrl").getValue(String::class.java) ?: "https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk"
-                    val changelog = snapshot.child("changelog").getValue(String::class.java) ?: "Mejoras de rendimiento y nuevas funciones."
-                    val isMandatory = snapshot.child("isMandatory").getValue(Boolean::class.java) ?: false
+                    val apkUrl = snapshot.child("apkUrl").getValue(String::class.java)
+                        ?: snapshot.child("downloadUrl").getValue(String::class.java)
+                        ?: "https://github.com/josuehg59-star/NeoMessage/releases/latest/download/NeoMessage.apk"
+                    val changelog = snapshot.child("changelog").getValue(String::class.java)
+                        ?: snapshot.child("changeLog").getValue(String::class.java)
+                        ?: "Mejoras de rendimiento y nuevas funciones."
+                    val isMandatory = snapshot.child("isMandatory").getValue(Boolean::class.java) ?: true
 
                     if (serverCode > localCode && apkUrl.isNotBlank()) {
                         onUpdateAvailable(
@@ -81,10 +92,37 @@ object NeoUpdateManager {
     }
 
     /**
-     * Descarga el APK con motor resiliente en primer plano/caché e inicia la instalación automática
+     * Si el usuario acaba de otorgar el permiso de instalar apps desconocidas y vuelve a la app,
+     * lanza automáticamente el instalador del APK ya descargado.
      */
-    fun downloadAndInstallApk(context: Context, apkUrl: String, onProgress: ((Int) -> Unit)? = null) {
-        Toast.makeText(context, "📥 Descargando actualización... Por favor espera unos segundos.", Toast.LENGTH_LONG).show()
+    fun resumePendingInstallIfAny(context: Context) {
+        val file = pendingInstallFile ?: return
+        if (file.exists() && file.length() > 1024 * 1024) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()) {
+                pendingInstallFile = null
+                installApk(context, file, null)
+            }
+        }
+    }
+
+    /**
+     * Descarga el APK automáticamente en segundo plano e inicia la instalación del sistema de inmediato
+     */
+    fun downloadAndInstallApk(
+        context: Context,
+        apkUrl: String,
+        versionCode: Int = 0,
+        onProgress: ((Int) -> Unit)? = null
+    ) {
+        val cachedFile = File(context.cacheDir, "NeoMessage_Update.apk")
+        if (versionCode > 0 && lastAutoTriggeredVersion == versionCode && cachedFile.exists() && cachedFile.length() > 5 * 1024 * 1024 && !isDownloading) {
+            onProgress?.invoke(100)
+            installApk(context, cachedFile, apkUrl)
+            return
+        }
+        if (isDownloading) return
+        isDownloading = true
+        if (versionCode > 0) lastAutoTriggeredVersion = versionCode
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -100,12 +138,21 @@ object NeoUpdateManager {
                     conn.requestMethod = "GET"
                     conn.connectTimeout = 25000
                     conn.readTimeout = 45000
-                    conn.instanceFollowRedirects = true
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                    conn.instanceFollowRedirects = false
+                    conn.setRequestProperty(
+                        "User-Agent",
+                        "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                    )
                     conn.connect()
                     val status = conn.responseCode
-                    if ((status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 302 || status == 307 || status == 308) && redirects < 5) {
-                        currentUrl = conn.getHeaderField("Location") ?: break
+                    if ((status == HttpURLConnection.HTTP_MOVED_TEMP ||
+                                status == HttpURLConnection.HTTP_MOVED_PERM ||
+                                status == HttpURLConnection.HTTP_SEE_OTHER ||
+                                status == 302 || status == 307 || status == 308) && redirects < 8
+                    ) {
+                        val loc = conn.getHeaderField("Location") ?: break
+                        currentUrl = if (loc.startsWith("http")) loc else URL(url, loc).toString()
+                        conn.disconnect()
                         redirects++
                         continue
                     }
@@ -115,42 +162,50 @@ object NeoUpdateManager {
                 if (conn.responseCode in 200..299) {
                     val totalSize = conn.contentLength
                     var downloaded = 0L
+                    var lastReportedPercent = -1
 
                     conn.inputStream.use { input ->
                         FileOutputStream(apkFile).use { output ->
-                            val buffer = ByteArray(8192)
+                            val buffer = ByteArray(16384)
                             var read: Int
                             while (input.read(buffer).also { read = it } != -1) {
                                 output.write(buffer, 0, read)
                                 downloaded += read
                                 if (totalSize > 0) {
-                                    val percent = ((downloaded * 100) / totalSize).toInt()
-                                    onProgress?.invoke(percent)
+                                    val percent = ((downloaded * 100) / totalSize).toInt().coerceIn(0, 100)
+                                    if (percent != lastReportedPercent) {
+                                        lastReportedPercent = percent
+                                        withContext(Dispatchers.Main) {
+                                            onProgress?.invoke(percent)
+                                        }
+                                    }
                                 }
                             }
                             output.flush()
                         }
                     }
 
-                    if (apkFile.exists() && apkFile.length() > 1024 * 1024) { // Mayor a 1 MB
+                    if (apkFile.exists() && apkFile.length() > 1024 * 1024) {
+                        isDownloading = false
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "✅ Descarga completa. Instalando...", Toast.LENGTH_SHORT).show()
+                            onProgress?.invoke(100)
+                            Toast.makeText(context, "✅ Actualización lista. Instalando automáticamente...", Toast.LENGTH_SHORT).show()
                             installApk(context, apkFile, apkUrl)
                         }
                         return@launch
                     }
                 }
 
-                // Si falla la descarga directa, abrir en navegador
+                isDownloading = false
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Abriendo descarga directa en el navegador...", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Reintentando descarga directa...", Toast.LENGTH_SHORT).show()
                     openInBrowser(context, apkUrl)
                 }
 
             } catch (e: Exception) {
+                isDownloading = false
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Descarga en app falló: ${e.message}. Abriendo navegador...", Toast.LENGTH_LONG).show()
-                    openInBrowser(context, apkUrl)
+                    Toast.makeText(context, "Error de red al descargar: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -162,15 +217,18 @@ object NeoUpdateManager {
     fun installApk(context: Context, file: File, fallbackUrl: String? = null) {
         try {
             if (!file.exists() || file.length() == 0L) {
-                Toast.makeText(context, "El archivo de actualización no se encontró. Abriendo descarga directa...", Toast.LENGTH_SHORT).show()
                 if (fallbackUrl != null) openInBrowser(context, fallbackUrl)
                 return
             }
 
-            // Permiso de instalación en Android 8.0+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
-                    Toast.makeText(context, "Permite la instalación de NeoMessage para actualizar", Toast.LENGTH_LONG).show()
+                    pendingInstallFile = file
+                    Toast.makeText(
+                        context,
+                        "⚡ Activa 'Permitir desde esta fuente' y la actualización se instalará sola al instante",
+                        Toast.LENGTH_LONG
+                    ).show()
                     val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                         data = Uri.parse("package:${context.packageName}")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -186,13 +244,25 @@ object NeoUpdateManager {
                 file
             )
 
-            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
+            @Suppress("DEPRECATION")
+            val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                data = apkUri
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                putExtra(Intent.EXTRA_RETURN_RESULT, false)
             }
 
-            context.startActivity(installIntent)
+            try {
+                context.startActivity(installIntent)
+            } catch (_: Exception) {
+                val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(viewIntent)
+            }
 
         } catch (e: Exception) {
             Toast.makeText(context, "Error al iniciar instalador: ${e.message}", Toast.LENGTH_LONG).show()
@@ -200,17 +270,12 @@ object NeoUpdateManager {
         }
     }
 
-    /**
-     * Abre el enlace en el navegador si el instalador interno o la descarga encuentran trabas del fabricante
-     */
-    fun openInBrowser(context: Context, url: String) {
+    private fun openInBrowser(context: Context, url: String) {
         try {
             val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(browserIntent)
-        } catch (_: Exception) {
-            Toast.makeText(context, "No se encontró navegador web para abrir la descarga.", Toast.LENGTH_SHORT).show()
-        }
+        } catch (_: Exception) {}
     }
 }

@@ -1986,7 +1986,7 @@ fun AppInfoScreen(bgColor: Color, textColor: Color, textSubColor: Color, onBack:
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         if (isCheckingUpdates) {
                             isCheckingUpdates = false
-                            Toast.makeText(context, "✅ Ya cuentas con la versión más reciente (v2.8 TITAN)", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "✅ Ya cuentas con la versión más reciente (v3.41 SOVEREIGN)", Toast.LENGTH_LONG).show()
                         }
                     }, 2500)
                 },

@@ -1074,6 +1074,7 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
                     uRef.child("status").setValue("Desconectado")
                     uRef.child("lastSeen").setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
                 } else if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                    NeoUpdateManager.resumePendingInstallIfAny(context)
                     com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).goOnline()
                     uRef.child("online").setValue(true)
                     uRef.child("status").setValue("Conectado")
@@ -1778,89 +1779,97 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
 
 
 
-        // --- DIÁLOGO DE ACTUALIZACIÓN OBLIGATORIA (ANTES DE ENTRAR) ---
-
-        if (availableUpdate != null) {
-
-            val upd = availableUpdate!!
-
-            AlertDialog(
-
-                onDismissRequest = { if (!upd.isMandatory) availableUpdate = null },
-
-                containerColor = Color(0xFF0F172A),
-
-                shape = RoundedCornerShape(20.dp),
-
-                title = {
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-
-                        Text("🚀", fontSize = 24.sp)
-
-                        Spacer(Modifier.width(8.dp))
-
-                        Text("Actualización Necesaria", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-
-                    }
-
-                },
-
-                text = {
-
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-
-                        Text("Versión disponible: v${upd.versionName}", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold)
-
-                        Text(upd.changelog, color = Color.LightGray, fontSize = 13.sp)
-
-                        Text("Es necesario actualizar para sincronizar llamadas, fotos y mensajes correctamente.", color = Color(0xFFFF9800), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-
-                    }
-
-                },
-
-                confirmButton = {
-
-                    Button(
-
-                        onClick = {
-
-                            NeoUpdateManager.downloadAndInstallApk(context, upd.apkUrl)
-
-                        },
-
-                        modifier = Modifier.fillMaxWidth(),
-
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
-
-                    ) {
-
-                        Text("ACTUALIZAR AHORA", color = Color.Black, fontWeight = FontWeight.Bold)
-
-                    }
-
-                },
-
-                dismissButton = {
-
-                    if (!upd.isMandatory) {
-
-                        TextButton(onClick = { availableUpdate = null }) {
-
-                            Text("MÁS TARDE", color = Color.Gray, fontWeight = FontWeight.Medium)
-
-                        }
-
-                    }
-
-                }
-
-            )
-
+        // --- DIÁLOGO DE ACTUALIZACIÓN AUTOMÁTICA ---
+        var updateDownloadProgress by remember { mutableIntStateOf(0) }
+        LaunchedEffect(availableUpdate?.versionCode) {
+            val upd = availableUpdate
+            if (upd != null) {
+                updateDownloadProgress = 1
+                NeoUpdateManager.downloadAndInstallApk(
+                    context = context,
+                    apkUrl = upd.apkUrl,
+                    versionCode = upd.versionCode,
+                    onProgress = { pct -> updateDownloadProgress = pct }
+                )
+            }
         }
 
-
+        if (availableUpdate != null) {
+            val upd = availableUpdate!!
+            AlertDialog(
+                onDismissRequest = { if (!upd.isMandatory) availableUpdate = null },
+                containerColor = Color(0xFF0F172A),
+                shape = RoundedCornerShape(20.dp),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🚀", fontSize = 24.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Actualizando NeoMessage", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Nueva versión: v${upd.versionName}", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold)
+                        Text(upd.changelog, color = Color.LightGray, fontSize = 13.sp)
+                        if (updateDownloadProgress in 1..99) {
+                            LinearProgressIndicator(
+                                progress = { updateDownloadProgress / 100f },
+                                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                color = Color(0xFF00FF7F),
+                                trackColor = Color(0xFF1E293B)
+                            )
+                            Text(
+                                "Descargando actualización automáticamente... $updateDownloadProgress%",
+                                color = Color(0xFF00FF7F),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        } else if (updateDownloadProgress >= 100) {
+                            Text(
+                                "✅ Descarga completada (100%). Abriendo instalador automático...",
+                                color = Color(0xFF00FF7F),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            Text(
+                                "Iniciando descarga automática...",
+                                color = Color(0xFFFF9800),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            NeoUpdateManager.downloadAndInstallApk(
+                                context = context,
+                                apkUrl = upd.apkUrl,
+                                versionCode = upd.versionCode,
+                                onProgress = { pct -> updateDownloadProgress = pct }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F))
+                    ) {
+                        Text(
+                            if (updateDownloadProgress in 1..99) "DESCARGANDO ($updateDownloadProgress%)..." else "INSTALAR AHORA",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                dismissButton = {
+                    if (!upd.isMandatory) {
+                        TextButton(onClick = { availableUpdate = null }) {
+                            Text("MÁS TARDE", color = Color.Gray, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            )
+        }
 
         // --- TEMAS GESTIONADOS DESDE AJUSTES DE CHATS ---
 
