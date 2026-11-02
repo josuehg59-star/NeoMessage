@@ -2397,6 +2397,7 @@
                             <div class="dropdown-item" id="menuItemCreateGroup" onclick="openCreateGroupModal(); toggleDropdownMenu();">👥 Crear Grupo con este Contacto</div>
                             <div class="dropdown-item" id="menuItemQuote" onclick="openQuoteModal(); toggleDropdownMenu();">📋 Enviar Cotización</div>
                             <div class="dropdown-item" onclick="clearActiveChatMessages(); toggleDropdownMenu();">🧹 Vaciar Mensajes del Chat</div>
+                            <div class="dropdown-item danger" onclick="deleteActiveChatEntirely(); toggleDropdownMenu();">🗑️ Eliminar Chat de la Lista</div>
                             <div class="dropdown-item danger" id="btnBlockToggle" onclick="toggleBlockContact(); toggleDropdownMenu();">🚫 Bloquear Contacto</div>
                         </div>
                     </div>
@@ -4989,7 +4990,7 @@
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
-                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🗑️</button>` : ''}
+                            ${!item.isSelf ? `<div style="display:flex; gap:4px; align-items:center;"><button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🧹</button><button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Eliminar conversación de la lista">🗑️</button></div>` : ''}
                         </div>
                     </div>
                 `;
@@ -4999,20 +5000,66 @@
             });
         }
 
-        // VACIAR HISTORIAL DEL CHAT (SIN ELIMINAR EL CONTACTO)
+        // VACIAR HISTORIAL DEL CHAT (SIN ELIMINAR EL CONTACTO - IGUAL QUE ANDROID)
         function clearChatHistory(chatId, recipientPhone, displayName) {
-            if (confirm(`🧹 ¿Vaciar mensajes de este chat con ${displayName}?\n\nSe eliminará el historial de mensajes de la conversación, pero el contacto seguirá guardado y podrás volver a escribirle cuando gustes.`)) {
-                // 1. Borrar únicamente los mensajes del chat en Firebase
-                db.ref(`chats/${chatId}/messages`).remove();
+            if (!chatId) return;
+            const nameLabel = displayName || currentContactName || recipientPhone || 'este contacto';
+            if (confirm(`🧹 ¿Vaciar todos los mensajes de este chat con ${nameLabel}?\n\nSe borrarán todos los mensajes de esta conversación en tu PC y en Firebase, pero el contacto seguirá guardado.`)) {
+                // 1. Borrar respaldo local de mensajes en esta PC
+                try {
+                    localStorage.removeItem('neo_web_msgs_' + chatId);
+                } catch (_) {}
 
-                // 2. Si estaba abierto en pantalla, limpiar la vista de mensajes
-                if (currentChatId === chatId) {
-                    const mList = document.getElementById('messagesList');
-                    if (mList) mList.innerHTML = '';
+                // 2. Borrar los mensajes del chat en Firebase
+                db.ref(`chats/${chatId}/messages`).remove().catch(() => {});
+
+                // 3. Actualizar el subtítulo de la conversación en la lista lateral
+                const idx = conversations.findIndex(c => c.chatId === chatId);
+                if (idx !== -1) {
+                    conversations[idx].lastText = 'Conversación vaciada';
+                    saveLocalConversationsWeb();
                 }
 
-                // NO BORRAMOS EL CONTACTO DE users/${myPhone}/contacts! Se conserva para que siempre pueda escribirle.
-                showToast(`🧹 Mensajes del chat con ${displayName} vaciados`);
+                // 4. Si estaba abierto en pantalla, limpiar la vista de mensajes de inmediato
+                if (currentChatId === chatId) {
+                    const mList = document.getElementById('messagesList');
+                    if (mList) {
+                        mList.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:40px;">🧹 Conversación vaciada. ¡Escribe un mensaje cuando gustes!</div>';
+                    }
+                }
+
+                renderChatsList();
+                showToast(`🧹 Mensajes del chat con ${nameLabel} vaciados`);
+            }
+        }
+
+        // ELIMINAR CHAT DE LA LISTA (IGUAL QUE ANDROID)
+        function deleteChatWithNoTrace(chatId, recipientPhone, displayName) {
+            if (!chatId) return;
+            const nameLabel = displayName || currentContactName || recipientPhone || 'este chat';
+            if (confirm(`🗑️ ¿Eliminar la conversación con ${nameLabel} de tu lista de chats?\n\nSe borrarán los mensajes y se quitará de tu lista de conversaciones.`)) {
+                try {
+                    localStorage.removeItem('neo_web_msgs_' + chatId);
+                } catch (_) {}
+
+                db.ref(`chats/${chatId}/messages`).remove().catch(() => {});
+
+                conversations = conversations.filter(c => c.chatId !== chatId);
+                saveLocalConversationsWeb();
+
+                if (currentChatId === chatId) {
+                    if (messagesListener) messagesListener.off();
+                    currentChatId = '';
+                    currentRecipient = '';
+                    currentContactName = '';
+                    const cBox = document.getElementById('activeChatBox');
+                    const ePlace = document.getElementById('emptyPlaceholder');
+                    if (cBox) cBox.style.display = 'none';
+                    if (ePlace) ePlace.style.display = 'flex';
+                }
+
+                renderChatsList();
+                showToast(`🗑️ Conversación con ${nameLabel} eliminada`);
             }
         }
 
@@ -5437,7 +5484,11 @@
                     if (cm) {
                         const mid = cm.id || k;
                         cm.id = mid;
-                        mergedMap[mid] = cm;
+                        if (cm.deleted || cm.isDeletedForEveryone || cm.text === '[DELETED]') {
+                            delete mergedMap[mid];
+                        } else {
+                            mergedMap[mid] = cm;
+                        }
                         // Si el mensaje ya fue recibido por nosotros o tiene más de 10 minutos, limpiarlo de Firebase tras respaldarlo localmente
                         const sClean10 = String(cm.senderId || '').replace(/\D/g, '').slice(-10);
                         const ageMs = Date.now() - (Number(cm.timestamp) || 0);
@@ -5512,11 +5563,7 @@
 
         function clearActiveChatMessages() {
             if (!currentChatId) return;
-            if (confirm(`¿Vaciar todos los mensajes de esta conversación?\nLos mensajes desaparecerán tanto en tu PC como en tu celular.`)) {
-                db.ref(`chats/${currentChatId}/messages`).remove().then(() => {
-                    showToast('Mensajes vaciados');
-                });
-            }
+            clearChatHistory(currentChatId, currentRecipient, currentContactName);
         }
 
         function deleteActiveChatEntirely() {
@@ -5524,16 +5571,63 @@
             deleteChatWithNoTrace(currentChatId, currentRecipient, currentContactName);
         }
 
+        function deleteMessageForMeWeb(msgId) {
+            if (!currentChatId || !msgId) return;
+            // 1. Quitar del respaldo local de esta PC
+            const localMap = getLocalChatMessages(currentChatId);
+            delete localMap[msgId];
+            saveLocalChatMessages(currentChatId, localMap);
+
+            // 2. Si era un mensaje recibido que seguía en Firebase, limpiarlo también de Firebase
+            db.ref(`chats/${currentChatId}/messages/${msgId}`).remove().catch(() => {});
+
+            // 3. Quitar burbuja de la pantalla al instante
+            const el = document.getElementById('msg_' + msgId);
+            if (el) el.remove();
+
+            // Actualizar vista previa lateral
+            const remaining = Object.values(localMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            const idx = conversations.findIndex(c => c.chatId === currentChatId);
+            if (idx !== -1) {
+                conversations[idx].lastText = remaining.length > 0 ? formatPreviewText(remaining[remaining.length - 1].text) : 'Sin mensajes';
+                saveLocalConversationsWeb();
+                renderChatsList();
+            }
+            showToast('🗑️ Mensaje eliminado de tu chat');
+        }
+
         function deleteSingleMessage(msgId) {
             if (!currentChatId || !msgId) return;
-            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Eliminar para todos (deja aviso de mensaje eliminado)\n• Cancelar: No eliminar");
+            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Eliminar para todos\n• Cancelar: No eliminar");
             if (opt) {
+                // 1. Quitar del respaldo local de esta PC inmediatamente
+                const localMap = getLocalChatMessages(currentChatId);
+                delete localMap[msgId];
+                saveLocalChatMessages(currentChatId, localMap);
+
+                // 2. Quitar burbuja de la pantalla al instante
+                const el = document.getElementById('msg_' + msgId);
+                if (el) el.remove();
+
+                // 3. Marcar como eliminado / borrar en Firebase para que se elimine en el otro equipo
                 db.ref(`chats/${currentChatId}/messages/${msgId}`).update({
                     text: '[DELETED]',
-                    deleted: true
+                    deleted: true,
+                    isDeletedForEveryone: true
                 }).then(() => {
-                    showToast('🚫 Mensaje eliminado para todos');
-                });
+                    setTimeout(() => {
+                        db.ref(`chats/${currentChatId}/messages/${msgId}`).remove().catch(() => {});
+                    }, 4000);
+                }).catch(() => {});
+
+                const remaining = Object.values(localMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                const idx = conversations.findIndex(c => c.chatId === currentChatId);
+                if (idx !== -1) {
+                    conversations[idx].lastText = remaining.length > 0 ? formatPreviewText(remaining[remaining.length - 1].text) : 'Mensaje eliminado';
+                    saveLocalConversationsWeb();
+                    renderChatsList();
+                }
+                showToast('🚫 Mensaje eliminado');
             }
         }
 
@@ -6529,6 +6623,8 @@
             
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+            const delMeBtn = document.getElementById('contextDeleteForMeBtn');
+            if (delMeBtn) delMeBtn.style.display = 'flex';
             const editBtn = document.getElementById('contextEditBtn');
             if (editBtn) editBtn.style.display = (isMine && isTextOnly) ? 'flex' : 'none';
 
@@ -6586,6 +6682,12 @@
             if (!contextTargetMsg || !currentChatId) return;
             db.ref(`chats/${currentChatId}/messages/${contextTargetMsg.id}/isStarred`).transaction(v => !v);
             showToast('⭐ Mensaje destacado');
+            document.getElementById('msgContextMenu').style.display = 'none';
+        }
+
+        function triggerDeleteForMeFromContext() {
+            if (!contextTargetMsg) return;
+            deleteMessageForMeWeb(contextTargetMsg.id);
             document.getElementById('msgContextMenu').style.display = 'none';
         }
 
@@ -6902,8 +7004,12 @@
             <span>⭐</span>
             <span>Destacar</span>
         </div>
-        <div class="context-item danger" id="contextDeleteBtn" onclick="triggerDeleteFromContext()">
+        <div class="context-item danger" id="contextDeleteForMeBtn" onclick="triggerDeleteForMeFromContext()">
             <span>🗑️</span>
+            <span>Eliminar para mí</span>
+        </div>
+        <div class="context-item danger" id="contextDeleteBtn" onclick="triggerDeleteFromContext()">
+            <span>🚫</span>
             <span>Eliminar para todos</span>
         </div>
     </div>
