@@ -2588,28 +2588,70 @@
 
         let lastActiveContactData = null;
 
+        function isUserReallyOnlineWeb(u) {
+            if (!u || typeof u !== 'object') return false;
+            // Si tiene online === false explícito o status === 'Desconectado', NO está en línea
+            if (u.online === false || u.status === 'Desconectado') return false;
+            const last = Number(u.lastSeen) || 0;
+            // Igual que en la App Android: si online === true, verificamos actividad o conexión vigente
+            if (u.online === true) {
+                // Si lastSeen se actualizó hace menos de 10 minutos o tiene sesión activa en vivo
+                if (!last || (Date.now() - last < 10 * 60 * 1000)) return true;
+                return false;
+            }
+            // Para registros antiguos que solo tenían status: 'Conectado' sin campo 'online',
+            // solo están en línea si su lastSeen es de los últimos 2 minutos (120,000 ms, idéntico a Android ChatRoomScreen.kt)
+            if (u.status === 'Conectado' || u.status === 'Online') {
+                return last > 0 && (Date.now() - last < 120000);
+            }
+            return false;
+        }
+
+        function getUserPresenceLabelWeb(u) {
+            if (!u || typeof u !== 'object') return 'desconectado';
+            if (isUserReallyOnlineWeb(u)) return 'en línea';
+            const last = Number(u.lastSeen) || Number(u.loginTime) || 0;
+            if (last > 0) return formatLastSeenText(last);
+            return 'desconectado';
+        }
+
         function updateActiveContactPresenceUI() {
             const subEl = document.getElementById('activeChatSubtitle');
             if (!subEl) return;
-            const u = lastActiveContactData;
-            if (u && (u.online === true || u.status === 'Conectado' || u.status === 'Online')) {
-                subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">en línea</span>';
-            } else if (u && u.lastSeen) {
-                subEl.innerText = formatLastSeenText(u.lastSeen);
-            } else {
+            const u = lastActiveContactData || (window.currentActiveContactPhone ? findUserInMapByPhone(window.currentActiveContactPhone) : null);
+            if (!u) {
                 subEl.innerText = '';
+                return;
+            }
+            if (isUserReallyOnlineWeb(u)) {
+                subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">🟢 en línea</span>';
+            } else {
+                const last = Number(u.lastSeen) || Number(u.loginTime) || 0;
+                if (last > 0) {
+                    subEl.innerHTML = `<span style="color:#94A3B8; font-weight:500;">${escapeHtml(formatLastSeenText(last))}</span>`;
+                } else {
+                    subEl.innerHTML = '<span style="color:#64748B;">desconectado</span>';
+                }
             }
         }
 
         function listenActiveContactPresence(phone) {
             if (activeContactPresenceRef) activeContactPresenceRef.off();
-            window.currentActiveContactPhone = phone;
-            lastActiveContactData = null;
-            if (!phone || phone === myPhone) return;
+            const clean10 = String(phone || '').replace(/\D/g, '').slice(-10);
+            window.currentActiveContactPhone = clean10 || phone;
+            lastActiveContactData = findUserInMapByPhone(clean10 || phone);
+            updateActiveContactPresenceUI();
+            if (!clean10 || clean10 === String(myPhone || '').replace(/\D/g, '').slice(-10)) return;
 
-            activeContactPresenceRef = db.ref(`users/${phone}`);
+            activeContactPresenceRef = db.ref(`users/${clean10}`);
             activeContactPresenceRef.on('value', snap => {
-                lastActiveContactData = snap.val();
+                const val = snap.val();
+                if (val) {
+                    lastActiveContactData = val;
+                    usersMap[clean10] = val;
+                } else {
+                    lastActiveContactData = findUserInMapByPhone(clean10);
+                }
                 const subEl = document.getElementById('activeChatSubtitle');
                 if (subEl && subEl.innerText.includes('escribiendo...')) return;
                 updateActiveContactPresenceUI();
@@ -4291,9 +4333,29 @@
             // 2. Escuchar lista de bloqueados
             listenToBlockedUsers();
 
-            // 3. Escuchar usuarios de la red
+            // 3. Escuchar usuarios de la red + mantener presencia propia en vivo
+            const myClean10Init = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (myClean10Init) {
+                const myPresenceRef = db.ref(`users/${myClean10Init}`);
+                db.ref('.info/connected').on('value', cSnap => {
+                    if (cSnap.val() === true) {
+                        myPresenceRef.update({ online: true, status: 'Conectado', lastSeen: firebase.database.ServerValue.TIMESTAMP });
+                        myPresenceRef.child('online').onDisconnect().set(false);
+                        myPresenceRef.child('status').onDisconnect().set('Desconectado');
+                        myPresenceRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+                    }
+                });
+                setInterval(() => {
+                    myPresenceRef.update({ online: true, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+                }, 60000);
+            }
+
             db.ref('users').on('value', (snap) => {
                 usersMap = snap.val() || {};
+                if (window.currentActiveContactPhone) {
+                    lastActiveContactData = findUserInMapByPhone(window.currentActiveContactPhone);
+                    updateActiveContactPresenceUI();
+                }
                 renderChatsList();
                 renderContactsList();
             });
@@ -4978,8 +5040,13 @@
                 const u = findUserInMapByPhone(item.recipientPhone);
                 const photoStyle = (u && (u.photoUrl || u.profilePhoto)) ? `background-image: url(${u.photoUrl || u.profilePhoto});` : '';
 
+                const isContactOnline = (!item.isSelf && !item.isGroup && u) ? isUserReallyOnlineWeb(u) : false;
+                const contactPresenceSub = (!item.isSelf && !item.isGroup && u) ? getUserPresenceLabelWeb(u) : '';
                 row.innerHTML = `
-                    <div class="chat-avatar" style="${avatarBg} ${photoStyle}">${photoStyle ? '' : initial}</div>
+                    <div class="chat-avatar" style="position:relative; ${avatarBg} ${photoStyle}">
+                        ${photoStyle ? '' : initial}
+                        ${!item.isSelf && !item.isGroup ? `<span title="${escapeHtml(contactPresenceSub)}" style="position:absolute; bottom:0; right:0; width:11px; height:11px; border-radius:50%; background:${isContactOnline ? '#00FF7F' : '#64748B'}; border:2px solid #111B21;"></span>` : ''}
+                    </div>
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name" style="display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis;">
@@ -4988,6 +5055,7 @@
                             </span>
                             <span class="chat-time">${timeStr}</span>
                         </div>
+                        ${(!item.isSelf && !item.isGroup && contactPresenceSub) ? `<div style="font-size:10.5px; color:${isContactOnline ? '#00FF7F' : '#94A3B8'}; font-weight:${isContactOnline ? '600' : '400'}; margin-bottom:2px;">${isContactOnline ? '🟢 en línea' : ('🕒 ' + escapeHtml(contactPresenceSub))}</div>` : ''}
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
                             ${!item.isSelf ? `<div style="display:flex; gap:4px; align-items:center;"><button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🧹</button><button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Eliminar conversación de la lista">🗑️</button></div>` : ''}
@@ -5217,7 +5285,8 @@
                         combinedMap.set(p10, {
                             id: p10,
                             name: resolvedName,
-                            status: u.status || 'En línea',
+                            isOnline: isUserReallyOnlineWeb(u),
+                            presenceText: getUserPresenceLabelWeb(u),
                             photo: u.photoUrl || u.profilePhoto || null,
                             isSaved: true
                         });
@@ -5234,7 +5303,8 @@
                     combinedMap.set(p10, {
                         id: p10,
                         name: resolvedName,
-                        status: u.status || 'En línea',
+                        isOnline: isUserReallyOnlineWeb(u),
+                        presenceText: getUserPresenceLabelWeb(u),
                         photo: u.photoUrl || u.profilePhoto || null,
                         isSaved: true
                     });
@@ -5274,7 +5344,7 @@
                             <span class="chat-name">${escapeHtml(c.name)}</span>
                             <span style="font-size:11px; color:#00FF7F; font-weight:bold;">📱 ${escapeHtml(c.id)}</span>
                         </div>
-                        <span class="chat-last-msg">Tel: ${escapeHtml(c.id)} • ${escapeHtml(c.status)}</span>
+                        <span class="chat-last-msg" style="color:${c.isOnline ? '#00FF7F' : 'var(--text-secondary)'}; font-weight:${c.isOnline ? '600' : '400'};">${c.isOnline ? '🟢 en línea' : ('🕒 ' + escapeHtml(c.presenceText))}</span>
                     </div>
                 `;
 
