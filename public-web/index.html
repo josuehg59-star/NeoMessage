@@ -2594,17 +2594,10 @@
             if (u.online === false || u.status === 'Desconectado') return false;
             const last = Number(u.lastSeen) || 0;
             // Igual que en la App Android: si online === true, verificamos actividad o conexión vigente
-            if (u.online === true) {
-                // Si lastSeen se actualizó hace menos de 10 minutos o tiene sesión activa en vivo
-                if (!last || (Date.now() - last < 10 * 60 * 1000)) return true;
-                return false;
-            }
-            // Para registros antiguos que solo tenían status: 'Conectado' sin campo 'online',
-            // solo están en línea si su lastSeen es de los últimos 2 minutos (120,000 ms, idéntico a Android ChatRoomScreen.kt)
-            if (u.status === 'Conectado' || u.status === 'Online') {
-                return last > 0 && (Date.now() - last < 120000);
-            }
-            return false;
+            // IDÉNTICO A LA APP ANDROID (ChatRoomScreen.kt):
+            // Solo está 'en línea' si su actividad lastSeen es de hace menos de 2 minutos (120,000 ms)
+            const isRecent = last > 0 && (Date.now() - last < 120000);
+            return (u.online === true || u.status === 'Conectado' || u.status === 'Online') && isRecent;
         }
 
         function getUserPresenceLabelWeb(u) {
