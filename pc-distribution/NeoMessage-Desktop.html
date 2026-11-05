@@ -5680,20 +5680,7 @@
 
                 saveLocalChatMessages(currentChatId, mergedMap);
 
-                // AUTO-SINCRONIZACIÓN SILENCIOSA DE MENSAJES HISTÓRICOS LOCALES A CELULAR Y NUBE
-                if (myClean10 && myClean10.length === 10) {
-                    Object.keys(localMsgs).forEach(mid => {
-                        if (!cloudMsgs[mid]) {
-                            const m = localMsgs[mid];
-                            if (m && !m.deleted && !m.isDeletedForEveryone && m.text !== '[DELETED]') {
-                                db.ref(`sync/${myClean10}/${mid}`).set({ origin: 'pc', chatId: currentChatId, msg: m });
-                                if (isSameSender(m.senderId, myPhone)) {
-                                    db.ref(`chats/${currentChatId}/messages/${mid}`).set(m);
-                                }
-                            }
-                        }
-                    });
-                }
+                
                 const list = Object.values(mergedMap).sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
 
                 if (list.length === 0) {
