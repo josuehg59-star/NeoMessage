@@ -1792,7 +1792,7 @@
             </div>
 
             <div style="font-size: 11px; color: var(--neon-green); font-weight: bold; margin-bottom: 16px;">
-                ⚡ Enlace permanente y directo a la versión oficial v3.44
+                ⚡ Enlace permanente y directo a la versión oficial v3.45
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -3309,6 +3309,9 @@
             if (!input.files || input.files.length === 0 || !currentChatId) return;
             const files = Array.from(input.files);
             const total = files.length;
+            const captionInput = document.getElementById('messageInput');
+            const typedCaption = captionInput ? captionInput.value.trim() : '';
+            if (typedCaption && captionInput) captionInput.value = '';
             showToast(`📦 Preparando ${total} archivo(s) para enviar...`);
 
             files.forEach((file, index) => {
@@ -3319,7 +3322,9 @@
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const b64 = e.target.result;
-                    const docPayload = `[Document]|${fileName}|${sizeStr}|${b64}`;
+                    const docPayload = (typedCaption && index === 0)
+                        ? `[Document]|${fileName}|${sizeStr}|${b64}\n${typedCaption}`
+                        : `[Document]|${fileName}|${sizeStr}|${b64}`;
                     setTimeout(() => {
                         dispatchMessageObject(docPayload);
                         showToast(`✅ Archivo (${index + 1}/${total}): ${fileName}`);
@@ -3334,11 +3339,53 @@
             if (!input.files || input.files.length === 0 || !currentChatId) return;
             const files = Array.from(input.files);
             const total = files.length;
+            const captionInput = document.getElementById('messageInput');
+            const typedCaption = captionInput ? captionInput.value.trim() : '';
+
+            // Si es 1 sola imagen, abrimos el modal de previsualización para poder añadir/editar comentario como en WhatsApp
+            if (files.length === 1 && files[0].type.startsWith('image/')) {
+                const file = files[0];
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width;
+                        let h = img.height;
+                        const maxDim = 1280;
+                        if (w > maxDim || h > maxDim) {
+                            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+                            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const compressedB64 = canvas.toDataURL('image/jpeg', 0.72);
+                        pendingPastedImageB64 = compressedB64;
+                        const imgPreview = document.getElementById('pastedImagePreview');
+                        if (imgPreview) imgPreview.src = compressedB64;
+                        const capBox = document.getElementById('pastedImageCaption');
+                        if (capBox) capBox.value = typedCaption;
+                        if (captionInput) captionInput.value = '';
+                        const badge = document.getElementById('pasteSizeBadge');
+                        if (badge) badge.innerText = '📷 ' + file.name;
+                        const modal = document.getElementById('pastePreviewModal');
+                        if (modal) modal.style.display = 'flex';
+                        if (capBox) capBox.focus();
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+                input.value = '';
+                return;
+            }
+
+            if (typedCaption && captionInput) captionInput.value = '';
             showToast(`📷 Optimizando ${total} foto(s) estilo WhatsApp...`);
 
             files.forEach((file, index) => {
                 if (file.type.startsWith('image/')) {
-                    // COMPRESIÓN ESTÁNDAR WHATSAPP (MÁXIMO 1280PX Y 72% CALIDAD)
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         const img = new Image();
@@ -3361,8 +3408,11 @@
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0, w, h);
                             const compressedB64 = canvas.toDataURL('image/jpeg', 0.58);
+                            const payload = (typedCaption && index === 0)
+                                ? ('[Media] ' + compressedB64 + '\n' + typedCaption)
+                                : ('[Media] ' + compressedB64);
                             setTimeout(() => {
-                                dispatchMessageObject('[Media] ' + compressedB64);
+                                dispatchMessageObject(payload);
                                 showToast(`✅ Foto optimizada enviada (${index + 1}/${total})`);
                             }, index * 200);
                         };
@@ -3372,8 +3422,11 @@
                 } else if (file.type.startsWith('video/')) {
                     const reader = new FileReader();
                     reader.onload = (e) => {
+                        const payload = (typedCaption && index === 0)
+                            ? ('[Video] ' + e.target.result + '\n' + typedCaption)
+                            : ('[Video] ' + e.target.result);
                         setTimeout(() => {
-                            dispatchMessageObject('[Video] ' + e.target.result);
+                            dispatchMessageObject(payload);
                             showToast(`✅ Video enviado (${index + 1}/${total}): ${file.name}`);
                         }, index * 250);
                     };
@@ -3381,8 +3434,11 @@
                 } else {
                     const reader = new FileReader();
                     reader.onload = (e) => {
+                        const payload = (typedCaption && index === 0)
+                            ? ('[Document]|' + file.name + '|' + formatFileSize(file.size) + '|' + e.target.result + '\n' + typedCaption)
+                            : ('[Document]|' + file.name + '|' + formatFileSize(file.size) + '|' + e.target.result);
                         setTimeout(() => {
-                            dispatchMessageObject('[Document]|' + file.name + '|' + formatFileSize(file.size) + '|' + e.target.result);
+                            dispatchMessageObject(payload);
                             showToast(`✅ Archivo enviado (${index + 1}/${total}): ${file.name}`);
                         }, index * 250);
                     };
@@ -5954,6 +6010,7 @@
                 let docName = 'Documento';
                 let docSize = '';
                 let docUrl = '';
+                let docCaption = '';
 
                 if (text.startsWith('[Document]|')) {
                     const p = text.split('|');
@@ -5967,6 +6024,12 @@
                     const bytes = parseInt(p[1]) || 0;
                     docSize = formatFileSize(bytes);
                     docUrl = p.slice(2).join('|');
+                }
+
+                if (docUrl.includes('\n')) {
+                    const splitIdx = docUrl.indexOf('\n');
+                    docCaption = docUrl.substring(splitIdx + 1).trim();
+                    docUrl = docUrl.substring(0, splitIdx).trim();
                 }
 
                 const lowerName = docName.toLowerCase();
@@ -6018,6 +6081,7 @@
                     ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
                     ${docBodyHtml}
+                    ${docCaption ? `<div class="msg-caption" style="margin-top:6px; font-size:14px; color:#E2E8F0; word-break:break-word; line-height:1.4;">${formatMessageTextWithLinks(docCaption).html}</div>` : ''}
                     <div class="msg-footer">
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
@@ -6211,6 +6275,7 @@
                             </button>
                         </div>
                     </div>
+                    ${caption ? `<div class="msg-caption" style="margin-top:6px; font-size:14px; color:#E2E8F0; word-break:break-word; line-height:1.4;">${formatMessageTextWithLinks(caption).html}</div>` : ''}
                     <div class="msg-footer">
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
@@ -6811,9 +6876,18 @@
         function formatPreviewText(text) {
             if (!text) return '';
             if (text.startsWith('[NEO_QUOTE]|')) return '📄 Presupuesto';
-            if (text.startsWith('[Media]')) return '📷 Foto';
-            if (text.startsWith('[Video]')) return '🎬 Video';
-            if (text.startsWith('[Document]|') || text.startsWith('[File]')) return '📄 Archivo';
+            if (text.startsWith('[Media]')) {
+                if (text.includes('\n')) return '📷 Foto: ' + text.split('\n')[1].trim().slice(0, 50);
+                return '📷 Foto';
+            }
+            if (text.startsWith('[Video]')) {
+                if (text.includes('\n')) return '🎬 Video: ' + text.split('\n')[1].trim().slice(0, 50);
+                return '🎬 Video';
+            }
+            if (text.startsWith('[Document]|') || text.startsWith('[File]')) {
+                if (text.includes('\n')) return '📄 Archivo: ' + text.split('\n')[1].trim().slice(0, 50);
+                return '📄 Archivo';
+            }
             if (text.startsWith('[Audio]')) return '🎤 Nota de voz';
             if (text.startsWith('[Sticker]')) return '✨ Sticker';
             if (text.startsWith('[NEO_HEALTH]')) return '❤️ Salud';

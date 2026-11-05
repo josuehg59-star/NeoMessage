@@ -473,6 +473,13 @@ fun ChatRoomScreen(
                 // 4. ENTREGA INMEDIATA EN TIEMPO REAL VÍA FIREBASE + AVISO LIGERO INBOX (< 200 BYTES)
                 try {
                     database.child(msgId).setValue(msg)
+                    // Sincronizar inmediatamente con PC
+                    try {
+                        com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                            .getReference("sync").child(cleanMyId.takeLast(10)).child(msgId).setValue(
+                                mapOf("origin" to "app", "chatId" to chatId, "msg" to msg)
+                            )
+                    } catch (_: Exception) {}
                     if (!isGroup && otherCleanId.length >= 10) {
                         val inboxNotice = mapOf(
                             "id" to msgId,
@@ -521,11 +528,13 @@ fun ChatRoomScreen(
 
                     val base64Data = android.util.Base64.encodeToString(compressedBytes, android.util.Base64.NO_WRAP)
                     val mid = database.push().key ?: UUID.randomUUID().toString()
-                    val msgText = "[Media] data:image/jpeg;base64,$base64Data"
+                    val caption = messageText.trim()
+                    val msgText = if (caption.isNotEmpty()) "[Media] data:image/jpeg;base64,$base64Data\n$caption" else "[Media] data:image/jpeg;base64,$base64Data"
                     val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
 
                     dao?.insertMessage(msg.toEntity(chatId))
                     withContext(Dispatchers.Main) {
+                        messageText = ""
                         if (firebaseMessages.none { it.id == msg.id }) {
                             firebaseMessages.add(msg)
                             firebaseMessages.sortBy { it.timestamp }
@@ -554,10 +563,18 @@ fun ChatRoomScreen(
                     // Enviar por Firebase en tiempo real + aviso ligero a inbox
                     try {
                         database.child(mid).setValue(msg)
+                        // Sincronizar inmediatamente con PC
+                        try {
+                            com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                                .getReference("sync").child(cleanMyId.takeLast(10)).child(mid).setValue(
+                                    mapOf("origin" to "app", "chatId" to chatId, "msg" to msg)
+                                )
+                        } catch (_: Exception) {}
                         if (!isGroup && otherCleanId.length >= 10) {
+                            val preview = if (caption.isNotEmpty()) "📷 Foto: ${caption.take(50)}" else "📷 Foto"
                             com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
                                 .getReference("inbox").child(otherCleanId.takeLast(10)).child(mid).setValue(
-                                    mapOf("id" to mid, "chatId" to chatId, "senderId" to cleanMyId, "senderName" to myName, "text" to "📷 Foto", "timestamp" to msg.timestamp)
+                                    mapOf("id" to mid, "chatId" to chatId, "senderId" to cleanMyId, "senderName" to myName, "text" to preview, "timestamp" to msg.timestamp)
                                 )
                         }
                     } catch (_: Exception) {}
@@ -599,11 +616,13 @@ fun ChatRoomScreen(
                 }
 
                 val mid = database.push().key ?: UUID.randomUUID().toString()
-                val msgText = "[File] $fileName|$fileSize|$directUrl"
+                val caption = messageText.trim()
+                val msgText = if (caption.isNotEmpty()) "[File] $fileName|$fileSize|$directUrl\n$caption" else "[File] $fileName|$fileSize|$directUrl"
                 val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
 
                 dao?.insertMessage(msg.toEntity(chatId))
                 withContext(Dispatchers.Main) {
+                    messageText = ""
                     if (firebaseMessages.none { it.id == msg.id }) {
                         firebaseMessages.add(msg)
                         firebaseMessages.sortBy { it.timestamp }
@@ -617,10 +636,18 @@ fun ChatRoomScreen(
                 // Enviar por Firebase a la nube + aviso ligero a inbox
                 try {
                     database.child(mid).setValue(msg)
+                    // Sincronizar inmediatamente con PC
+                    try {
+                        com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                            .getReference("sync").child(cleanMyId.takeLast(10)).child(mid).setValue(
+                                mapOf("origin" to "app", "chatId" to chatId, "msg" to msg)
+                            )
+                    } catch (_: Exception) {}
                     if (!isGroup && otherCleanId.length >= 10) {
+                        val preview = if (caption.isNotEmpty()) "📄 Archivo: ${caption.take(50)}" else "📄 $fileName"
                         com.google.firebase.database.FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
                             .getReference("inbox").child(otherCleanId.takeLast(10)).child(mid).setValue(
-                                mapOf("id" to mid, "chatId" to chatId, "senderId" to cleanMyId, "senderName" to myName, "text" to "📄 $fileName", "timestamp" to msg.timestamp)
+                                mapOf("id" to mid, "chatId" to chatId, "senderId" to cleanMyId, "senderName" to myName, "text" to preview, "timestamp" to msg.timestamp)
                             )
                     }
                 } catch (_: Exception) {}
@@ -1940,6 +1967,20 @@ fun ChatRoomScreen(
                     }
                 } catch (_: Exception) {}
             }
+            // Sincronizar inmediatamente con PC
+            try {
+                dbx.getReference("sync").child(cleanMyId.takeLast(10)).child(newId).setValue(
+                    mapOf("origin" to "app", "chatId" to t.chatId, "msg" to fwd)
+                )
+            } catch (_: Exception) {}
+            if (t.chatId == chatId) {
+                coroutineScope.launch(Dispatchers.Main) {
+                    if (firebaseMessages.none { it.id == fwd.id }) {
+                        firebaseMessages.add(fwd)
+                        firebaseMessages.sortBy { it.timestamp }
+                    }
+                }
+            }
             Toast.makeText(context, "↪ Reenviado a ${t.name}", Toast.LENGTH_SHORT).show()
             forwardingMsg = null
         }
@@ -2340,6 +2381,10 @@ fun MessageContent(
                         ),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
+                if (caption.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = caption, color = Color(0xFFE2E8F0), fontSize = 14.sp)
+                }
             }
         }
         text.startsWith("[File]") || text.startsWith("[Document]|") -> {
@@ -2348,17 +2393,32 @@ fun MessageContent(
             val url: String
             val sizeBytes: Long
 
+            val fileCaption: String
             if (text.startsWith("[Document]|")) {
                 val parts = text.removePrefix("[Document]|").split("|")
                 name = parts.getOrNull(0) ?: "Documento"
                 sizeStr = parts.getOrNull(1) ?: ""
-                url = parts.drop(2).joinToString("|")
+                val rawUrl = parts.drop(2).joinToString("|")
+                if (rawUrl.contains("\n")) {
+                    url = rawUrl.substringBefore("\n").trim()
+                    fileCaption = rawUrl.substringAfter("\n").trim()
+                } else {
+                    url = rawUrl
+                    fileCaption = ""
+                }
                 sizeBytes = 0L
             } else {
                 val parts = text.substringAfter("[File]").trim().split("|")
                 name = parts.getOrNull(0) ?: "Archivo"
                 sizeBytes = parts.getOrNull(1)?.toLongOrNull() ?: 0L
-                url = if (parts.size > 2) parts[2] else (parts.getOrNull(1) ?: "")
+                val rawUrl = if (parts.size > 2) parts[2] else (parts.getOrNull(1) ?: "")
+                if (rawUrl.contains("\n")) {
+                    url = rawUrl.substringBefore("\n").trim()
+                    fileCaption = rawUrl.substringAfter("\n").trim()
+                } else {
+                    url = rawUrl
+                    fileCaption = ""
+                }
                 sizeStr = if (sizeBytes > 1024 * 1024 * 1024) {
                     "%.2f GB".format(sizeBytes.toDouble() / (1024 * 1024 * 1024))
                 } else if (sizeBytes > 1024 * 1024) {
@@ -2496,6 +2556,10 @@ fun MessageContent(
                         }
                     }
                 }
+            }
+            if (fileCaption.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(text = fileCaption, color = Color(0xFFE2E8F0), fontSize = 14.sp)
             }
         }
         text.startsWith("[Voice]") -> {
