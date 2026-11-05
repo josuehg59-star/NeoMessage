@@ -1,5 +1,10 @@
 package com.josuedev.neomessage
 
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
+import android.os.Build.VERSION.SDK_INT
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.window.Dialog
@@ -129,6 +134,7 @@ fun ChatRoomScreen(
     onNavigateToCalling: (String, Boolean) -> Unit,
     onNavigateToChat: ((String, String) -> Unit)? = null
 ) {
+        
     var messageText by remember { mutableStateOf("") }
     var isRecordingVoice by remember { mutableStateOf(false) }
     var voiceRecordDuration by remember { mutableIntStateOf(0) }
@@ -517,8 +523,14 @@ fun ChatRoomScreen(
             
             coroutineScope.launch(Dispatchers.IO) {
                 try {
-                    val compressedBytes = NeoUtils.compressImage(context, uri, quality = 72, maxDimension = 1280)
-                    if (compressedBytes == null) {
+                    val mimeType = context.contentResolver.getType(uri) ?: ""
+                    val isGif = mimeType.contains("gif") || uri.toString().lowercase().endsWith(".gif")
+                    val rawBytes = if (isGif) {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    } else {
+                        NeoUtils.compressImage(context, uri, quality = 72, maxDimension = 1280)
+                    }
+                    if (rawBytes == null) {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "No se pudo procesar la imagen seleccionada", Toast.LENGTH_SHORT).show()
                             isUploading = false
@@ -526,10 +538,11 @@ fun ChatRoomScreen(
                         return@launch
                     }
 
-                    val base64Data = android.util.Base64.encodeToString(compressedBytes, android.util.Base64.NO_WRAP)
+                    val base64Data = android.util.Base64.encodeToString(rawBytes, android.util.Base64.NO_WRAP)
+                    val mimeHeader = if (isGif) "data:image/gif;base64," else "data:image/jpeg;base64,"
                     val mid = database.push().key ?: UUID.randomUUID().toString()
                     val caption = messageText.trim()
-                    val msgText = if (caption.isNotEmpty()) "[Media] data:image/jpeg;base64,$base64Data\n$caption" else "[Media] data:image/jpeg;base64,$base64Data"
+                    val msgText = if (caption.isNotEmpty()) "[Media] $mimeHeader$base64Data\n$caption" else "[Media] $mimeHeader$base64Data"
                     val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
 
                     dao?.insertMessage(msg.toEntity(chatId))
@@ -1683,7 +1696,8 @@ fun ChatRoomScreen(
                     }
 
                     val preview = when {
-                        targetMsg.text.startsWith("[Media]") -> "📷 Foto adjunta"
+                        targetMsg.text.startsWith("[Sticker]") -> "✨ Sticker"
+                        targetMsg.text.startsWith("[Media]") -> "📷 Foto"
                         targetMsg.text.startsWith("[File]") || targetMsg.text.startsWith("[Document]|") -> {
                             val name = if (targetMsg.text.startsWith("[Document]|")) {
                                 targetMsg.text.removePrefix("[Document]|").split("|").firstOrNull() ?: "Documento"
@@ -1949,6 +1963,7 @@ fun ChatRoomScreen(
                     dbx.getReference("chats").child(t.chatId).child("messages").child(newId).setValue(fwd)
                     if (!t.isGroup && t.other.length >= 10) {
                         val preview = when {
+                            fMsg.text.startsWith("[Sticker]") -> "✨ Sticker"
                             fMsg.text.startsWith("[Media]") -> "📷 Foto"
                             fMsg.text.startsWith("[Video]") -> "🎬 Video"
                             fMsg.text.startsWith("[Document]|") || fMsg.text.startsWith("[File]") -> "📄 Archivo"
@@ -2273,6 +2288,19 @@ fun MessageContent(
     onNavigateToChat: ((String, String) -> Unit)? = null,
     onMessageLongClick: (() -> Unit)? = null
 ) {
+    val animatedImageLoader = remember(context) {
+        ImageLoader.Builder(context)
+            .components {
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
+            .crossfade(true)
+            .build()
+    }
+    
     val text = msg.text
     when {
         text.startsWith("[NEO_QUOTE]|") -> {
@@ -2320,6 +2348,28 @@ fun MessageContent(
                 }
             }
         }
+                text.startsWith("[Sticker]") -> {
+            val stickerUrl = text.removePrefix("[Sticker] ").removePrefix("[Sticker]").trim()
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { onMessageLongClick?.invoke() }
+                    )
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(stickerUrl)
+                        .crossfade(true)
+                        .build(),
+                    imageLoader = animatedImageLoader ?: remember { ImageLoader(context) },
+                    contentDescription = "Sticker",
+                    modifier = Modifier.size(160.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            }
+        }
         text.startsWith("[Media]") -> {
             val rawMedia = text.substringAfter("[Media]").trim()
             val (mediaContent, caption) = if (rawMedia.contains("\n")) {
@@ -2331,8 +2381,10 @@ fun MessageContent(
             var decodedBitmap by remember(cacheKey) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(NeoMediaBitmapCache.get(cacheKey)) }
             var isDecoding by remember(cacheKey) { mutableStateOf(decodedBitmap == null && mediaContent.startsWith("data:image")) }
 
+            val isGif = mediaContent.startsWith("data:image/gif") || mediaContent.contains(".gif") || text.startsWith("[GIF]")
+
             LaunchedEffect(cacheKey) {
-                if (decodedBitmap == null && mediaContent.startsWith("data:image")) {
+                if (!isGif && decodedBitmap == null && mediaContent.startsWith("data:image")) {
                     val bmp = NeoMediaBitmapCache.decodeBase64Safe(cacheKey, mediaContent, maxDim = 1024)
                     if (bmp != null) {
                         decodedBitmap = bmp
@@ -2343,7 +2395,30 @@ fun MessageContent(
                 }
             }
 
-            if (decodedBitmap != null) {
+            if (isGif) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(mediaContent)
+                        .crossfade(true)
+                        .build(),
+                    imageLoader = animatedImageLoader ?: remember { ImageLoader(context) },
+                    contentDescription = "GIF Animado",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 160.dp, max = 340.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF1E293B))
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = { onMessageLongClick?.invoke() }
+                        ),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+                if (caption.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = caption, color = Color(0xFFE2E8F0), fontSize = 14.sp)
+                }
+            } else if (decodedBitmap != null) {
                 Image(
                     bitmap = decodedBitmap!!,
                     contentDescription = "Imagen",

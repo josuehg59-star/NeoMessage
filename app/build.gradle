@@ -95,6 +95,7 @@ dependencies {
     // NEXUS TOOLS
     implementation 'androidx.biometric:biometric:1.2.0-alpha05'
     implementation 'io.coil-kt:coil-compose:2.7.0'
+    implementation 'io.coil-kt:coil-gif:2.7.0'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     
     // ROOM (Bóveda)

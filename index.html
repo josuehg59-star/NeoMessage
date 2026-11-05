@@ -3343,6 +3343,28 @@
             const typedCaption = captionInput ? captionInput.value.trim() : '';
 
             // Si es 1 sola imagen, abrimos el modal de previsualización para poder añadir/editar comentario como en WhatsApp
+            const isGifFile = files.length === 1 && (files[0].type === 'image/gif' || files[0].name.toLowerCase().endsWith('.gif'));
+            if (isGifFile) {
+                const file = files[0];
+                const reader = new FileReader();
+                reader.onload = (ge) => {
+                    const b64 = ge.target.result;
+                    pendingPastedImageB64 = b64;
+                    const imgPreview = document.getElementById('pastedImagePreview');
+                    if (imgPreview) imgPreview.src = b64;
+                    const capBox = document.getElementById('pastedImageCaption');
+                    if (capBox) capBox.value = typedCaption;
+                    if (captionInput) captionInput.value = '';
+                    const badge = document.getElementById('pasteSizeBadge');
+                    if (badge) badge.innerText = '🎬 GIF animado: ' + file.name;
+                    const modal = document.getElementById('pastePreviewModal');
+                    if (modal) modal.style.display = 'flex';
+                    if (capBox) capBox.focus();
+                };
+                reader.readAsDataURL(file);
+                input.value = '';
+                return;
+            }
             if (files.length === 1 && files[0].type.startsWith('image/')) {
                 const file = files[0];
                 const reader = new FileReader();
@@ -3385,7 +3407,20 @@
             showToast(`📷 Optimizando ${total} foto(s) estilo WhatsApp...`);
 
             files.forEach((file, index) => {
-                if (file.type.startsWith('image/')) {
+                const isGifFile = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+                if (isGifFile) {
+                    const reader = new FileReader();
+                    reader.onload = (ge) => {
+                        const payload = (typedCaption && index === 0)
+                            ? ('[Media] ' + ge.target.result + '\n' + typedCaption)
+                            : ('[Media] ' + ge.target.result);
+                        setTimeout(() => {
+                            dispatchMessageObject(payload);
+                            showToast(`🎬 GIF animado enviado (${index + 1}/${total})`);
+                        }, index * 200);
+                    };
+                    reader.readAsDataURL(file);
+                } else if (file.type.startsWith('image/')) {
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         const img = new Image();
@@ -5991,14 +6026,14 @@
                         ${isMine ? checkmarksHtml : ''}
                     </div>
                 `;
-            } else if (text.startsWith('[Sticker] ')) {
-                // 2. STICKER TRANSPARENTE ESTILO WHATSAPP
-                const src = text.replace('[Sticker] ', '').trim();
+            } else if (text.startsWith('[Sticker]') || text.startsWith('[Sticker] ')) {
+                // 2. STICKER TRANSPARENTE ESTILO WHATSAPP (ANIMADO / GIF / WEBP)
+                const src = text.replace(/^\[Sticker\]\s*/, '').trim();
                 b.classList.add('sticker-bubble');
                 b.innerHTML = `
                     ${menuBtnHtml}
                     ${quoteHtml}
-                    <img src="${src}" class="msg-sticker-img" loading="lazy">
+                    <img src="${src}" class="msg-sticker-img" loading="lazy" style="max-width:180px; max-height:180px; object-fit:contain; background:transparent;">
                     <div class="msg-footer" style="background:rgba(0,0,0,0.5); border-radius:10px; padding:2px 6px; display:inline-flex; width:fit-content; margin-left:auto;">
                         ${msg.isEdited ? '<span style="font-size:11px; color:#8696A0; margin-right:4px; font-style:italic;">Editado</span>' : ''}<span>${timeStr}</span>
                         ${isMine ? checkmarksHtml : ''}
@@ -7298,23 +7333,23 @@ function forwardMessageToChat(t, textPayload) {
         ];
 
                 const STICKER_DATABASE = [
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Grinning%20Face%20with%20Big%20Eyes.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Rolling%20on%20the%20Floor%20Laughing.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Face%20with%20Tears%20of%20Joy.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Smiling%20Face%20with%20Heart-Eyes.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Star-Struck.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Partying%20Face.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Smiling%20Face%20with%20Sunglasses.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Money-Mouth%20Face.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Thinking%20Face.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Exploding%20Head.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Fire.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Thumbs%20Up.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Folded%20Hands.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Clapping%20Hands.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Heart%20with%20Arrow.png',
-            'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Activities/Party%20Popper.png'
-        ];
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f600/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f602/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f923/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f60d/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f929/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f973/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f60e/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f911/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f92f/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f609/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f44d/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f44f/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/2764_fe0f/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f64f/512.gif',
+            'https://fonts.gstatic.com/s/e/notoemoji/latest/1f389/512.gif'
+        ]];
 
         function toggleEmojiStickerPanel() {
             const p = document.getElementById('emojiStickerPanel');
