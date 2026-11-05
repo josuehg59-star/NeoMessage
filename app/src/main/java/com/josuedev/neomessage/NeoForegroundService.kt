@@ -283,6 +283,35 @@ class NeoForegroundService : Service() {
             })
         }
 
+        // --- SINCRONIZACION PC CELULAR EN SEGUNDO PLANO ($0.00 COSTO) ---
+        if (myInboxKey.length == 10) {
+            val syncRef = db.getReference("sync").child(myInboxKey)
+            syncRef.addChildEventListener(object : com.google.firebase.database.ChildEventListener {
+                override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                    try {
+                        val origin = snapshot.child("origin").getValue(String::class.java) ?: ""
+                        val syncMsg = snapshot.child("msg").getValue(CloudMessage::class.java)
+                        val syncChatId = snapshot.child("chatId").getValue(String::class.java) ?: ""
+                        if (syncMsg == null || syncChatId.isEmpty()) { snapshot.ref.removeValue(); return }
+                        if (origin == "app") {
+                            if (System.currentTimeMillis() - syncMsg.timestamp > 3L * 24 * 3600 * 1000) snapshot.ref.removeValue()
+                            return
+                        }
+                        serviceScope.launch(Dispatchers.IO) {
+                            try {
+                                AppDatabase.getDatabase(this@NeoForegroundService).messageDao().insertMessage(syncMsg.toEntity(syncChatId))
+                            } catch (_: Exception) {}
+                        }
+                        snapshot.ref.removeValue()
+                    } catch (_: Exception) {}
+                }
+                override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onChildRemoved(snapshot: DataSnapshot) {}
+                override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onCancelled(error: DatabaseError) {}
+            })
+        }
+
         // Escucha en segundo plano desde el Relay Soberano ($0.00 costo)
         serviceScope.launch {
             NeoRelayClient.incomingMessages.collect { (relChatId, relMsg) ->

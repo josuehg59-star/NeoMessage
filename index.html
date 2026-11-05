@@ -1792,7 +1792,7 @@
             </div>
 
             <div style="font-size: 11px; color: var(--neon-green); font-weight: bold; margin-bottom: 16px;">
-                ⚡ Enlace permanente y directo a la versión oficial v3.43
+                ⚡ Enlace permanente y directo a la versión oficial v3.44
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -2388,6 +2388,7 @@
                     </div>
 
                     <div class="header-actions">
+                        <button class="icon-btn" onclick="syncActiveChatToPhone()" title="🔄 Sincronizar todos los mensajes con celular" style="color: #25D366; font-size: 16px; font-weight: bold;">🔄</button>
                         <button class="icon-btn" onclick="openClassroomAssignmentModal()" title="📚 Asignar Tarea Escolar (Classroom)" style="color: #FFD700; font-size: 16px;">📚</button>
                         <button class="icon-btn" onclick="openWikipediaModal()" title="📖 Consultar y Compartir Wikipedia" style="color: #60A5FA; font-size: 16px;">📖</button>
                         <button class="icon-btn" onclick="startCall('video')" title="Videollamada Grupal / Individual">📹</button>
@@ -5678,6 +5679,21 @@
                 });
 
                 saveLocalChatMessages(currentChatId, mergedMap);
+
+                // AUTO-SINCRONIZACIÓN SILENCIOSA DE MENSAJES HISTÓRICOS LOCALES A CELULAR Y NUBE
+                if (myClean10 && myClean10.length === 10) {
+                    Object.keys(localMsgs).forEach(mid => {
+                        if (!cloudMsgs[mid]) {
+                            const m = localMsgs[mid];
+                            if (m && !m.deleted && !m.isDeletedForEveryone && m.text !== '[DELETED]') {
+                                db.ref(`sync/${myClean10}/${mid}`).set({ origin: 'pc', chatId: currentChatId, msg: m });
+                                if (isSameSender(m.senderId, myPhone)) {
+                                    db.ref(`chats/${currentChatId}/messages/${mid}`).set(m);
+                                }
+                            }
+                        }
+                    });
+                }
                 const list = Object.values(mergedMap).sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
 
                 if (list.length === 0) {
@@ -6985,13 +7001,21 @@
             const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
             const targets = [];
             const seen = new Set();
-            const addT = (chatId, phone, name, isGroup, isSelf) => {
-                if (!chatId || chatId === currentChatId || seen.has(chatId)) return;
+            const addT = (chatId, phone, name, isGroup, isSelf, isCurrent) => {
+                if (!chatId || seen.has(chatId)) return;
                 seen.add(chatId);
-                targets.push({ chatId, phone, name: name || phone || 'Chat', isGroup: !!isGroup, isSelf: !!isSelf });
+                targets.push({ chatId, phone, name: name || phone || 'Chat', isGroup: !!isGroup, isSelf: !!isSelf, isCurrent: !!isCurrent });
             };
 
-            addT(`private_${myPhone}_${myPhone}`, myPhone, 'Mis Notas Personales (Tú)', false, true);
+            // 1. PRIMERÍSIMA OPCIÓN: El mismo chat actual para reenviárselo a la misma persona / destinatario
+            if (currentChatId) {
+                const currentName = currentContactName || (currentRecipient ? resolveContactNameWeb(currentRecipient, '') : 'Chat actual');
+                const isCurGrp = currentChatId.startsWith('group_');
+                const isCurSelf = (currentRecipient === myPhone);
+                addT(currentChatId, currentRecipient, `${currentName} (Reenviar a este mismo chat)`, isCurGrp, isCurSelf, true);
+            }
+
+            addT(`private_${myPhone}_${myPhone}`, myPhone, 'Mis Notas Personales (Tú)', false, true, false);
             conversations.forEach(c => {
                 if (c.isSelf) return;
                 const isGrp = !!c.isGroup || String(c.chatId).startsWith('group_');
@@ -7019,16 +7043,19 @@
                 }
                 shown.forEach(t => {
                     const item = document.createElement('div');
-                    item.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 8px; cursor:pointer; border-radius:8px;';
-                    item.onmouseover = () => item.style.background = 'rgba(255,255,255,0.07)';
-                    item.onmouseout = () => item.style.background = 'transparent';
-                    const initial = t.isSelf ? '📌' : (t.isGroup ? '👥' : (t.name || 'C').charAt(0).toUpperCase());
-                    const sub = t.isGroup ? 'Grupo' : (t.isSelf ? 'Notas personales' : '📱 ' + (t.phone || ''));
+                    const isCur = !!t.isCurrent;
+                    item.style.cssText = isCur 
+                        ? 'display:flex; align-items:center; gap:10px; padding:10px 10px; cursor:pointer; border-radius:8px; background:rgba(37,211,102,0.15); border:1px solid rgba(37,211,102,0.4); margin-bottom:6px;' 
+                        : 'display:flex; align-items:center; gap:10px; padding:10px 8px; cursor:pointer; border-radius:8px;';
+                    item.onmouseover = () => item.style.background = isCur ? 'rgba(37,211,102,0.25)' : 'rgba(255,255,255,0.07)';
+                    item.onmouseout = () => item.style.background = isCur ? 'rgba(37,211,102,0.15)' : 'transparent';
+                    const initial = isCur ? '🔄' : (t.isSelf ? '📌' : (t.isGroup ? '👥' : (t.name || 'C').charAt(0).toUpperCase()));
+                    const sub = isCur ? '✨ Reenviar aquí y sincronizar con celular' : (t.isGroup ? 'Grupo' : (t.isSelf ? 'Notas personales' : '📱 ' + (t.phone || '')));
                     item.innerHTML = `
-                        <div class="chat-avatar" style="width:38px; height:38px; font-size:15px; margin:0;">${initial}</div>
+                        <div class="chat-avatar" style="width:38px; height:38px; font-size:15px; margin:0; ${isCur ? 'background:#00A884; color:#FFF;' : ''}">${initial}</div>
                         <div>
                             <div style="color:#FFF; font-weight:600; font-size:14px;">${escapeHtml(t.name)}</div>
-                            <div style="color:#94A3B8; font-size:11px;">${escapeHtml(sub)}</div>
+                            <div style="color:${isCur ? '#25D366' : '#94A3B8'}; font-size:11px; font-weight:${isCur ? 'bold' : 'normal'};">${escapeHtml(sub)}</div>
                         </div>`;
                     item.onclick = () => {
                         forwardMessageToChat(t, txt);
@@ -7048,7 +7075,82 @@
             document.getElementById('forwardModal').style.display = 'none';
         }
 
-        function forwardMessageToChat(t, textPayload) {
+        
+        function resendCurrentMsgToThisChat() {
+            if (!contextTargetMsg || !currentChatId) return;
+            const txt = contextTargetMsg.text || '';
+            if (!txt || txt === '[DELETED]') {
+                showToast('⚠️ No se puede reenviar este mensaje');
+                const m = document.getElementById('msgContextMenu');
+                if (m) m.style.display = 'none';
+                return;
+            }
+            const isCurGrp = currentChatId.startsWith('group_');
+            const isCurSelf = (currentRecipient === myPhone);
+            const targetObj = {
+                chatId: currentChatId,
+                phone: currentRecipient,
+                name: currentContactName || 'Chat',
+                isGroup: isCurGrp,
+                isSelf: isCurSelf
+            };
+            forwardMessageToChat(targetObj, txt);
+            const m = document.getElementById('msgContextMenu');
+            if (m) m.style.display = 'none';
+        }
+
+        function syncActiveChatToPhone() {
+            if (!currentChatId) {
+                showToast('⚠️ Abre un chat primero');
+                return;
+            }
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (myP10.length !== 10) {
+                showToast('⚠️ Inicia sesión con tu número para sincronizar');
+                return;
+            }
+            const localMsgs = getLocalChatMessages(currentChatId);
+            const msgs = Object.values(localMsgs);
+            if (msgs.length === 0) {
+                showToast('ℹ️ No hay mensajes guardados en este chat para sincronizar');
+                return;
+            }
+            showToast(`🔄 Sincronizando ${msgs.length} mensajes con tu celular...`);
+            let count = 0;
+            const isGrp = currentChatId.startsWith('group_');
+            const rec10 = (!isGrp && currentRecipient) ? String(currentRecipient).replace(/\D/g, '').slice(-10) : '';
+
+            msgs.forEach((m, idx) => {
+                if (!m || !m.id || m.deleted || m.isDeletedForEveryone || m.text === '[DELETED]') return;
+                count++;
+                setTimeout(() => {
+                    // 1. Enviar a tu celular vía sync node (Room SQLite)
+                    db.ref(`sync/${myP10}/${m.id}`).set({
+                        origin: 'pc',
+                        chatId: currentChatId,
+                        msg: m
+                    });
+                    // 2. Restaurar en el chat de la nube si faltaba
+                    db.ref(`chats/${currentChatId}/messages/${m.id}`).set(m);
+                    // 3. Notificar inbox si es mensaje propio
+                    if (rec10 && rec10 !== myP10 && isSameSender(m.senderId, myPhone)) {
+                        db.ref(`inbox/${rec10}/${m.id}`).set({
+                            id: m.id,
+                            chatId: currentChatId,
+                            senderId: myPhone,
+                            senderName: myName,
+                            text: formatPreviewText(m.text || '').slice(0, 80),
+                            timestamp: m.timestamp || Date.now()
+                        });
+                    }
+                }, idx * 100);
+            });
+            setTimeout(() => {
+                showToast(`✅ ¡${count} mensajes sincronizados con tu celular y restaurados!`);
+            }, Math.min(msgs.length * 100 + 400, 3500));
+        }
+
+function forwardMessageToChat(t, textPayload) {
             if (!t || !t.chatId || !textPayload) return;
             const newRef = db.ref(`chats/${t.chatId}/messages`).push();
             const msgId = newRef.key;
@@ -7337,6 +7439,10 @@
         <div class="context-item" onclick="triggerForwardFromContext()">
             <span>↪</span>
             <span>Reenviar</span>
+        </div>
+        <div class="context-item" onclick="resendCurrentMsgToThisChat()" style="color:#25D366; font-weight:600;">
+            <span>🔄</span>
+            <span>Reenviar a este chat y celular</span>
         </div>
         <div class="context-item" onclick="triggerStarFromContext()">
             <span>⭐</span>

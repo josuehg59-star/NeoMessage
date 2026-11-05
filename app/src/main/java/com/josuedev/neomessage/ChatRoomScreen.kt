@@ -1851,18 +1851,24 @@ fun ChatRoomScreen(
             fun addPrivate(p10: String) {
                 if (p10.length != 10 || p10 == my10) return
                 val cid = "private_" + listOf(my10, p10).sorted().joinToString("_")
-                if (cid == chatId || !seen.add(cid)) return
+                if (!seen.add(cid)) return
                 fwdTargets.add(NeoFwdTarget(cid, p10, nameFor(p10), false))
             }
+            // 1. Reenviar a este mismo chat
+            val isCurrentGrp = chatId.startsWith("group_")
+            val currentTargetName = if (isCurrentGrp) (chatName.ifEmpty { "Este Grupo" }) else "${nameFor(otherCleanId.takeLast(10))} (Este mismo chat)"
+            fwdTargets.add(NeoFwdTarget(chatId, if (isCurrentGrp) chatId else otherCleanId.takeLast(10), currentTargetName, isCurrentGrp))
+            seen.add(chatId)
+
             val selfCid = "private_${my10}_${my10}"
-            if (selfCid != chatId && seen.add(selfCid)) {
+            if (seen.add(selfCid)) {
                 fwdTargets.add(NeoFwdTarget(selfCid, my10, "Mis Notas Personales (Tú)", false))
             }
             val ids = withContext(Dispatchers.IO) {
                 try { dao?.getAllMessagesDirect()?.map { it.chatId }?.distinct() ?: emptyList() } catch (_: Exception) { emptyList<String>() }
             }
             ids.forEach { cId ->
-                if (cId == chatId) return@forEach
+                // allow all chats
                 if (cId.startsWith("group_")) {
                     if (seen.add(cId)) fwdTargets.add(NeoFwdTarget(cId, cId, "Grupo", true))
                 } else {
