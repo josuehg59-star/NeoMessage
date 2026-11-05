@@ -7076,7 +7076,8 @@
                 addT(currentChatId, currentRecipient, `${currentName} (Reenviar a este mismo chat)`, isCurGrp, isCurSelf, true);
             }
 
-            addT(`private_${myPhone}_${myPhone}`, myPhone, 'Mis Notas Personales (Tú)', false, true, false);
+            const selfTitle = (myName && myName.trim()) ? `${myName.trim()} (Tú)` : 'Mis Notas Personales (Tú)';
+            addT(`private_${myPhone}_${myPhone}`, myPhone, selfTitle, false, true, false);
             conversations.forEach(c => {
                 if (c.isSelf) return;
                 const isGrp = !!c.isGroup || String(c.chatId).startsWith('group_');
@@ -7097,7 +7098,12 @@
                 const box = document.getElementById('fwdItems');
                 box.innerHTML = '';
                 const query = (q || '').toLowerCase().trim();
-                const shown = targets.filter(t => !query || t.name.toLowerCase().includes(query) || String(t.phone || '').includes(query));
+                const shown = targets.filter(t => !query || 
+                    t.name.toLowerCase().includes(query) || 
+                    String(t.phone || '').includes(query) ||
+                    (t.isSelf && myName && myName.toLowerCase().includes(query)) ||
+                    (t.isSelf && ('notas personales'.includes(query) || 'tu'.includes(query)))
+                );
                 if (shown.length === 0) {
                     box.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats disponibles.</div>';
                     return;
@@ -7110,8 +7116,8 @@
                         : 'display:flex; align-items:center; gap:10px; padding:10px 8px; cursor:pointer; border-radius:8px;';
                     item.onmouseover = () => item.style.background = isCur ? 'rgba(37,211,102,0.25)' : 'rgba(255,255,255,0.07)';
                     item.onmouseout = () => item.style.background = isCur ? 'rgba(37,211,102,0.15)' : 'transparent';
-                    const initial = isCur ? '🔄' : (t.isSelf ? '📌' : (t.isGroup ? '👥' : (t.name || 'C').charAt(0).toUpperCase()));
-                    const sub = isCur ? '✨ Reenviar aquí y sincronizar con celular' : (t.isGroup ? 'Grupo' : (t.isSelf ? 'Notas personales' : '📱 ' + (t.phone || '')));
+                    const initial = isCur ? '🔄' : (t.isSelf ? (myName ? myName.charAt(0).toUpperCase() : '👤') : (t.isGroup ? '👥' : (t.name || 'C').charAt(0).toUpperCase()));
+                    const sub = isCur ? '✨ Reenviar aquí y sincronizar con celular' : (t.isGroup ? 'Grupo' : (t.isSelf ? 'Notas personales · Enviar a ti mismo' : '📱 ' + (t.phone || '')));
                     item.innerHTML = `
                         <div class="chat-avatar" style="width:38px; height:38px; font-size:15px; margin:0; ${isCur ? 'background:#00A884; color:#FFF;' : ''}">${initial}</div>
                         <div>

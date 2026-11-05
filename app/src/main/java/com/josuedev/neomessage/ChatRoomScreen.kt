@@ -1889,7 +1889,8 @@ fun ChatRoomScreen(
 
             val selfCid = "private_${my10}_${my10}"
             if (seen.add(selfCid)) {
-                fwdTargets.add(NeoFwdTarget(selfCid, my10, "Mis Notas Personales (Tú)", false))
+                val selfTitle = if (myName.isNotBlank()) "$myName (Tú)" else "Mis Notas Personales (Tú)"
+                fwdTargets.add(NeoFwdTarget(selfCid, my10, selfTitle, false))
             }
             val ids = withContext(Dispatchers.IO) {
                 try { dao?.getAllMessagesDirect()?.map { it.chatId }?.distinct() ?: emptyList() } catch (_: Exception) { emptyList<String>() }
@@ -1999,7 +2000,13 @@ fun ChatRoomScreen(
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
                     )
-                    val shown = fwdTargets.filter { fwdQuery.isBlank() || it.name.contains(fwdQuery, true) || it.other.contains(fwdQuery) }
+                    val shown = fwdTargets.filter { 
+                        fwdQuery.isBlank() || 
+                        it.name.contains(fwdQuery, true) || 
+                        it.other.contains(fwdQuery) ||
+                        (it.other == my10 && myName.contains(fwdQuery, true)) ||
+                        (it.other == my10 && "notas".contains(fwdQuery, true))
+                    }
                     Column(modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                         if (shown.isEmpty()) {
                             Text("No hay chats disponibles.", color = Color.Gray, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
@@ -2018,7 +2025,7 @@ fun ChatRoomScreen(
                                 Spacer(Modifier.width(12.dp))
                                 Column {
                                     Text(t.name, color = textColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(if (t.isGroup) "Grupo" else "📱 ${t.other}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                    Text(if (t.chatId == chatId) "Reenviar a este mismo chat" else if (t.other == my10 && !t.isGroup) "Notas personales · Enviar a ti mismo" else if (t.isGroup) "Grupo" else "📱 ${t.other}", color = Color(0xFF94A3B8), fontSize = 11.sp)
                                 }
                             }
                         }
