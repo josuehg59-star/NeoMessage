@@ -253,8 +253,6 @@ class NeoForegroundService : Service() {
                                         serviceScope.launch(Dispatchers.IO) {
                                             try {
                                                 AppDatabase.getDatabase(this@NeoForegroundService).messageDao().insertMessage(fullMsg.toEntity(chatId))
-                                                kotlinx.coroutines.delay(8000)
-                                                msgSnap.ref.removeValue()
                                             } catch (_: Exception) {}
                                         }
                                     }

@@ -1792,7 +1792,7 @@
             </div>
 
             <div style="font-size: 11px; color: var(--neon-green); font-weight: bold; margin-bottom: 16px;">
-                ⚡ Enlace permanente y directo a la versión oficial v3.39
+                ⚡ Enlace permanente y directo a la versión oficial v3.43
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -2366,6 +2366,12 @@
                     <div class="status-circle-btn" onclick="document.getElementById('statusPhotoInput').click()">
                         <div class="status-circle-icon">📷</div>
                         <span>Foto y video</span>
+                    </div>
+
+                    <input type="file" id="statusAudioInput" accept="audio/*" style="display: none;" onchange="handleStatusAudioSelected(this)">
+                    <div class="status-circle-btn" onclick="document.getElementById('statusAudioInput').click()">
+                        <div class="status-circle-icon">🎵</div>
+                        <span id="statusMusicLabel">Música</span>
                     </div>
                 </div>
             </div>
@@ -3190,41 +3196,76 @@
         // ========================================================
         // 3. ESTADOS DE 24 HORAS (TEXTO, FOTOS Y VIDEOS)
         // ========================================================
+        function handleStatusAudioSelected(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            if (file.size > 2 * 1024 * 1024) {
+                alert('La canción pesa más de 2 MB. Usa un fragmento de ~1 minuto.');
+                input.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                pendingStatusAudio = { name: file.name.replace(/\.[^.]+$/, ''), data: e.target.result };
+                const lbl = document.getElementById('statusMusicLabel');
+                if (lbl) lbl.innerText = '🎵 ' + pendingStatusAudio.name.slice(0, 14);
+                showToast('🎵 Música lista: se añadirá a tu próximo estado (foto o video)');
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        function publishStatusWithMedia(statusObj, media) {
+            const hasHeavy = media && Object.keys(media).length > 0;
+            if (pendingStatusAudio) {
+                media = media || {};
+                media.audio = pendingStatusAudio.data;
+                statusObj.musicName = pendingStatusAudio.name;
+                statusObj.hasMedia = true;
+            }
+            const finish = () => db.ref(`status/${statusObj.id}`).set(statusObj).then(() => {
+                pendingStatusAudio = null;
+                const lbl = document.getElementById('statusMusicLabel');
+                if (lbl) lbl.innerText = 'Música';
+                showToast('✅ ¡Estado publicado por 24 horas!');
+            });
+            if (media && Object.keys(media).length > 0) {
+                db.ref(`status_media/${statusObj.id}`).set(media).then(finish);
+            } else {
+                finish();
+            }
+        }
+
         function handleStatusMediaSelected(input) {
             if (!input.files || !input.files[0]) return;
             const file = input.files[0];
             const isVideo = file.type.startsWith('video/');
 
             if (isVideo) {
-                // Validación de video
-                if (file.size > 25 * 1024 * 1024) {
-                    alert('El video supera el límite recomendado de 25MB para estados.');
+                if (file.size > 8 * 1024 * 1024) {
+                    alert('El video pesa más de 8 MB. Elige uno más corto (hasta ~30 s).');
+                    input.value = '';
                     return;
                 }
                 const caption = prompt('Pie de video opcional para tu estado:') || '';
                 const reader = new FileReader();
                 showToast('⏳ Subiendo video a tu estado...');
-
                 reader.onload = (e) => {
-                    const videoB64 = e.target.result;
                     const newId = db.ref('status').push().key;
-                    const statusObj = {
+                    publishStatusWithMedia({
                         id: newId,
                         text: caption || 'Video de estado',
                         timestamp: Date.now(),
                         senderName: myName,
                         senderId: myPhone,
-                        videoUrl: videoB64,
-                        mediaType: 'video'
-                    };
-                    db.ref(`status/${newId}`).set(statusObj).then(() => {
-                        showToast('✅ ¡Video publicado en tu estado (24h)!');
-                    });
+                        imageUrl: '',
+                        mediaType: 'video',
+                        hasMedia: true
+                    }, { video: e.target.result });
                 };
                 reader.readAsDataURL(file);
                 input.value = '';
             } else {
-                // Foto / Imagen con compresión
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const img = new Image();
@@ -3233,17 +3274,13 @@
                         const maxDim = 900;
                         let w = img.width, h = img.height;
                         if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
-                        else if (h > maxDim) { h = Math.round(h * maxDim / h); h = maxDim; }
-
+                        else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
                         canvas.width = w; canvas.height = h;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, w, h);
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                         const b64 = canvas.toDataURL('image/jpeg', 0.75);
-
                         const caption = prompt('Pie de foto opcional para tu estado:') || '';
                         const newId = db.ref('status').push().key;
-
-                        const statusObj = {
+                        publishStatusWithMedia({
                             id: newId,
                             text: caption || 'Foto de estado',
                             timestamp: Date.now(),
@@ -3251,11 +3288,7 @@
                             senderId: myPhone,
                             imageUrl: b64,
                             mediaType: 'image'
-                        };
-
-                        db.ref(`status/${newId}`).set(statusObj).then(() => {
-                            showToast('✅ ¡Foto publicada en tu estado (24h)!');
-                        });
+                        }, null);
                     };
                     img.src = e.target.result;
                 };
@@ -3264,9 +3297,8 @@
             }
         }
 
-        // ========================================================
-        // 4. ADJUNTAR ARCHIVOS (DOCUMENTOS, APK, ZIP, PDF, VIDEOS)
-        // ========================================================
+        let pendingStatusAudio = null;
+
         function toggleAttachmentPopup() {
             const p = document.getElementById('attachmentPopup');
             p.style.display = (p.style.display === 'none' || !p.style.display) ? 'flex' : 'none';
@@ -4788,20 +4820,65 @@
         // ESCUCHAR CHATS ACTIVOS (MODO ULTRA-LIGERO: CERO DESCARGA MASIVA DE FIREBASE + RESPALDO LOCAL)
         const watchedChatIdsWeb = new Set();
 
+        // ALMACEN LOCAL EN INDEXEDDB (cientos de MB): ya no se pierden fotos ni mensajes por el limite de 5 MB de localStorage
+        const neoMsgCache = {};
+        let neoMsgIdb = null;
+        const neoMsgReady = new Promise(resolve => {
+            try {
+                const req = indexedDB.open('neo_web_msgs', 1);
+                req.onupgradeneeded = () => req.result.createObjectStore('msgs');
+                req.onsuccess = () => {
+                    neoMsgIdb = req.result;
+                    try {
+                        const cur = neoMsgIdb.transaction('msgs', 'readonly').objectStore('msgs').openCursor();
+                        cur.onsuccess = () => {
+                            const c = cur.result;
+                            if (c) {
+                                neoMsgCache[c.key] = Object.assign({}, c.value || {}, neoMsgCache[c.key] || {});
+                                c.continue();
+                            } else {
+                                resolve();
+                            }
+                        };
+                        cur.onerror = () => resolve();
+                    } catch (_) { resolve(); }
+                };
+                req.onerror = () => resolve();
+            } catch (_) { resolve(); }
+        });
+
         function getLocalChatMessages(chatId) {
+            if (neoMsgCache[chatId]) return Object.assign({}, neoMsgCache[chatId]);
             try {
                 const raw = localStorage.getItem('neo_web_msgs_' + chatId);
-                return raw ? JSON.parse(raw) : {};
-            } catch (_) { return {}; }
+                if (raw) {
+                    const m = JSON.parse(raw);
+                    neoMsgCache[chatId] = m;
+                    return Object.assign({}, m);
+                }
+            } catch (_) {}
+            return {};
         }
 
         function saveLocalChatMessages(chatId, msgsMap) {
             try {
-                const entries = Object.values(msgsMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-80);
+                const entries = Object.values(msgsMap).filter(m => m && m.id).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-400);
                 const pruned = {};
-                entries.forEach(m => { if (m && m.id) pruned[m.id] = m; });
-                localStorage.setItem('neo_web_msgs_' + chatId, JSON.stringify(pruned));
+                entries.forEach(m => { pruned[m.id] = m; });
+                neoMsgCache[chatId] = pruned;
+                neoMsgReady.then(() => {
+                    try { if (neoMsgIdb) neoMsgIdb.transaction('msgs', 'readwrite').objectStore('msgs').put(pruned, chatId); } catch (_) {}
+                });
+                try { localStorage.removeItem('neo_web_msgs_' + chatId); } catch (_) {}
             } catch (_) {}
+        }
+
+        function clearLocalChatMessages(chatId) {
+            delete neoMsgCache[chatId];
+            neoMsgReady.then(() => {
+                try { if (neoMsgIdb) neoMsgIdb.transaction('msgs', 'readwrite').objectStore('msgs').delete(chatId); } catch (_) {}
+            });
+            try { localStorage.removeItem('neo_web_msgs_' + chatId); } catch (_) {}
         }
 
         function saveLocalConversationsWeb() {
@@ -4944,6 +5021,44 @@
                 });
             });
 
+            // 3.5 SINCRONIZACION CELULAR -> PC: mensajes enviados desde mi celular (otro dispositivo de MI cuenta)
+            db.ref(`sync/${myCleanPhone}`).on('child_added', snap => {
+                const v = snap.val();
+                if (!v || !v.msg || !v.chatId) { snap.ref.remove(); return; }
+                if (v.origin === 'pc') {
+                    if (Date.now() - (v.msg.timestamp || 0) > 3 * 24 * 3600 * 1000) snap.ref.remove();
+                    return;
+                }
+                const cId = v.chatId;
+                const m = v.msg;
+                m.id = m.id || snap.key;
+                const localMap = getLocalChatMessages(cId);
+                localMap[m.id] = m;
+                saveLocalChatMessages(cId, localMap);
+                snap.ref.remove();
+
+                const parts = cId.replace('private_', '').split('_');
+                const p0 = (parts[0] || '').replace(/\D/g, '').slice(-10);
+                const other = p0 === myCleanPhone ? (parts[1] || '') : (parts[0] || '');
+                const otherPhone = other.replace(/\D/g, '').slice(-10);
+                const isGrp = cId.startsWith('group_');
+                const isSelf = !isGrp && otherPhone === myCleanPhone;
+                attachLightweightChatWatcher(cId, isGrp ? cId : otherPhone, isGrp, null);
+                upsertConversationWeb({
+                    chatId: cId,
+                    recipientPhone: isGrp ? cId : otherPhone,
+                    name: isSelf ? 'Mis Notas Personales (Tú)' : (isGrp ? ((conversations.find(c => c.chatId === cId) || {}).name || 'Grupo') : resolveContactNameWeb(otherPhone, null)),
+                    lastText: formatPreviewText(m.text),
+                    timestamp: m.timestamp || Date.now(),
+                    isGroup: isGrp,
+                    isSelf: isSelf
+                });
+                if (currentChatId === cId) {
+                    const it = conversations.find(c => c.chatId === cId);
+                    if (it) selectChat(it);
+                }
+            });
+
             // 4. Escuchar avisos ligeros entrantes en inbox/{myCleanPhone} (< 200 bytes)
             db.ref(`inbox/${myCleanPhone}`).on('child_added', snap => {
                 const notice = snap.val();
@@ -5050,8 +5165,11 @@
                         </div>
                         ${(!item.isSelf && !item.isGroup && contactPresenceSub) ? `<div style="font-size:10.5px; color:${isContactOnline ? '#00FF7F' : '#94A3B8'}; font-weight:${isContactOnline ? '600' : '400'}; margin-bottom:2px;">${isContactOnline ? '🟢 en línea' : ('🕒 ' + escapeHtml(contactPresenceSub))}</div>` : ''}
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
-                            ${!item.isSelf ? `<div style="display:flex; gap:4px; align-items:center;"><button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🧹</button><button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Eliminar conversación de la lista">🗑️</button></div>` : ''}
+                            <span class="chat-last-msg" style="${(item.unreadCount && item.unreadCount > 0) ? 'font-weight:700; color:#FFFFFF;' : ''}">${escapeHtml(item.lastText)}</span>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                ${(item.unreadCount && item.unreadCount > 0) ? `<span style="background:#00A884; color:#000; font-weight:800; font-size:11px; min-width:18px; height:18px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; padding:0 4px;">${item.unreadCount}</span>` : ''}
+                                ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🧹</button><button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Eliminar conversación de la lista">🗑️</button>` : ''}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -5067,9 +5185,7 @@
             const nameLabel = displayName || currentContactName || recipientPhone || 'este contacto';
             if (confirm(`🧹 ¿Vaciar todos los mensajes de este chat con ${nameLabel}?\n\nSe borrarán todos los mensajes de esta conversación en tu PC y en Firebase, pero el contacto seguirá guardado.`)) {
                 // 1. Borrar respaldo local de mensajes en esta PC
-                try {
-                    localStorage.removeItem('neo_web_msgs_' + chatId);
-                } catch (_) {}
+                clearLocalChatMessages(chatId);
 
                 // 2. Borrar los mensajes del chat en Firebase
                 db.ref(`chats/${chatId}/messages`).remove().catch(() => {});
@@ -5099,9 +5215,7 @@
             if (!chatId) return;
             const nameLabel = displayName || currentContactName || recipientPhone || 'este chat';
             if (confirm(`🗑️ ¿Eliminar la conversación con ${nameLabel} de tu lista de chats?\n\nSe borrarán los mensajes y se quitará de tu lista de conversaciones.`)) {
-                try {
-                    localStorage.removeItem('neo_web_msgs_' + chatId);
-                } catch (_) {}
+                clearLocalChatMessages(chatId);
 
                 db.ref(`chats/${chatId}/messages`).remove().catch(() => {});
 
@@ -5493,6 +5607,7 @@
 
         // SELECCIONAR CHAT
         function selectChat(item) {
+            item.unreadCount = 0;
             currentChatId = item.chatId;
             currentRecipient = item.recipientPhone;
             const resolvedName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
@@ -5552,13 +5667,12 @@
                         } else {
                             mergedMap[mid] = cm;
                         }
-                        // Si el mensaje ya fue recibido por nosotros o tiene más de 10 minutos, limpiarlo de Firebase tras respaldarlo localmente
-                        const sClean10 = String(cm.senderId || '').replace(/\D/g, '').slice(-10);
+                        // LIMPIEZA SEGURA DE TRÁNSITO EN FIREBASE (0 GB EN NUBE SIN BORRAR NADA DE LA PC)
                         const ageMs = Date.now() - (Number(cm.timestamp) || 0);
-                        if ((sClean10 && sClean10 !== myClean10 && ageMs > 15000) || ageMs > 10 * 60 * 1000) {
-                            setTimeout(() => {
-                                db.ref(`chats/${currentChatId}/messages/${mid}`).remove().catch(() => {});
-                            }, 5000);
+                        const isReadByBoth = (cm.readBy && Object.keys(cm.readBy).length > 1 && ageMs > 3600 * 1000);
+                        const isVeryOld = ageMs > 24 * 3600 * 1000;
+                        if (isReadByBoth || isVeryOld) {
+                            db.ref(`chats/${currentChatId}/messages/${mid}`).remove().catch(() => {});
                         }
                     }
                 });
@@ -5704,6 +5818,58 @@
             if (s1 === s2) return true;
             if (s1.length >= 10 && s2.length >= 10 && s1.slice(-10) === s2.slice(-10)) return true;
             return false;
+        }
+
+
+        function formatMessageTextWithLinks(text) {
+            if (!text) return { html: '', preview: '' };
+            const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`]+|www\.[^\s<>"'{}|\\^`]+)/gi;
+            let preview = '';
+            const foundUrls = text.match(urlRegex);
+            if (foundUrls && foundUrls.length > 0) {
+                const firstUrl = foundUrls[0].trim().replace(/[.,;!?)]+$/, '');
+                const href = firstUrl.startsWith('www.') ? 'https://' + firstUrl : firstUrl;
+                let icon = '🌐';
+                let label = 'Abrir Enlace Web';
+                let domain = 'Enlace externo';
+                try { domain = new URL(href).hostname.replace('www.', ''); } catch(_) {}
+                const low = href.toLowerCase();
+                if (low.includes('tiktok.com')) {
+                    icon = '🎵';
+                    label = 'Ver Video en TikTok ↗';
+                } else if (low.includes('youtube.com/shorts')) {
+                    icon = '▶️';
+                    label = 'Ver en YouTube Shorts ↗';
+                } else if (low.includes('youtube.com') || low.includes('youtu.be')) {
+                    icon = '▶️';
+                    label = 'Ver en YouTube ↗';
+                } else if (low.includes('facebook.com') || low.includes('fb.watch')) {
+                    icon = '📘';
+                    label = 'Ver en Facebook ↗';
+                } else if (low.includes('instagram.com')) {
+                    icon = '📸';
+                    label = 'Ver en Instagram ↗';
+                }
+                preview = `
+                    <div class="web-link-preview-box" onclick="event.stopPropagation(); window.open('${href}', '_blank')" style="margin-top:8px; padding:8px 12px; background:rgba(15,23,42,0.85); border:1px solid rgba(56,189,248,0.45); border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:10px; max-width:320px; transition:transform 0.15s ease;" onmouseover="this.style.borderColor='#00FF7F'" onmouseout="this.style.borderColor='rgba(56,189,248,0.45)'">
+                        <span style="font-size:22px; line-height:1;">${icon}</span>
+                        <div style="flex:1; overflow:hidden; text-align:left;">
+                            <div style="font-size:10.5px; color:#94A3B8; text-transform:uppercase; font-weight:700; letter-spacing:0.3px;">${escapeHtml(domain)}</div>
+                            <div style="font-size:12px; color:#38BDF8; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(label)}</div>
+                        </div>
+                        <span style="color:#38BDF8; font-size:12px; font-weight:bold;">↗</span>
+                    </div>
+                `;
+            }
+
+            let escaped = escapeHtml(text);
+            const htmlWithLinks = escaped.replace(urlRegex, function(url) {
+                let clean = url.trim().replace(/[.,;!?)]+$/, '');
+                let href = clean.startsWith('www.') ? 'https://' + clean : clean;
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#38BDF8; text-decoration:underline; font-weight:600; word-break:break-all;" onclick="event.stopPropagation();">${escapeHtml(url)}</a>`;
+            }).replace(/\n/g, '<br>');
+
+            return { html: htmlWithLinks, preview: preview };
         }
 
         function renderMessageBubble(msg) {
@@ -6050,11 +6216,13 @@
                 `;
             } else {
                 // 8. TEXTO ESTÁNDAR
+                const formatted = formatMessageTextWithLinks(text);
                 b.innerHTML = `
                     ${menuBtnHtml}
                     ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
-                    <div class="msg-text-content">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+                    <div class="msg-text-content">${formatted.html}</div>
+                    ${formatted.preview}
                     ${!isMine && text.length > 2 ? `
                         <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
                             <button onclick="promptTranslateMessage('${msg.id}', decodeURIComponent('${encodeURIComponent(text)}'))" style="background: rgba(0, 168, 132, 0.12); color: #00FF7F; border: 1px solid rgba(0, 255, 127, 0.3); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: 500;">
@@ -6175,6 +6343,10 @@
 
             // 1. Firebase (entrega en tiempo real + aviso ligero < 200 bytes en inbox)
             newRef.set(msgObj);
+            const syncMe10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (syncMe10.length === 10) {
+                db.ref(`sync/${syncMe10}/${msgId}`).set({ origin: 'pc', chatId: currentChatId, msg: msgObj });
+            }
             const cleanRecip10 = String(currentRecipient || '').replace(/\D/g, '').slice(-10);
             const myClean10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
             if (cleanRecip10 && cleanRecip10.length === 10 && cleanRecip10 !== myClean10 && !String(currentChatId).startsWith('group_')) {
@@ -6324,7 +6496,7 @@
                         if (s.timestamp && s.timestamp > twentyFourHoursAgo) {
                             list.push(s);
                         } else if (s.timestamp) {
-                            db.ref(`status/${id}`).remove();
+                            db.ref(`status/${id}`).remove(); db.ref(`status_media/${id}`).remove();
                         }
                     }
                 });
@@ -6387,11 +6559,13 @@
                 const item = document.createElement('div');
                 item.className = 'chat-row';
                 const initial = (s.senderName ? s.senderName.charAt(0) : '?').toUpperCase();
+                const sUser = findUserInMapByPhone(s.senderId);
+                const sPhoto = sUser ? (sUser.photoUrl || sUser.profilePhoto || '') : '';
                 const ringClass = isViewed ? 'status-ring-gray' : 'status-ring-green';
                 const timeStr = formatStatusTime(s.timestamp);
 
                 item.innerHTML = `
-                    <div class="chat-avatar ${ringClass}">${initial}</div>
+                    <div class="chat-avatar ${ringClass}" style="${sPhoto ? `background-image:url(${sPhoto}); background-size:cover; background-position:center;` : ''}">${sPhoto ? '' : initial}</div>
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name">${escapeHtml(s.senderName || 'Contacto')}</span>
@@ -6514,6 +6688,11 @@
             input.value = '';
         }
 
+        let storyAudioEl = null;
+        function stopStoryAudio() {
+            if (storyAudioEl) { try { storyAudioEl.pause(); } catch (_) {} storyAudioEl = null; }
+        }
+
         function openStoryViewer(status) {
             currentViewingStory = status;
             const overlay = document.getElementById('storyViewerOverlay');
@@ -6525,51 +6704,74 @@
             const progressBar = document.getElementById('storyProgressBar');
 
             authorName.innerText = status.senderName || 'Contacto';
-            timeLabel.innerText = formatStatusTime(status.timestamp);
-
+            timeLabel.innerText = formatStatusTime(status.timestamp) + (status.musicName ? '  🎵 ' + status.musicName : '');
             const isMine = (status.senderId || '').replace(/\D/g, '') === myPhone.replace(/\D/g, '');
             delBtn.style.display = isMine ? 'block' : 'none';
 
-            content.innerHTML = '';
-            const isVid = status.mediaType === 'video' || status.videoUrl || (status.imageUrl && status.imageUrl.startsWith('data:video/'));
-
-            if (isVid) {
-                const vidSrc = status.videoUrl || status.imageUrl;
-                content.style.background = '#000';
-                content.innerHTML = `<video id="storyVideoPlayer" src="${vidSrc}" autoplay playsinline controls style="max-width:100%; max-height:100%; object-fit:contain; border-radius:10px;"></video>`;
-                caption.innerText = status.text && status.text !== 'Video de estado' ? status.text : '';
-                caption.style.display = caption.innerText ? 'block' : 'none';
-
-                const vEl = document.getElementById('storyVideoPlayer');
-                vEl.onended = () => { closeStoryViewer(); };
-            } else if (status.imageUrl) {
-                content.style.background = '#000';
-                content.innerHTML = `<img src="${status.imageUrl}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
-                caption.innerText = status.text && status.text !== 'Foto de estado' ? status.text : '';
-                caption.style.display = caption.innerText ? 'block' : 'none';
-            } else {
-                const bg = status.musicUrl || '#005C4B';
-                content.style.background = bg;
-                content.innerHTML = `<div style="padding:24px; color:#FFF; font-size:26px; font-weight:bold; text-align:center; word-break:break-word;">${escapeHtml(status.text)}</div>`;
-                caption.style.display = 'none';
-            }
-
+            stopStoryAudio();
+            if (storyProgressInterval) clearInterval(storyProgressInterval);
+            progressBar.style.width = '0%';
+            content.style.background = '#000';
+            content.innerHTML = '<div style="color:#FFF; font-size:14px;">⏳ Cargando estado...</div>';
+            caption.style.display = 'none';
             overlay.style.display = 'flex';
 
-            if (storyProgressInterval) clearInterval(storyProgressInterval);
-            let progress = 0;
-            progressBar.style.width = '0%';
-            storyProgressInterval = setInterval(() => {
-                progress += 2;
-                progressBar.style.width = progress + '%';
-                if (progress >= 100) {
-                    closeStoryViewer();
+            const render = (media) => {
+                if (!currentViewingStory || currentViewingStory.id !== status.id) return;
+                media = media || {};
+                const videoSrc = media.video || status.videoUrl || ((status.imageUrl || '').startsWith('data:video/') ? status.imageUrl : '');
+                const audioSrc = media.audio || '';
+                content.innerHTML = '';
+
+                if (videoSrc) {
+                    content.style.background = '#000';
+                    content.innerHTML = `<video id="storyVideoPlayer" src="${videoSrc}" autoplay playsinline controls style="max-width:100%; max-height:100%; object-fit:contain; border-radius:10px;"></video>`;
+                    const t = status.text && status.text !== 'Video de estado' ? status.text : '';
+                    caption.innerText = t;
+                    caption.style.display = t ? 'block' : 'none';
+                    document.getElementById('storyVideoPlayer').onended = () => { closeStoryViewer(); };
+                } else if (status.imageUrl) {
+                    content.style.background = '#000';
+                    content.innerHTML = `<img src="${status.imageUrl}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
+                    const t = status.text && status.text !== 'Foto de estado' && status.text !== 'Estado NeoMessage' ? status.text : '';
+                    caption.innerText = t;
+                    caption.style.display = t ? 'block' : 'none';
+                } else {
+                    const bg = status.musicUrl || '#005C4B';
+                    content.style.background = bg;
+                    content.innerHTML = `<div style="padding:24px; color:#FFF; font-size:26px; font-weight:bold; text-align:center; word-break:break-word;">${escapeHtml(status.text)}</div>`;
+                    caption.style.display = 'none';
                 }
-            }, 100);
+
+                if (audioSrc) {
+                    storyAudioEl = new Audio(audioSrc);
+                    storyAudioEl.loop = true;
+                    storyAudioEl.play().catch(() => {});
+                }
+
+                if (!videoSrc) {
+                    const total = audioSrc ? 15000 : 5000;
+                    let progress = 0;
+                    storyProgressInterval = setInterval(() => {
+                        progress += (100 / total) * 100;
+                        progressBar.style.width = progress + '%';
+                        if (progress >= 100) closeStoryViewer();
+                    }, 100);
+                }
+            };
+
+            if (status.hasMedia) {
+                db.ref(`status_media/${status.id}`).once('value').then(s => render(s.val() || {})).catch(() => render({}));
+            } else {
+                render(null);
+            }
         }
 
         function closeStoryViewer() {
             if (storyProgressInterval) clearInterval(storyProgressInterval);
+            stopStoryAudio();
+            const v = document.getElementById('storyVideoPlayer');
+            if (v) { try { v.pause(); } catch (_) {} }
             document.getElementById('storyViewerOverlay').style.display = 'none';
             currentViewingStory = null;
         }
@@ -6577,7 +6779,7 @@
         function deleteCurrentViewingStory() {
             if (!currentViewingStory) return;
             if (confirm('¿Eliminar este estado?')) {
-                db.ref(`status/${currentViewingStory.id}`).remove().then(() => {
+                db.ref(`status_media/${currentViewingStory.id}`).remove(); db.ref(`status/${currentViewingStory.id}`).remove().then(() => {
                     closeStoryViewer();
                     showToast('🗑️ Estado eliminado');
                 });
@@ -6607,6 +6809,10 @@
             if (!text) return '';
             if (text.startsWith('[NEO_QUOTE]|')) return '📄 Presupuesto';
             if (text.startsWith('[Media]')) return '📷 Foto';
+            if (text.startsWith('[Video]')) return '🎬 Video';
+            if (text.startsWith('[Document]|') || text.startsWith('[File]')) return '📄 Archivo';
+            if (text.startsWith('[Audio]')) return '🎤 Nota de voz';
+            if (text.startsWith('[Sticker]')) return '✨ Sticker';
             if (text.startsWith('[NEO_HEALTH]')) return '❤️ Salud';
             return text;
         }
@@ -6767,38 +6973,74 @@
             showToast(`Reacción ${emoji} enviada`);
         }
 
-        // Reenviar mensaje
+        // Reenviar mensaje (texto, fotos, videos, documentos, audios) a cualquier chat, contacto o grupo
         function triggerForwardFromContext() {
             if (!contextTargetMsg) return;
-            const modal = document.getElementById('forwardModal');
-            const list = document.getElementById('forwardContactsList');
-            list.innerHTML = '';
+            const txt = contextTargetMsg.text || '';
+            if (!txt || txt === '[DELETED]') {
+                showToast('⚠️ Este mensaje no se puede reenviar');
+                document.getElementById('msgContextMenu').style.display = 'none';
+                return;
+            }
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            const targets = [];
+            const seen = new Set();
+            const addT = (chatId, phone, name, isGroup, isSelf) => {
+                if (!chatId || chatId === currentChatId || seen.has(chatId)) return;
+                seen.add(chatId);
+                targets.push({ chatId, phone, name: name || phone || 'Chat', isGroup: !!isGroup, isSelf: !!isSelf });
+            };
 
-            const contacts = Object.values(cachedChats || {});
-            if (contacts.length === 0) {
-                list.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats recientes</div>';
-            } else {
-                contacts.forEach(c => {
+            addT(`private_${myPhone}_${myPhone}`, myPhone, 'Mis Notas Personales (Tú)', false, true);
+            conversations.forEach(c => {
+                if (c.isSelf) return;
+                const isGrp = !!c.isGroup || String(c.chatId).startsWith('group_');
+                addT(c.chatId, c.recipientPhone, c.name, isGrp, false);
+            });
+            mySavedContacts.forEach(c => {
+                const p10 = String((c && c.id) || '').replace(/\D/g, '').slice(-10);
+                if (p10.length === 10 && p10 !== myP10) {
+                    const ids = [myP10, p10].sort();
+                    addT(`private_${ids[0]}_${ids[1]}`, p10, resolveContactNameWeb(p10, c.name), false, false);
+                }
+            });
+
+            const list = document.getElementById('forwardContactsList');
+            list.innerHTML = '<input type="text" id="fwdSearchInput" placeholder="🔍 Buscar chat, contacto o grupo..." style="width:100%; box-sizing:border-box; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:9px 12px; color:#FFF; font-size:13px; margin-bottom:8px;"><div id="fwdItems"></div>';
+
+            const renderItems = (q) => {
+                const box = document.getElementById('fwdItems');
+                box.innerHTML = '';
+                const query = (q || '').toLowerCase().trim();
+                const shown = targets.filter(t => !query || t.name.toLowerCase().includes(query) || String(t.phone || '').includes(query));
+                if (shown.length === 0) {
+                    box.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats disponibles.</div>';
+                    return;
+                }
+                shown.forEach(t => {
                     const item = document.createElement('div');
-                    item.className = 'contact-item';
-                    item.style.padding = '10px 14px';
-                    item.style.cursor = 'pointer';
+                    item.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 8px; cursor:pointer; border-radius:8px;';
+                    item.onmouseover = () => item.style.background = 'rgba(255,255,255,0.07)';
+                    item.onmouseout = () => item.style.background = 'transparent';
+                    const initial = t.isSelf ? '📌' : (t.isGroup ? '👥' : (t.name || 'C').charAt(0).toUpperCase());
+                    const sub = t.isGroup ? 'Grupo' : (t.isSelf ? 'Notas personales' : '📱 ' + (t.phone || ''));
                     item.innerHTML = `
-                        <div class="avatar" style="width:40px;height:40px;font-size:16px;">${(c.name || 'C')[0]}</div>
-                        <div class="contact-info">
-                            <div class="contact-name">${escapeHtml(c.name || c.phone || 'Contacto')}</div>
-                            <div class="contact-last-msg" style="color:#8696A0;font-size:12px;">${escapeHtml(c.phone || '')}</div>
-                        </div>
-                    `;
+                        <div class="chat-avatar" style="width:38px; height:38px; font-size:15px; margin:0;">${initial}</div>
+                        <div>
+                            <div style="color:#FFF; font-weight:600; font-size:14px;">${escapeHtml(t.name)}</div>
+                            <div style="color:#94A3B8; font-size:11px;">${escapeHtml(sub)}</div>
+                        </div>`;
                     item.onclick = () => {
-                        forwardMessageToChat(c.id || c.phone, contextTargetMsg.text);
+                        forwardMessageToChat(t, txt);
                         closeForwardModal();
                     };
-                    list.appendChild(item);
+                    box.appendChild(item);
                 });
-            }
+            };
+            renderItems('');
+            document.getElementById('fwdSearchInput').oninput = (e) => renderItems(e.target.value);
 
-            modal.style.display = 'flex';
+            document.getElementById('forwardModal').style.display = 'flex';
             document.getElementById('msgContextMenu').style.display = 'none';
         }
 
@@ -6806,24 +7048,57 @@
             document.getElementById('forwardModal').style.display = 'none';
         }
 
-        function forwardMessageToChat(targetId, textPayload) {
-            if (!targetId || !textPayload) return;
-            const targetChatId = targetId.includes('_') ? targetId : [myPhone.replace(/\D/g,''), targetId.replace(/\D/g,'')].sort().join('_');
-            const newRef = db.ref(`chats/${targetChatId}/messages`).push();
-            newRef.set({
-                id: newRef.key,
+        function forwardMessageToChat(t, textPayload) {
+            if (!t || !t.chatId || !textPayload) return;
+            const newRef = db.ref(`chats/${t.chatId}/messages`).push();
+            const msgId = newRef.key;
+            const msgObj = {
+                id: msgId,
                 text: textPayload,
                 timestamp: Date.now(),
                 senderId: myPhone,
                 senderName: myName,
                 rank: 'PC Desktop',
                 readBy: {}
-            }).then(() => {
-                showToast('↪ Mensaje reenviado');
+            };
+
+            // Respaldo local en esta PC
+            const localMap = getLocalChatMessages(t.chatId);
+            localMap[msgId] = msgObj;
+            saveLocalChatMessages(t.chatId, localMap);
+
+            // Entrega por Firebase + aviso ligero (< 200 bytes)
+            newRef.set(msgObj);
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (myP10.length === 10) {
+                db.ref(`sync/${myP10}/${msgId}`).set({ origin: 'pc', chatId: t.chatId, msg: msgObj });
+            }
+            const rec10 = String(t.phone || '').replace(/\D/g, '').slice(-10);
+            if (!t.isGroup && !t.isSelf && rec10.length === 10 && rec10 !== myP10) {
+                db.ref(`inbox/${rec10}/${msgId}`).set({
+                    id: msgId,
+                    chatId: t.chatId,
+                    senderId: myPhone,
+                    senderName: myName,
+                    text: formatPreviewText(textPayload).slice(0, 80),
+                    timestamp: msgObj.timestamp
+                });
+            }
+
+            // Actualizar la lista de chats y vigilar el chat destino
+            attachLightweightChatWatcher(t.chatId, t.phone, t.isGroup, t.name);
+            upsertConversationWeb({
+                chatId: t.chatId,
+                recipientPhone: t.isGroup ? t.chatId : t.phone,
+                name: t.name,
+                lastText: formatPreviewText(textPayload),
+                timestamp: msgObj.timestamp,
+                isGroup: t.isGroup,
+                isSelf: t.isSelf
             });
+            showToast(`↪ Reenviado a ${t.name}`);
         }
 
-    
         // ========================================================
         // MOTOR COMPLETO DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP
         // ========================================================

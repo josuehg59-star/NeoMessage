@@ -64,6 +64,80 @@ object NeoBackupManager {
     }
 
     /**
+     * Respaldo automático persistente en almacenamiento del dispositivo.
+     * Sobrevive a actualizaciones de la app.
+     */
+    fun autoBackupLatest(context: Context) {
+        scope.launch {
+            try {
+                val db = AppDatabase.getDatabase(context)
+                val messages = db.messageDao().getAllMessagesDirect()
+                if (messages.isEmpty()) return@launch
+
+                val rootJson = JSONObject()
+                rootJson.put("version", "TITAN-PERSISTENT-v1")
+                rootJson.put("timestamp", System.currentTimeMillis())
+
+                val array = JSONArray()
+                messages.forEach { entity ->
+                    val obj = JSONObject().apply {
+                        put("id", entity.id)
+                        put("chatId", entity.chatId)
+                        put("text", entity.text)
+                        put("timestamp", entity.timestamp)
+                        put("senderId", entity.senderId)
+                        put("senderName", entity.senderName)
+                    }
+                    array.put(obj)
+                }
+                rootJson.put("messages", array)
+
+                val encryptedData = NeoTripleShieldManager.encryptMessage(rootJson.toString())
+                val backupFolder = File(context.getExternalFilesDir(null), "NeoMessenger/Backups")
+                if (!backupFolder.exists()) backupFolder.mkdirs()
+
+                val backupFile = File(backupFolder, "persistent_latest.neobackup")
+                backupFile.writeText(encryptedData)
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Restauración automática al iniciar la app si la base de datos local estuviera vacía.
+     */
+    fun autoRestoreIfEmpty(context: Context) {
+        scope.launch {
+            try {
+                val db = AppDatabase.getDatabase(context)
+                val current = db.messageDao().getAllMessagesDirect()
+                if (current.isNotEmpty()) return@launch
+
+                val backupFolder = File(context.getExternalFilesDir(null), "NeoMessenger/Backups")
+                val backupFile = File(backupFolder, "persistent_latest.neobackup")
+                if (!backupFile.exists() || backupFile.length() == 0L) return@launch
+
+                val encryptedText = backupFile.readText()
+                val decryptedJson = NeoTripleShieldManager.decryptMessage(encryptedText)
+                val rootJson = JSONObject(decryptedJson)
+                val array = rootJson.optJSONArray("messages") ?: JSONArray()
+
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val entity = MessageEntity(
+                        id = obj.getString("id"),
+                        chatId = obj.getString("chatId"),
+                        text = obj.getString("text"),
+                        timestamp = obj.getLong("timestamp"),
+                        senderId = obj.getString("senderId"),
+                        senderName = obj.optString("senderName", "")
+                    )
+                    db.messageDao().insertMessage(entity)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
      * Restaura mensajes desde un archivo de respaldo cifrado .neobackup
      */
     fun restoreFromLocalBackup(context: Context, backupFile: File, onComplete: (Int) -> Unit) {

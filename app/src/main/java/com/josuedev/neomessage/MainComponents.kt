@@ -549,7 +549,20 @@ data class NeoChatEntry(
     val name: String,
     val chatId: String,
     val lastMsg: String,
-    val timestamp: Long = 0L
+    val timestamp: Long = 0L,
+    val isUnread: Boolean = false,
+    val lastSenderId: String = ""
+)
+
+data class NeoDisplayChat(
+    val name: String,
+    val chatId: String,
+    val lastMsg: String,
+    val timestamp: Long = 0L,
+    val isFav: Boolean = false,
+    val isUnread: Boolean = false,
+    val isArchived: Boolean = false,
+    val isLocked: Boolean = false
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -610,11 +623,7 @@ fun ChatsListScreen(
             val idx = found.indexOfFirst { it.chatId == entry.chatId }
             if (idx != -1) {
                 val existing = found[idx]
-                if (existing.lastMsg == entry.lastMsg && existing.timestamp == entry.timestamp && existing.name == entry.name) {
-                    return
-                }
-                if (existing.timestamp == entry.timestamp) {
-                    found[idx] = entry
+                if (existing.lastMsg == entry.lastMsg && existing.timestamp == entry.timestamp && existing.name == entry.name && existing.isUnread == entry.isUnread) {
                     return
                 }
                 found.removeAt(idx)
@@ -689,8 +698,12 @@ fun ChatsListScreen(
                                 ?: spContacts.getString(otherPhone, null)?.takeIf { isValidPersonName(it) }
                                 ?: peerMsgName
                                 ?: if (otherPhone.isNotEmpty()) otherPhone else "Chat"
-                            
-                            updateEntry(NeoChatEntry(name, cId, sanitizePreview(lastMsg.text), lastMsg.timestamp))
+                            val cleanSender = NeoUtils.sanitizeId(lastMsg.senderId).takeLast(10)
+                            val isFromOther = cleanSender.isNotEmpty() && cleanSender != myCleanId.takeLast(10)
+                            val spLastRead = context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)
+                            val isUnread = isFromOther && (lastMsg.timestamp > spLastRead.getLong(cId, 0L))
+                            val preview = (if (!isFromOther) "✓✓ " else "") + sanitizePreview(lastMsg.text)
+                            updateEntry(NeoChatEntry(name, cId, preview, lastMsg.timestamp, isUnread = isUnread, lastSenderId = lastMsg.senderId))
                         }
                     }
                 }
@@ -755,7 +768,11 @@ fun ChatsListScreen(
                                             val lastMsgObj = mSnap.children.firstOrNull()?.getValue(CloudMessage::class.java)
                                             val display = lastMsgObj?.text ?: "Grupo creado"
                                             val time = lastMsgObj?.timestamp ?: g.createdAt
-                                            updateEntry(NeoChatEntry(g.name, g.id, display, time))
+                                            val isFromOther = lastMsgObj != null && NeoUtils.sanitizeId(lastMsgObj.senderId).takeLast(10) != myCanonical
+                                            val spLastRead = context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)
+                                            val isUnread = isFromOther && (time > spLastRead.getLong(g.id, 0L))
+                                            val preview = (if (lastMsgObj != null && !isFromOther) "✓✓ " else "") + sanitizePreview(display)
+                                            updateEntry(NeoChatEntry(g.name, g.id, preview, time, isUnread = isUnread, lastSenderId = lastMsgObj?.senderId ?: ""))
                                         }
                                         override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
                                     })
@@ -868,8 +885,10 @@ fun ChatsListScreen(
                                                         msgTimestamp = lastMsgObj.timestamp
                                                     )
                                                 }
-                                                val previewText = sanitizePreview(lastMsgObj.text)
-                                                updateEntry(NeoChatEntry(dynamicName, chatId, previewText, lastMsgObj.timestamp))
+                                                val spLastRead = context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)
+                                                val isUnread = (cleanSender.takeLast(10) != cleanMe.takeLast(10)) && (lastMsgObj.timestamp > spLastRead.getLong(chatId, 0L))
+                                                val previewText = (if (cleanSender.takeLast(10) == cleanMe.takeLast(10)) "✓✓ " else "") + sanitizePreview(lastMsgObj.text)
+                                                updateEntry(NeoChatEntry(dynamicName, chatId, previewText, lastMsgObj.timestamp, isUnread = isUnread, lastSenderId = lastMsgObj.senderId))
                                             }
                                         }
                                         override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
@@ -897,16 +916,27 @@ fun ChatsListScreen(
                         if (parts[0] == myCleanId) parts[1] else parts[0]
                     } else aId
                     val name = spContacts.getString(otherPhone, otherPhone) ?: otherPhone
-                    list.add(NeoChatEntry(name, aId, "Chat archivado", System.currentTimeMillis()))
+                    list.add(NeoChatEntry(name, aId, "Chat archivado", 0L, isUnread = false))
                 }
             }
+            val spLastRead = context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)
+            val myClean = NeoUtils.sanitizeId(userId).takeLast(10)
             list.sortedByDescending { it.timestamp }.map { entry ->
-                val (name, id, lastMsg, _) = entry
-                val isFav = name.contains("Neo") || id.contains("owner")
-                val isUnread = lastMsg.length % 2 == 0 
-                val isArchived = archivedIds.contains(id)
-                val isLocked = lockedIds.contains(id)
-                Sextuple(name, id, lastMsg, isFav, isUnread, Quintuple(isArchived, isLocked, false, false, false))
+                val isFav = entry.name.contains("Neo") || entry.chatId.contains("owner")
+                val isFromOther = entry.lastSenderId.isNotEmpty() && NeoUtils.sanitizeId(entry.lastSenderId).takeLast(10) != myClean
+                val isUnread = entry.isUnread || (isFromOther && entry.timestamp > spLastRead.getLong(entry.chatId, 0L))
+                val isArchived = archivedIds.contains(entry.chatId)
+                val isLocked = lockedIds.contains(entry.chatId)
+                NeoDisplayChat(
+                    name = entry.name,
+                    chatId = entry.chatId,
+                    lastMsg = entry.lastMsg,
+                    timestamp = entry.timestamp,
+                    isFav = isFav,
+                    isUnread = isUnread,
+                    isArchived = isArchived,
+                    isLocked = isLocked
+                )
             }
         }
     }
@@ -914,25 +944,24 @@ fun ChatsListScreen(
     val filteredChats by remember(selectedFilter, searchQuery, blockedIds.size, isVaultUnlocked, hiddenChatUpdateTrigger) {
         derivedStateOf {
             val isPinMatch = searchQuery.isNotBlank() && NeoHiddenChatsManager.checkPin(context, searchQuery)
-            expandedChats.filter { (name, id, lastMsg, isFav, isUnread, meta) ->
-                val (isArchived, isLocked, _, _, _) = meta as Quintuple<Boolean, Boolean, Boolean, Boolean, Boolean>
-                val isHidden = hiddenChatIds.contains(id)
+            expandedChats.filter { chat ->
+                val isHidden = hiddenChatIds.contains(chat.chatId)
                 if (isVaultUnlocked || isPinMatch) return@filter isHidden
                 if (isHidden) return@filter false
                 
                 // EXTRAER ID DEL OTRO USUARIO DEL CHATID
-                val otherId = id.replace("private_", "").split("_").firstOrNull { it != NeoUtils.sanitizeId(userId) } ?: ""
+                val otherId = chat.chatId.replace("private_", "").split("_").firstOrNull { it != NeoUtils.sanitizeId(userId) } ?: ""
                 val isBlocked = blockedIds.contains(otherId)
 
                 val matchesFilter = when(selectedFilter) {
-                    "Grupos" -> id.startsWith("group_") && !isArchived && !isBlocked
-                    "No leídos" -> isUnread && !isArchived && !isBlocked
-                    "Favoritos" -> isFav && !isArchived && !isBlocked
-                    "Archivados" -> isArchived
-                    "Todos" -> !isArchived && !isBlocked
+                    "Grupos" -> chat.chatId.startsWith("group_") && !chat.isArchived && !isBlocked
+                    "No leídos" -> chat.isUnread && !chat.isArchived && !isBlocked
+                    "Favoritos" -> chat.isFav && !chat.isArchived && !isBlocked
+                    "Archivados" -> chat.isArchived
+                    "Todos" -> !chat.isArchived && !isBlocked
                     else -> true
                 }
-                val matchesSearch = name.contains(searchQuery, ignoreCase = true) || id.contains(searchQuery, ignoreCase = true)
+                val matchesSearch = chat.name.contains(searchQuery, ignoreCase = true) || chat.chatId.contains(searchQuery, ignoreCase = true)
                 matchesFilter && matchesSearch
             }
         }
@@ -1433,18 +1462,30 @@ fun ChatsListScreen(
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
-                items(filteredChats, key = { it.second }) { chat ->
-                    val (name, id, lastMsg, _, _, meta) = chat
-                    val isLocked = (meta as Quintuple<*, *, *, *, *>).second as Boolean
-                    val otherPhone = if (id.startsWith("private_")) {
-                        val parts = id.replace("private_", "").split("_")
+                items(filteredChats, key = { it.chatId }) { chat ->
+                    val otherPhone = if (chat.chatId.startsWith("private_")) {
+                        val parts = chat.chatId.replace("private_", "").split("_")
                         val rawOther = if (parts.size >= 2) (if (NeoUtils.sanitizeId(parts[0]).takeLast(10) == myCleanId.takeLast(10)) parts[1] else parts[0]) else ""
                         NeoUtils.sanitizeId(rawOther).takeLast(10)
                     } else ""
                     val photo = userPhotos[otherPhone]
-                    ChatRow(name, lastMsg, id, phone = otherPhone, isLocked = isLocked, photoUrl = photo,
-                        onClick = { onNavigateToChat(name, id) },
-                        onLongClick = { selectedChatAction = Triple(name, id, lastMsg) }
+                    ChatRow(
+                        name = chat.name,
+                        lastMsg = chat.lastMsg,
+                        id = chat.chatId,
+                        timestamp = chat.timestamp,
+                        isUnread = chat.isUnread,
+                        phone = otherPhone,
+                        isLocked = chat.isLocked,
+                        photoUrl = photo,
+                        onClick = { 
+                            try {
+                                context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)
+                                    .edit().putLong(chat.chatId, System.currentTimeMillis()).apply()
+                            } catch (_: Exception) {}
+                            onNavigateToChat(chat.name, chat.chatId) 
+                        },
+                        onLongClick = { selectedChatAction = Triple(chat.name, chat.chatId, chat.lastMsg) }
                     )
                 }
             }
@@ -1458,6 +1499,8 @@ fun ChatRow(
     name: String,
     lastMsg: String,
     id: String,
+    timestamp: Long = 0L,
+    isUnread: Boolean = false,
     phone: String = "",
     isLocked: Boolean = false,
     photoUrl: String? = null,
@@ -1466,8 +1509,25 @@ fun ChatRow(
 ) {
     val isGroup = id.startsWith("group_")
     val isSelf = name.contains("Mis Notas Personales")
+    val formattedTime = remember(timestamp) {
+        if (timestamp <= 0L) ""
+        else {
+            val now = java.util.Calendar.getInstance()
+            val msgCal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+            if (now.get(java.util.Calendar.YEAR) == msgCal.get(java.util.Calendar.YEAR) &&
+                now.get(java.util.Calendar.DAY_OF_YEAR) == msgCal.get(java.util.Calendar.DAY_OF_YEAR)) {
+                java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+            } else if (now.get(java.util.Calendar.YEAR) == msgCal.get(java.util.Calendar.YEAR) &&
+                now.get(java.util.Calendar.DAY_OF_YEAR) - msgCal.get(java.util.Calendar.DAY_OF_YEAR) == 1) {
+                "Ayer"
+            } else {
+                java.text.SimpleDateFormat("dd/MM/yy", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+            }
+        }
+    }
+
     Row(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(16.dp),
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isSelf) {
@@ -1482,39 +1542,77 @@ fun ChatRow(
                 fontSize = 18
             )
         }
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Icon(
                     if (isLocked) Icons.Filled.Lock else (if (isSelf) Icons.Filled.Bookmark else if (isGroup) Icons.Filled.Groups else Icons.Filled.Person), 
                     null, 
                     tint = if (isLocked) NeoTheme.Green else (if (isGroup) NeoTheme.Green else Color.Gray), 
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(15.dp)
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     name,
                     color = Color.White,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = if (isUnread) FontWeight.Black else FontWeight.Bold,
+                    fontSize = 15.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (!isSelf && !isGroup && phone.isNotBlank() && !name.contains(phone)) {
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         "📱 $phone",
                         color = Color(0xFF00FF7F),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1
                     )
                 }
+                Spacer(Modifier.weight(1f))
+                if (formattedTime.isNotEmpty()) {
+                    Text(
+                        text = formattedTime,
+                        color = if (isUnread) Color(0xFF00FF7F) else Color(0xFF8696A0),
+                        fontSize = 11.sp,
+                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
             }
-            Text(lastMsg, color = Color.Gray, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (isLocked) {
-             Icon(Icons.Filled.Fingerprint, null, tint = NeoTheme.Green.copy(0.4f), modifier = Modifier.size(18.dp))
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = lastMsg,
+                    color = if (isUnread) Color.White else Color(0xFF94A3B8),
+                    fontSize = 13.5.sp,
+                    fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isUnread) {
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 6.dp)
+                            .size(20.dp)
+                            .background(Color(0xFF00FF7F), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "1",
+                            color = Color.Black,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+                if (isLocked) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Filled.Fingerprint, null, tint = NeoTheme.Green.copy(0.4f), modifier = Modifier.size(16.dp))
+                }
+            }
         }
     }
 }

@@ -208,6 +208,10 @@ fun ChatRoomScreen(
         }
     }
     LaunchedEffect(chatId) {
+        try {
+            context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)
+                .edit().putLong(chatId, System.currentTimeMillis()).apply()
+        } catch (_: Exception) {}
         // 1. CARGA INMEDIATA LOCAL (Room SQLite)
         launch(Dispatchers.IO) {
             try {
@@ -243,16 +247,27 @@ fun ChatRoomScreen(
                         } else {
                             firebaseMessages[idx] = m
                         }
+                        // SINCRONIZACIÓN CELULAR -> PC: copia de lo que envío desde este celular (la PC de mi cuenta la recoge)
+                        if (NeoUtils.sanitizeId(m.senderId).takeLast(10) == cleanMyId.takeLast(10) &&
+                            m.rank != "PC Desktop" && (System.currentTimeMillis() - m.timestamp) < 120_000L && cleanMyId.takeLast(10).length == 10) {
+                            try {
+                                FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("sync")
+                                    .child(cleanMyId.takeLast(10)).child(m.id)
+                                    .setValue(mapOf("origin" to "app", "chatId" to chatId, "msg" to m))
+                            } catch (_: Exception) {}
+                        }
                         coroutineScope.launch(Dispatchers.IO) {
                             try { dao?.insertMessage(m.toEntity(chatId)) } catch (_: Exception) {}
-                            // Si el mensaje es entrante (ya respaldado en SQLite local) o tiene más de 10 min, limpiarlo de Firebase para no gastar almacenamiento
-                            val isFromOther = NeoUtils.sanitizeId(m.senderId).takeLast(10) != cleanMyId.takeLast(10)
-                            val isOld = (System.currentTimeMillis() - m.timestamp) > 10 * 60 * 1000L
-                            if (isFromOther || isOld) {
-                                try {
-                                    kotlinx.coroutines.delay(6000)
-                                    database.child(m.id).removeValue()
-                                } catch (_: Exception) {}
+                            try {
+                                context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)
+                                    .edit().putLong(chatId, System.currentTimeMillis()).apply()
+                            } catch (_: Exception) {}
+                            // LIMPIEZA SEGURA DE TRÁNSITO EN FIREBASE (0 GB EN NUBE SIN BORRAR NADA DEL CELULAR)
+                            val age = System.currentTimeMillis() - m.timestamp
+                            val isOld = age > 24 * 3600 * 1000L
+                            val isReadByBoth = m.readBy.size > 1 && age > 3600 * 1000L
+                            if (isOld || isReadByBoth) {
+                                try { database.child(m.id).removeValue() } catch (_: Exception) {}
                             }
                         }
                         if (NeoUtils.sanitizeId(m.senderId).takeLast(10) != cleanMyId.takeLast(10) && m.deliveredTo[cleanMyId] != true) {
@@ -378,6 +393,7 @@ fun ChatRoomScreen(
     }
     
     var selectedMessage by remember { mutableStateOf<CloudMessage?>(null) }
+    var forwardingMsg by remember { mutableStateOf<CloudMessage?>(null) }
     var replyingTo by remember { mutableStateOf<CloudMessage?>(null) }
     var editingMessage by remember { mutableStateOf<CloudMessage?>(null) }
     var editTextValue by remember { mutableStateOf("") }
@@ -1032,12 +1048,13 @@ fun ChatRoomScreen(
                     val isDeliveredToOther = msg.deliveredTo.keys.any { NeoUtils.sanitizeId(it).takeLast(10) != cleanMyId.takeLast(10) }
 
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).combinedClickable(onClick = {}, onDoubleClick = { replyingTo = msg }, onLongClick = { selectedMessage = msg }),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
                     ) {
                         Surface(
                             color = if (isMine) Color(0xFF00382B) else surfaceColor,
-                            shape = RoundedCornerShape(16.dp), shadowElevation = 1.dp
+                            shape = RoundedCornerShape(16.dp), shadowElevation = 1.dp,
+                            modifier = Modifier.combinedClickable(onClick = {}, onDoubleClick = { replyingTo = msg }, onLongClick = { selectedMessage = msg })
                         ) {
                             Box {
                                 Column(modifier = Modifier.padding(12.dp).widthIn(max = 280.dp)) {
@@ -1690,11 +1707,7 @@ fun ChatRoomScreen(
                     // REENVIAR MENSAJE ↪
                     OutlinedButton(
                         onClick = {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, targetMsg.text)
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Reenviar mensaje a..."))
+                            forwardingMsg = targetMsg
                             selectedMessage = null
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -1820,6 +1833,153 @@ fun ChatRoomScreen(
             dismissButton = {
                 TextButton(onClick = { selectedMessage = null }) { Text("CANCELAR", color = Color.Gray) }
             }
+        )
+    }
+
+    if (forwardingMsg != null) {
+        val fMsg = forwardingMsg!!
+        val fwdTargets = remember(fMsg.id) { mutableStateListOf<NeoFwdTarget>() }
+        var fwdQuery by remember(fMsg.id) { mutableStateOf("") }
+        val my10 = cleanMyId.takeLast(10)
+
+        LaunchedEffect(fMsg.id) {
+            val spNames = context.getSharedPreferences("NeoUserNames", Context.MODE_PRIVATE)
+            val spCont = context.getSharedPreferences("NeoContacts", Context.MODE_PRIVATE)
+            val seen = mutableSetOf<String>()
+            fun nameFor(p10: String): String =
+                (spNames.getString(p10, null) ?: spCont.getString(p10, null))?.takeIf { n -> n.any { ch -> ch.isLetter() } } ?: p10
+            fun addPrivate(p10: String) {
+                if (p10.length != 10 || p10 == my10) return
+                val cid = "private_" + listOf(my10, p10).sorted().joinToString("_")
+                if (cid == chatId || !seen.add(cid)) return
+                fwdTargets.add(NeoFwdTarget(cid, p10, nameFor(p10), false))
+            }
+            val selfCid = "private_${my10}_${my10}"
+            if (selfCid != chatId && seen.add(selfCid)) {
+                fwdTargets.add(NeoFwdTarget(selfCid, my10, "Mis Notas Personales (Tú)", false))
+            }
+            val ids = withContext(Dispatchers.IO) {
+                try { dao?.getAllMessagesDirect()?.map { it.chatId }?.distinct() ?: emptyList() } catch (_: Exception) { emptyList<String>() }
+            }
+            ids.forEach { cId ->
+                if (cId == chatId) return@forEach
+                if (cId.startsWith("group_")) {
+                    if (seen.add(cId)) fwdTargets.add(NeoFwdTarget(cId, cId, "Grupo", true))
+                } else {
+                    val parts = cId.removePrefix("private_").split("_")
+                    if (parts.size == 2) {
+                        val other = if (NeoUtils.sanitizeId(parts[0]).takeLast(10) == my10) parts[1] else parts[0]
+                        addPrivate(NeoUtils.sanitizeId(other).takeLast(10))
+                    }
+                }
+            }
+            spCont.all.keys.forEach { k -> addPrivate(NeoUtils.sanitizeId(k).takeLast(10)) }
+            try {
+                FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("groups")
+                    .addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            snapshot.children.forEach { g ->
+                                val gid = g.child("id").getValue(String::class.java) ?: g.key ?: return@forEach
+                                val gname = g.child("name").getValue(String::class.java) ?: "Grupo"
+                                val creator = NeoUtils.sanitizeId(g.child("createdBy").getValue(String::class.java) ?: "").takeLast(10)
+                                val members = g.child("members").children.mapNotNull { m -> m.getValue(String::class.java) }
+                                    .map { m -> NeoUtils.sanitizeId(m).takeLast(10) }
+                                val isMember = creator == my10 || members.contains(my10) || members.isEmpty()
+                                val existing = fwdTargets.indexOfFirst { it.chatId == gid }
+                                if (existing != -1) {
+                                    fwdTargets[existing] = fwdTargets[existing].copy(name = gname)
+                                } else if (isMember && gid != chatId) {
+                                    fwdTargets.add(NeoFwdTarget(gid, gid, gname, true))
+                                }
+                            }
+                        }
+                        override fun onCancelled(error: DatabaseError) {}
+                    })
+            } catch (_: Exception) {}
+        }
+
+        val doForward: (NeoFwdTarget) -> Unit = { t ->
+            val dbx = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+            val newId = dbx.getReference("chats").child(t.chatId).child("messages").push().key ?: UUID.randomUUID().toString()
+            val fwd = CloudMessage(
+                id = newId,
+                text = fMsg.text,
+                timestamp = System.currentTimeMillis(),
+                senderId = cleanMyId,
+                senderName = myName,
+                rank = ""
+            )
+            coroutineScope.launch(Dispatchers.IO) {
+                try { dao?.insertMessage(fwd.toEntity(t.chatId)) } catch (_: Exception) {}
+                try {
+                    dbx.getReference("chats").child(t.chatId).child("messages").child(newId).setValue(fwd)
+                    if (!t.isGroup && t.other.length >= 10) {
+                        val preview = when {
+                            fMsg.text.startsWith("[Media]") -> "📷 Foto"
+                            fMsg.text.startsWith("[Video]") -> "🎬 Video"
+                            fMsg.text.startsWith("[Document]|") || fMsg.text.startsWith("[File]") -> "📄 Archivo"
+                            fMsg.text.startsWith("[Audio]") || fMsg.text.startsWith("[Voice]") -> "🎤 Mensaje de voz"
+                            else -> fMsg.text.take(80)
+                        }
+                        dbx.getReference("inbox").child(t.other.takeLast(10)).child(newId).setValue(
+                            mapOf(
+                                "id" to newId,
+                                "chatId" to t.chatId,
+                                "senderId" to cleanMyId,
+                                "senderName" to myName,
+                                "text" to preview,
+                                "timestamp" to fwd.timestamp
+                            )
+                        )
+                    }
+                } catch (_: Exception) {}
+            }
+            Toast.makeText(context, "↪ Reenviado a ${t.name}", Toast.LENGTH_SHORT).show()
+            forwardingMsg = null
+        }
+
+        AlertDialog(
+            onDismissRequest = { forwardingMsg = null },
+            containerColor = surfaceColor,
+            title = { Text("↪ Reenviar a...", color = textColor, fontWeight = FontWeight.Bold, fontSize = 17.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = fwdQuery,
+                        onValueChange = { fwdQuery = it },
+                        placeholder = { Text("Buscar chat, contacto o grupo", fontSize = 13.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    )
+                    val shown = fwdTargets.filter { fwdQuery.isBlank() || it.name.contains(fwdQuery, true) || it.other.contains(fwdQuery) }
+                    Column(modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                        if (shown.isEmpty()) {
+                            Text("No hay chats disponibles.", color = Color.Gray, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+                        }
+                        shown.forEach { t ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable { doForward(t) }.padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(NeoTheme.Green),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(if (t.isGroup) "👥" else t.name.take(1).uppercase(), color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(t.name, color = textColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(if (t.isGroup) "Grupo" else "📱 ${t.other}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { forwardingMsg = null }) { Text("CANCELAR", color = Color.Gray) } }
         )
     }
 
@@ -1957,6 +2117,90 @@ fun openDocumentFile(context: Context, file: File) {
         context.startActivity(Intent.createChooser(intent, "Abrir y Modificar con..."))
     } catch (e: Exception) {
         Toast.makeText(context, "No se encontró aplicación para abrir este archivo (${file.name}): ${e.message}", Toast.LENGTH_LONG).show()
+    }
+}
+
+
+fun openUrlSafely(context: Context, rawUrl: String) {
+    try {
+        val cleanUrl = if (rawUrl.startsWith("http://", ignoreCase = true) || rawUrl.startsWith("https://", ignoreCase = true)) {
+            rawUrl
+        } else {
+            "https://$rawUrl"
+        }
+        val uri = Uri.parse(cleanUrl)
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            val chooser = Intent.createChooser(intent, "Abrir enlace con...").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "No se pudo abrir el enlace: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+data class NeoLinkQuadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+@Composable
+fun LinkPreviewCard(url: String, context: Context) {
+    val low = url.lowercase()
+    val (badgeText, badgeColor, actionLabel, _) = when {
+        low.contains("tiktok.com") -> NeoLinkQuadruple("🎵 TikTok Video", Color(0xFF00F2FE), "ABRIR EN TIKTOK ↗", Icons.Filled.PlayArrow)
+        low.contains("youtube.com/shorts") -> NeoLinkQuadruple("▶️ YouTube Shorts", Color(0xFFFF0000), "VER EN YOUTUBE ↗", Icons.Filled.PlayArrow)
+        low.contains("youtube.com") || low.contains("youtu.be") -> NeoLinkQuadruple("▶️ YouTube Video", Color(0xFFFF0000), "VER EN YOUTUBE ↗", Icons.Filled.PlayArrow)
+        low.contains("facebook.com") || low.contains("fb.watch") -> NeoLinkQuadruple("📘 Facebook", Color(0xFF1877F2), "ABRIR EN FACEBOOK ↗", Icons.Filled.OpenInNew)
+        low.contains("instagram.com") -> NeoLinkQuadruple("📸 Instagram", Color(0xFFE1306C), "ABRIR EN INSTAGRAM ↗", Icons.Filled.OpenInNew)
+        else -> {
+            val host = try { Uri.parse(url).host?.removePrefix("www.") ?: "Enlace Web" } catch (_: Exception) { "Enlace Web" }
+            NeoLinkQuadruple("🌐 $host", Color(0xFF38BDF8), "ABRIR ENLACE ↗", Icons.Filled.OpenInNew)
+        }
+    }
+
+    Surface(
+        color = Color(0xFF0F172A),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp)
+            .clickable { openUrlSafely(context, url) }
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = badgeText,
+                    color = badgeColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(Icons.Filled.NorthEast, null, tint = badgeColor, modifier = Modifier.size(14.dp))
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = url,
+                color = Color.LightGray,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Button(
+                onClick = { openUrlSafely(context, url) },
+                colors = ButtonDefaults.buttonColors(containerColor = badgeColor),
+                shape = RoundedCornerShape(6.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().height(32.dp)
+            ) {
+                Text(actionLabel, color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
@@ -2410,32 +2654,31 @@ fun MessageContent(
         else -> {
             var selectedPhone by remember { mutableStateOf<String?>(null) }
             val formatted = remember(text, textColor) { NeoTextFormatter.format(text, textColor) }
+            val detectedUrls = remember(text) { NeoTextFormatter.extractUrls(text) }
 
-            ClickableText(
-                text = formatted,
-                style = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 15.sp),
-                onClick = { offset ->
-                    // 1. Detección de Enlaces Web (YouTube, Facebook, Páginas, Descargas, etc.)
-                    formatted.getStringAnnotations(tag = "URL", start = offset, end = offset).firstOrNull()?.let { anim ->
-                        val url = anim.item
-                        try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "No se pudo abrir el enlace", Toast.LENGTH_SHORT).show()
+            Column {
+                ClickableText(
+                    text = formatted,
+                    style = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 15.sp),
+                    onClick = { offset ->
+                        // 1. Detección de Enlaces Web (YouTube, Facebook, Páginas, Descargas, etc.)
+                        formatted.getStringAnnotations(tag = "URL", start = offset, end = offset).firstOrNull()?.let { anim ->
+                            openUrlSafely(context, anim.item)
+                            return@ClickableText
                         }
-                        return@ClickableText
-                    }
 
-                    // 2. Detección de Números Telefónicos (WhatsApp Style)
-                    formatted.getStringAnnotations(tag = "PHONE", start = offset, end = offset).firstOrNull()?.let { anim ->
-                        selectedPhone = anim.item
-                        return@ClickableText
+                        // 2. Detección de Números Telefónicos (WhatsApp Style)
+                        formatted.getStringAnnotations(tag = "PHONE", start = offset, end = offset).firstOrNull()?.let { anim ->
+                            selectedPhone = anim.item
+                            return@ClickableText
+                        }
                     }
+                )
+
+                if (detectedUrls.isNotEmpty()) {
+                    LinkPreviewCard(url = detectedUrls.first(), context = context)
                 }
-            )
+            }
 
             // Menú interactivo estilo WhatsApp al pinchar un número telefónico
             selectedPhone?.let { phoneNum ->
@@ -3035,3 +3278,5 @@ fun GroupInfoModal(
         }
     }
 }
+
+data class NeoFwdTarget(val chatId: String, val other: String, val name: String, val isGroup: Boolean)

@@ -11,9 +11,9 @@ import androidx.compose.ui.text.style.TextDecoration
 
 object NeoTextFormatter {
 
-    // Regex para URLs (http, https, www o dominios populares como youtube.com, facebook.com, drive.google.com, etc.)
+    // Regex para URLs (http, https, www o dominios populares como youtube.com, tiktok.com, facebook.com, etc.)
     private val URL_REGEX = Regex(
-        """(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.(?:com|org|net|edu|gov|mx|io|app|dev|me|tv|info|online|site|store|shop|xyz|tech|live)\b(?:/[^\s]*)?)""",
+        """(https?://[^\s<>"'{}|\\^`]+|www\.[^\s<>"'{}|\\^`]+|[a-zA-Z0-9.-]+\.(?:com|org|net|edu|gov|mx|io|app|dev|me|tv|info|online|site|store|shop|xyz|tech|live|be)\b(?:/[^\s<>"'{}|\\^`]*)?)""",
         RegexOption.IGNORE_CASE
     )
 
@@ -22,9 +22,21 @@ object NeoTextFormatter {
 
     // Regex combinado para buscar URLs y Teléfonos
     private val LINK_OR_PHONE_REGEX = Regex(
-        """(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.(?:com|org|net|edu|gov|mx|io|app|dev|me|tv|info|online|site|store|shop|xyz|tech|live)\b(?:/[^\s]*)?|(?:\+?52\s*)?(?:\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}|\b\d{10}\b))""",
+        """(https?://[^\s<>"'{}|\\^`]+|www\.[^\s<>"'{}|\\^`]+|[a-zA-Z0-9.-]+\.(?:com|org|net|edu|gov|mx|io|app|dev|me|tv|info|online|site|store|shop|xyz|tech|live|be)\b(?:/[^\s<>"'{}|\\^`]*)?|(?:\+?52\s*)?(?:\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}|\b\d{10}\b))""",
         RegexOption.IGNORE_CASE
     )
+
+    fun extractUrls(text: String): List<String> {
+        if (text.isBlank()) return emptyList()
+        return URL_REGEX.findAll(text).map { match ->
+            val raw = match.value.trim().trimEnd('.', ',', ';', ':', '!', '?', ')')
+            if (raw.startsWith("http://", ignoreCase = true) || raw.startsWith("https://", ignoreCase = true)) {
+                raw
+            } else {
+                "https://$raw"
+            }
+        }.filter { it.length > 5 }.distinct().toList()
+    }
 
     // Regex para estilos Markdown clásicos: código ```...```, negrita *...*, cursiva _..._, tachado ~...~
     private val MARKDOWN_REGEX = Regex("""(```(?:[\s\S]*?)```|\*([^*\n]+)\*|_([^_\n]+)_|~([^~\n]+)~)""")

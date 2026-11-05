@@ -132,9 +132,15 @@ class MainActivity : FragmentActivity() {
 
 
 
+    override fun onPause() {
+        super.onPause()
+        try { NeoBackupManager.autoBackupLatest(this) } catch (_: Exception) {}
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
+        try { NeoBackupManager.autoRestoreIfEmpty(this) } catch (_: Exception) {}
 
         
 
@@ -882,9 +888,6 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
                                         Thread {
                                             try {
                                                 kotlinx.coroutines.runBlocking { AppDatabase.getDatabase(context).messageDao().insertMessage(fullMsg.toEntity(chatId)) }
-                                                // Una vez guardado en el respaldo local del celular receptor, limpiar de Firebase tras breve margen
-                                                 Thread.sleep(8000)
-                                                msgSnap.ref.removeValue()
                                             } catch (_: Exception) {}
                                         }.start()
                                     }
@@ -925,6 +928,37 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
         }
 
 
+
+        // --- SINCRONIZACIÓN PC ⇄ CELULAR: mensajes enviados desde otro dispositivo de MI cuenta ---
+        val mySyncKey = NeoUtils.sanitizeId(state.userId).takeLast(10)
+        if (mySyncKey.length == 10) {
+            db.getReference("sync").child(mySyncKey).addChildEventListener(object : com.google.firebase.database.ChildEventListener {
+                override fun onChildAdded(snapshot: com.google.firebase.database.DataSnapshot, previousChildName: String?) {
+                    try {
+                        val origin = snapshot.child("origin").getValue(String::class.java) ?: ""
+                        val syncMsg = snapshot.child("msg").getValue(CloudMessage::class.java)
+                        val syncChatId = snapshot.child("chatId").getValue(String::class.java) ?: ""
+                        if (syncMsg == null || syncChatId.isEmpty()) { snapshot.ref.removeValue(); return }
+                        if (origin == "app") {
+                            if (System.currentTimeMillis() - syncMsg.timestamp > 3L * 24 * 3600 * 1000) snapshot.ref.removeValue()
+                            return
+                        }
+                        Thread {
+                            try {
+                                kotlinx.coroutines.runBlocking {
+                                    AppDatabase.getDatabase(context).messageDao().insertMessage(syncMsg.toEntity(syncChatId))
+                                }
+                            } catch (_: Exception) {}
+                        }.start()
+                        snapshot.ref.removeValue()
+                    } catch (_: Exception) {}
+                }
+                override fun onChildChanged(snapshot: com.google.firebase.database.DataSnapshot, previousChildName: String?) {}
+                override fun onChildRemoved(snapshot: com.google.firebase.database.DataSnapshot) {}
+                override fun onChildMoved(snapshot: com.google.firebase.database.DataSnapshot, previousChildName: String?) {}
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        }
 
         // --- DETECTOR DE LLAMADAS ENTRANTES ---
 

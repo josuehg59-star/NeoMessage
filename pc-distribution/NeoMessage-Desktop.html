@@ -1792,7 +1792,7 @@
             </div>
 
             <div style="font-size: 11px; color: var(--neon-green); font-weight: bold; margin-bottom: 16px;">
-                ⚡ Enlace permanente y directo a la versión oficial v3.39
+                ⚡ Enlace permanente y directo a la versión oficial v3.43
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -2367,6 +2367,12 @@
                         <div class="status-circle-icon">📷</div>
                         <span>Foto y video</span>
                     </div>
+
+                    <input type="file" id="statusAudioInput" accept="audio/*" style="display: none;" onchange="handleStatusAudioSelected(this)">
+                    <div class="status-circle-btn" onclick="document.getElementById('statusAudioInput').click()">
+                        <div class="status-circle-icon">🎵</div>
+                        <span id="statusMusicLabel">Música</span>
+                    </div>
                 </div>
             </div>
 
@@ -2397,6 +2403,7 @@
                             <div class="dropdown-item" id="menuItemCreateGroup" onclick="openCreateGroupModal(); toggleDropdownMenu();">👥 Crear Grupo con este Contacto</div>
                             <div class="dropdown-item" id="menuItemQuote" onclick="openQuoteModal(); toggleDropdownMenu();">📋 Enviar Cotización</div>
                             <div class="dropdown-item" onclick="clearActiveChatMessages(); toggleDropdownMenu();">🧹 Vaciar Mensajes del Chat</div>
+                            <div class="dropdown-item danger" onclick="deleteActiveChatEntirely(); toggleDropdownMenu();">🗑️ Eliminar Chat de la Lista</div>
                             <div class="dropdown-item danger" id="btnBlockToggle" onclick="toggleBlockContact(); toggleDropdownMenu();">🚫 Bloquear Contacto</div>
                         </div>
                     </div>
@@ -2587,28 +2594,63 @@
 
         let lastActiveContactData = null;
 
+        function isUserReallyOnlineWeb(u) {
+            if (!u || typeof u !== 'object') return false;
+            // Si tiene online === false explícito o status === 'Desconectado', NO está en línea
+            if (u.online === false || u.status === 'Desconectado') return false;
+            const last = Number(u.lastSeen) || 0;
+            // Igual que en la App Android: si online === true, verificamos actividad o conexión vigente
+            // IDÉNTICO A LA APP ANDROID (ChatRoomScreen.kt):
+            // Solo está 'en línea' si su actividad lastSeen es de hace menos de 2 minutos (120,000 ms)
+            const isRecent = last > 0 && (Date.now() - last < 120000);
+            return (u.online === true || u.status === 'Conectado' || u.status === 'Online') && isRecent;
+        }
+
+        function getUserPresenceLabelWeb(u) {
+            if (!u || typeof u !== 'object') return 'desconectado';
+            if (isUserReallyOnlineWeb(u)) return 'en línea';
+            const last = Number(u.lastSeen) || Number(u.loginTime) || 0;
+            if (last > 0) return formatLastSeenText(last);
+            return 'desconectado';
+        }
+
         function updateActiveContactPresenceUI() {
             const subEl = document.getElementById('activeChatSubtitle');
             if (!subEl) return;
-            const u = lastActiveContactData;
-            if (u && (u.online === true || u.status === 'Conectado' || u.status === 'Online')) {
-                subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">en línea</span>';
-            } else if (u && u.lastSeen) {
-                subEl.innerText = formatLastSeenText(u.lastSeen);
-            } else {
+            const u = lastActiveContactData || (window.currentActiveContactPhone ? findUserInMapByPhone(window.currentActiveContactPhone) : null);
+            if (!u) {
                 subEl.innerText = '';
+                return;
+            }
+            if (isUserReallyOnlineWeb(u)) {
+                subEl.innerHTML = '<span style="color:var(--neon-green); font-weight:600;">🟢 en línea</span>';
+            } else {
+                const last = Number(u.lastSeen) || Number(u.loginTime) || 0;
+                if (last > 0) {
+                    subEl.innerHTML = `<span style="color:#94A3B8; font-weight:500;">${escapeHtml(formatLastSeenText(last))}</span>`;
+                } else {
+                    subEl.innerHTML = '<span style="color:#64748B;">desconectado</span>';
+                }
             }
         }
 
         function listenActiveContactPresence(phone) {
             if (activeContactPresenceRef) activeContactPresenceRef.off();
-            window.currentActiveContactPhone = phone;
-            lastActiveContactData = null;
-            if (!phone || phone === myPhone) return;
+            const clean10 = String(phone || '').replace(/\D/g, '').slice(-10);
+            window.currentActiveContactPhone = clean10 || phone;
+            lastActiveContactData = findUserInMapByPhone(clean10 || phone);
+            updateActiveContactPresenceUI();
+            if (!clean10 || clean10 === String(myPhone || '').replace(/\D/g, '').slice(-10)) return;
 
-            activeContactPresenceRef = db.ref(`users/${phone}`);
+            activeContactPresenceRef = db.ref(`users/${clean10}`);
             activeContactPresenceRef.on('value', snap => {
-                lastActiveContactData = snap.val();
+                const val = snap.val();
+                if (val) {
+                    lastActiveContactData = val;
+                    usersMap[clean10] = val;
+                } else {
+                    lastActiveContactData = findUserInMapByPhone(clean10);
+                }
                 const subEl = document.getElementById('activeChatSubtitle');
                 if (subEl && subEl.innerText.includes('escribiendo...')) return;
                 updateActiveContactPresenceUI();
@@ -3154,41 +3196,76 @@
         // ========================================================
         // 3. ESTADOS DE 24 HORAS (TEXTO, FOTOS Y VIDEOS)
         // ========================================================
+        function handleStatusAudioSelected(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            if (file.size > 2 * 1024 * 1024) {
+                alert('La canción pesa más de 2 MB. Usa un fragmento de ~1 minuto.');
+                input.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                pendingStatusAudio = { name: file.name.replace(/\.[^.]+$/, ''), data: e.target.result };
+                const lbl = document.getElementById('statusMusicLabel');
+                if (lbl) lbl.innerText = '🎵 ' + pendingStatusAudio.name.slice(0, 14);
+                showToast('🎵 Música lista: se añadirá a tu próximo estado (foto o video)');
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        function publishStatusWithMedia(statusObj, media) {
+            const hasHeavy = media && Object.keys(media).length > 0;
+            if (pendingStatusAudio) {
+                media = media || {};
+                media.audio = pendingStatusAudio.data;
+                statusObj.musicName = pendingStatusAudio.name;
+                statusObj.hasMedia = true;
+            }
+            const finish = () => db.ref(`status/${statusObj.id}`).set(statusObj).then(() => {
+                pendingStatusAudio = null;
+                const lbl = document.getElementById('statusMusicLabel');
+                if (lbl) lbl.innerText = 'Música';
+                showToast('✅ ¡Estado publicado por 24 horas!');
+            });
+            if (media && Object.keys(media).length > 0) {
+                db.ref(`status_media/${statusObj.id}`).set(media).then(finish);
+            } else {
+                finish();
+            }
+        }
+
         function handleStatusMediaSelected(input) {
             if (!input.files || !input.files[0]) return;
             const file = input.files[0];
             const isVideo = file.type.startsWith('video/');
 
             if (isVideo) {
-                // Validación de video
-                if (file.size > 25 * 1024 * 1024) {
-                    alert('El video supera el límite recomendado de 25MB para estados.');
+                if (file.size > 8 * 1024 * 1024) {
+                    alert('El video pesa más de 8 MB. Elige uno más corto (hasta ~30 s).');
+                    input.value = '';
                     return;
                 }
                 const caption = prompt('Pie de video opcional para tu estado:') || '';
                 const reader = new FileReader();
                 showToast('⏳ Subiendo video a tu estado...');
-
                 reader.onload = (e) => {
-                    const videoB64 = e.target.result;
                     const newId = db.ref('status').push().key;
-                    const statusObj = {
+                    publishStatusWithMedia({
                         id: newId,
                         text: caption || 'Video de estado',
                         timestamp: Date.now(),
                         senderName: myName,
                         senderId: myPhone,
-                        videoUrl: videoB64,
-                        mediaType: 'video'
-                    };
-                    db.ref(`status/${newId}`).set(statusObj).then(() => {
-                        showToast('✅ ¡Video publicado en tu estado (24h)!');
-                    });
+                        imageUrl: '',
+                        mediaType: 'video',
+                        hasMedia: true
+                    }, { video: e.target.result });
                 };
                 reader.readAsDataURL(file);
                 input.value = '';
             } else {
-                // Foto / Imagen con compresión
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const img = new Image();
@@ -3197,17 +3274,13 @@
                         const maxDim = 900;
                         let w = img.width, h = img.height;
                         if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
-                        else if (h > maxDim) { h = Math.round(h * maxDim / h); h = maxDim; }
-
+                        else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
                         canvas.width = w; canvas.height = h;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, w, h);
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                         const b64 = canvas.toDataURL('image/jpeg', 0.75);
-
                         const caption = prompt('Pie de foto opcional para tu estado:') || '';
                         const newId = db.ref('status').push().key;
-
-                        const statusObj = {
+                        publishStatusWithMedia({
                             id: newId,
                             text: caption || 'Foto de estado',
                             timestamp: Date.now(),
@@ -3215,11 +3288,7 @@
                             senderId: myPhone,
                             imageUrl: b64,
                             mediaType: 'image'
-                        };
-
-                        db.ref(`status/${newId}`).set(statusObj).then(() => {
-                            showToast('✅ ¡Foto publicada en tu estado (24h)!');
-                        });
+                        }, null);
                     };
                     img.src = e.target.result;
                 };
@@ -3228,9 +3297,8 @@
             }
         }
 
-        // ========================================================
-        // 4. ADJUNTAR ARCHIVOS (DOCUMENTOS, APK, ZIP, PDF, VIDEOS)
-        // ========================================================
+        let pendingStatusAudio = null;
+
         function toggleAttachmentPopup() {
             const p = document.getElementById('attachmentPopup');
             p.style.display = (p.style.display === 'none' || !p.style.display) ? 'flex' : 'none';
@@ -3685,516 +3753,11 @@
                 '<div class="print-area">',
                 '<img id="safePrintImg" src="' + blobUrl + '" />',
                 '</div>',
-                '<script>',
+                '<scr' + 'ipt>',
                 'const imgEl = document.getElementById("safePrintImg");',
                 'imgEl.onload = function() { setTimeout(function() { window.focus(); window.print(); }, 500); };',
-                '<\/script>',
-                '
-    <!-- MODAL: PUNTO DE VENTA (POS BÁSICO OPCIONAL) CON CATÁLOGO, CLIENTES Y CORTE DEL DÍA -->
-    <div id="posStoreModal" class="modal-overlay" style="display: none; z-index: 100020;">
-        <div class="dialog-card" style="max-width: 760px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-                <div>
-                    <h3 style="color: #00FF7F; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
-                        <span>🛒</span> Punto de Venta (POS Básico) & Control de Tienda
-                    </h3>
-                    <div style="font-size:11px; color:#94A3B8; margin-top:2px;">100% Memoria Local (0 KB en Firebase) • Solo los tickets aplicados entran al Corte del Día</div>
-                </div>
-                <button onclick="document.getElementById('posStoreModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:20px; cursor:pointer;">✕</button>
-            </div>
-
-            <!-- SUB-TABS POS -->
-            <div style="display:flex; gap:8px; margin-bottom:12px;">
-                <button id="posTabBtn0" onclick="switchPosWebTab(0)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #00FF7F; background:#00FF7F; color:#000; font-weight:bold; font-size:12px; cursor:pointer;">🛍️ Nueva Venta</button>
-                <button id="posTabBtn1" onclick="switchPosWebTab(1)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">👥 Clientes</button>
-                <button id="posTabBtn2" onclick="switchPosWebTab(2)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📦 Catálogo</button>
-                <button id="posTabBtn3" onclick="switchPosWebTab(3)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📊 Corte del Día</button>
-            </div>
-
-            <!-- CONTENIDO PESTAÑA 0: NUEVA VENTA -->
-            <div id="posWebPane0" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
-                <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-                    <div style="display:flex; align-items:center; gap:8px; flex:1;">
-                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">👤 Cliente:</span>
-                        <select id="posCustomerSelect" style="flex:1; background:#1E293B; color:#FFF; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:13px;"></select>
-                    </div>
-                    <button onclick="promptCreatePosCustomerWeb()" style="background:#10B981; color:#000; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Nuevo Cliente</button>
-                </div>
-
-                <input type="text" id="posProductSearchWeb" oninput="renderPosCatalogSaleWeb()" placeholder="🔍 Buscar producto o código del catálogo para marcar..." style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:9px 12px; color:#FFF; font-size:13px; margin-bottom:8px;">
-
-                <div id="posProductsSaleListWeb" style="flex:1; overflow-y:auto; max-height:280px; display:flex; flex-direction:column; gap:6px; padding-right:4px;"></div>
-
-                <div style="background:#0F172A; border:1px solid #00FF7F; border-radius:12px; padding:12px; margin-top:10px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                        <div>
-                            <div id="posCartCountWeb" style="font-size:12px; color:#94A3B8;">0 artículos marcados</div>
-                            <div id="posCartTotalWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">TOTAL: $0.00 MXN</div>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <label style="font-size:12px; color:#FFF; display:flex; align-items:center; gap:4px; cursor:pointer;">
-                                <input type="checkbox" id="posApplyToCutCheckbox" checked>
-                                <span>✅ Aplicar al Corte (Pagado)</span>
-                            </label>
-                        </div>
-                        <div style="display:flex; gap:8px;">
-                            <button onclick="submitPosSaleWeb(false)" style="background:#00FF7F; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">💾 Registrar Venta</button>
-                            <button onclick="submitPosSaleWeb(true)" style="background:#FFD700; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">📲 Guardar + Enviar Ticket</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CONTENIDO PESTAÑA 1: CLIENTES -->
-            <div id="posWebPane1" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Cartera de Clientes</span>
-                    <button onclick="promptCreatePosCustomerWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Crear Cliente</button>
-                </div>
-                <div id="posCustomersListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:8px;"></div>
-            </div>
-
-            <!-- CONTENIDO PESTAÑA 2: CATÁLOGO -->
-            <div id="posWebPane2" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Catálogo de Productos de tu Tienda</span>
-                    <button onclick="promptAddPosProductWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Añadir Producto</button>
-                </div>
-                <div id="posCatalogManageListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:6px;"></div>
-            </div>
-
-            <!-- CONTENIDO PESTAÑA 3: CORTE DEL DÍA -->
-            <div id="posWebPane3" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
-                <div style="display:flex; gap:10px; margin-bottom:10px;">
-                    <div style="flex:1; background:#0F172A; border:1px solid #00FF7F; border-radius:10px; padding:10px;">
-                        <div style="font-size:11px; color:#94A3B8;">Corte de Hoy (Aplicado)</div>
-                        <div id="posCutTodayWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">$0.00 MXN</div>
-                    </div>
-                    <div style="flex:1; background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px;">
-                        <div style="font-size:11px; color:#94A3B8;">Total Aplicado General</div>
-                        <div id="posCutAllPaidWeb" style="font-size:18px; font-weight:bold; color:#FFF;">$0.00 MXN</div>
-                    </div>
-                    <div style="flex:1; background:#0F172A; border:1px solid #F59E0B; border-radius:10px; padding:10px;">
-                        <div style="font-size:11px; color:#94A3B8;">Sin Aplicar / Pendientes</div>
-                        <div id="posCutPendingWeb" style="font-size:18px; font-weight:bold; color:#F59E0B;">$0.00 MXN</div>
-                    </div>
-                </div>
-                <div style="font-size:11px; color:#CBD5E1; margin-bottom:8px;">
-                    💡 <b>Nota:</b> Los tickets que <b>NO se vendan</b> pueden eliminarse con <b>🗑️ Eliminar</b>. Solo los tickets con <b>✅ En Corte</b> suman al Corte del Día.
-                </div>
-                <div id="posSalesHistoryListWeb" style="flex:1; overflow-y:auto; max-height:320px; display:flex; flex-direction:column; gap:8px;"></div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const DEFAULT_POS_CATALOG_WEB = [
-            { codigo: 1, nombre: "IMPRESIONES B/N", precio: "1" },
-            { codigo: 2, nombre: "IMPRESIONES A COLOR LETRAS", precio: "2" },
-            { codigo: 3, nombre: "IMPRESIONES A COLOR IMÁGENES GDES", precio: "5" },
-            { codigo: 4, nombre: "CARGA DE BATERIA COCHE O MOTO", precio: "50" },
-            { codigo: 5, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 400 ML", precio: "24" },
-            { codigo: 6, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 850 ML", precio: "44" },
-            { codigo: 7, nombre: "AGUA CIEL PURIFICADA BOTTLE 1 LTS NR", precio: "16" },
-            { codigo: 8, nombre: "AGUA CRISTAL PURIFICADA 20 LTS", precio: "50" },
-            { codigo: 9, nombre: "AZUCAR KILO", precio: "22" },
-            { codigo: 10, nombre: "COCA COLA 600 ML", precio: "18" },
-            { codigo: 11, nombre: "COCA COLA 2.5 LTS", precio: "38" },
-            { codigo: 12, nombre: "HUEVO CONO 30 PZAS", precio: "85" },
-            { codigo: 13, nombre: "LECHE LALA ENTERA 1 LTS", precio: "26" }
-        ];
-
-        let posCartMapWeb = {}; // idx -> qty
-
-        function getPosCatalogWeb() {
-            try {
-                const raw = localStorage.getItem('neo_pos_catalog');
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-                }
-            } catch (_) {}
-            return DEFAULT_POS_CATALOG_WEB.slice();
-        }
-
-        function savePosCatalogWeb(list) {
-            try { localStorage.setItem('neo_pos_catalog', JSON.stringify(list)); } catch (_) {}
-        }
-
-        function getPosCustomersWeb() {
-            try {
-                const raw = localStorage.getItem('neo_pos_customers');
-                return raw ? JSON.parse(raw) : [];
-            } catch (_) { return []; }
-        }
-
-        function savePosCustomersWeb(list) {
-            try { localStorage.setItem('neo_pos_customers', JSON.stringify(list)); } catch (_) {}
-        }
-
-        function getPosSalesWeb() {
-            try {
-                const raw = localStorage.getItem('neo_pos_sales');
-                return raw ? JSON.parse(raw) : [];
-            } catch (_) { return []; }
-        }
-
-        function savePosSalesWeb(list) {
-            try { localStorage.setItem('neo_pos_sales', JSON.stringify(list.slice(0, 500))); } catch (_) {}
-        }
-
-        function openPosStoreModal() {
-            // Sincronizar catálogo del bot desde Firebase 1 sola vez si existe
-            const cleanMy10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
-            if (cleanMy10) {
-                db.ref(`bot_configs/${cleanMy10}/catalogo`).once('value', snap => {
-                    const cat = snap.val();
-                    if (Array.isArray(cat) && cat.length > 0) {
-                        savePosCatalogWeb(cat);
-                        renderPosCatalogSaleWeb();
-                        renderPosCatalogManageWeb();
-                    }
-                });
-            }
-            document.getElementById('posStoreModal').style.display = 'flex';
-            switchPosWebTab(0);
-        }
-
-        function switchPosWebTab(idx) {
-            for (let i = 0; i < 4; i++) {
-                const pane = document.getElementById('posWebPane' + i);
-                const btn = document.getElementById('posTabBtn' + i);
-                if (pane) pane.style.display = (i === idx) ? 'flex' : 'none';
-                if (btn) {
-                    btn.style.background = (i === idx) ? '#00FF7F' : '#1E293B';
-                    btn.style.color = (i === idx) ? '#000' : '#FFF';
-                    btn.style.borderColor = (i === idx) ? '#00FF7F' : '#334155';
-                }
-            }
-            refreshPosCustomerSelectWeb();
-            if (idx === 0) renderPosCatalogSaleWeb();
-            else if (idx === 1) renderPosCustomersListWeb();
-            else if (idx === 2) renderPosCatalogManageWeb();
-            else if (idx === 3) renderPosSalesCutWeb();
-        }
-
-        function refreshPosCustomerSelectWeb() {
-            const sel = document.getElementById('posCustomerSelect');
-            if (!sel) return;
-            const currentVal = sel.value;
-            const custs = getPosCustomersWeb();
-            sel.innerHTML = '<option value="mostrador">Público en General (Mostrador)</option>';
-            custs.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.phone ? `${c.name} (📱 ${c.phone})` : c.name;
-                sel.appendChild(opt);
-            });
-            if (currentVal && Array.from(sel.options).some(o => o.value === currentVal)) {
-                sel.value = currentVal;
-            }
-        }
-
-        function promptCreatePosCustomerWeb() {
-            const name = prompt('👤 Nombre del Cliente:');
-            if (!name || !name.trim()) return;
-            const phone = prompt('📱 Teléfono de 10 dígitos (opcional, para enviarle tickets al chat):', '') || '';
-            const notes = prompt('📝 Nota o Dirección (opcional):', '') || '';
-            const custs = getPosCustomersWeb();
-            const newC = {
-                id: 'cli_' + Date.now(),
-                name: name.trim(),
-                phone: phone.replace(/\D/g, '').slice(-10),
-                notes: notes.trim(),
-                createdAt: Date.now()
-            };
-            custs.push(newC);
-            savePosCustomersWeb(custs);
-            refreshPosCustomerSelectWeb();
-            const sel = document.getElementById('posCustomerSelect');
-            if (sel) sel.value = newC.id;
-            renderPosCustomersListWeb();
-            showToast(`✅ Cliente "${newC.name}" creado`);
-        }
-
-        function changePosQtyWeb(idx, delta) {
-            const cur = posCartMapWeb[idx] || 0;
-            const next = cur + delta;
-            if (next <= 0) delete posCartMapWeb[idx];
-            else posCartMapWeb[idx] = next;
-            renderPosCatalogSaleWeb();
-        }
-
-        function renderPosCatalogSaleWeb() {
-            const container = document.getElementById('posProductsSaleListWeb');
-            if (!container) return;
-            const q = (document.getElementById('posProductSearchWeb').value || '').toLowerCase().trim();
-            const catalog = getPosCatalogWeb();
-            container.innerHTML = '';
-
-            let totalItems = 0;
-            let totalAmount = 0;
-
-            catalog.forEach((p, idx) => {
-                const qty = posCartMapWeb[idx] || 0;
-                const unitPrice = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
-                if (qty > 0) {
-                    totalItems += qty;
-                    totalAmount += qty * unitPrice;
-                }
-                const code = p.codigo || (idx + 1);
-                if (q && !String(p.nombre || '').toLowerCase().includes(q) && !String(code).includes(q)) return;
-
-                const row = document.createElement('div');
-                row.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-radius:8px; background:${qty > 0 ? '#064E3B' : '#1E293B'}; border:1px solid ${qty > 0 ? '#00FF7F' : '#334155'};`;
-                row.innerHTML = `
-                    <div>
-                        <div style="color:#FFF; font-weight:bold; font-size:13px;">[${code}] ${escapeHtml(p.nombre)}</div>
-                        <div style="color:#00FF7F; font-weight:bold; font-size:12px;">$${unitPrice.toFixed(2)} MXN</div>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <button onclick="changePosQtyWeb(${idx}, -1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#334155; color:#FFF; font-weight:bold; cursor:pointer;">-</button>
-                        <span style="min-width:22px; text-align:center; color:${qty > 0 ? '#00FF7F' : '#94A3B8'}; font-weight:bold; font-size:14px;">${qty}</span>
-                        <button onclick="changePosQtyWeb(${idx}, 1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#00FF7F; color:#000; font-weight:bold; cursor:pointer;">+</button>
-                    </div>
-                `;
-                container.appendChild(row);
-            });
-
-            document.getElementById('posCartCountWeb').innerText = `${totalItems} artículo(s) marcados`;
-            document.getElementById('posCartTotalWeb').innerText = `TOTAL: $${totalAmount.toFixed(2)} MXN`;
-        }
-
-        function submitPosSaleWeb(sendToChat) {
-            const catalog = getPosCatalogWeb();
-            const items = [];
-            Object.keys(posCartMapWeb).forEach(k => {
-                const idx = parseInt(k);
-                const qty = posCartMapWeb[idx] || 0;
-                const p = catalog[idx];
-                if (p && qty > 0) {
-                    const price = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
-                    items.push({
-                        codigo: p.codigo || (idx + 1),
-                        nombre: p.nombre,
-                        precioUnitario: price,
-                        cantidad: qty,
-                        subtotal: price * qty
-                    });
-                }
-            });
-
-            if (items.length === 0) {
-                alert('Marca al menos 1 producto del catálogo con el botón [+] para registrar la venta.');
-                return;
-            }
-
-            const selVal = document.getElementById('posCustomerSelect').value;
-            const custs = getPosCustomersWeb();
-            const cust = custs.find(c => c.id === selVal) || null;
-            const isPaid = document.getElementById('posApplyToCutCheckbox').checked;
-            const total = items.reduce((acc, it) => acc + it.subtotal, 0);
-            const sales = getPosSalesWeb();
-            const folio = '#POS-' + String(sales.length + 1).padStart(4, '0');
-
-            const record = {
-                id: 'sale_' + Date.now(),
-                folio: folio,
-                customerId: cust ? cust.id : 'mostrador',
-                customerName: cust ? cust.name : 'Público en General',
-                customerPhone: cust ? (cust.phone || '') : '',
-                items: items,
-                total: total,
-                isPaid: isPaid,
-                timestamp: Date.now()
-            };
-
-            sales.unshift(record);
-            savePosSalesWeb(sales);
-            posCartMapWeb = {};
-            renderPosCatalogSaleWeb();
-            showToast(`✅ Venta ${folio} registrada ($${total.toFixed(2)} MXN)`);
-
-            if (sendToChat) {
-                const targetPhone = record.customerPhone || currentRecipient;
-                if (!targetPhone) {
-                    alert('Venta guardada. Para enviarla por chat, selecciona un cliente con teléfono o abre primero el chat del cliente.');
-                    return;
-                }
-                const p10 = String(targetPhone).replace(/\D/g, '').slice(-10);
-                const my10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
-                const ids = [my10, p10].sort();
-                const tChatId = `private_${ids[0]}_${ids[1]}`;
-                let ticket = `🧾 *NOTA DE VENTA ${record.folio}*\n👤 Cliente: *${record.customerName}*\n━━━━━━━━━━━━━━━━━━━━\n`;
-                record.items.forEach(it => {
-                    ticket += `• ${it.cantidad}x ${it.nombre} ($${it.precioUnitario.toFixed(2)}) = *$${it.subtotal.toFixed(2)}*\n`;
-                });
-                ticket += `━━━━━━━━━━━━━━━━━━━━\n💰 *TOTAL: $${record.total.toFixed(2)} MXN*\n📌 Estado: ${record.isPaid ? '✅ PAGADO' : '⏳ PENDIENTE POR COBRAR'}\n🙏 ¡Gracias por su compra!`;
-
-                selectChat({
-                    chatId: tChatId,
-                    recipientPhone: p10,
-                    name: record.customerName,
-                    lastText: ticket,
-                    timestamp: Date.now(),
-                    isSelf: false
-                });
-                dispatchMessageObject(ticket);
-                document.getElementById('posStoreModal').style.display = 'none';
-            }
-        }
-
-        function renderPosCustomersListWeb() {
-            const container = document.getElementById('posCustomersListWeb');
-            if (!container) return;
-            const custs = getPosCustomersWeb();
-            const sales = getPosSalesWeb();
-            container.innerHTML = '';
-
-            if (custs.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay clientes registrados. Haz clic en "➕ Crear Cliente".</div>';
-                return;
-            }
-
-            custs.forEach(c => {
-                const cSales = sales.filter(s => s.customerId === c.id);
-                const totalBought = cSales.reduce((a, b) => a + (b.total || 0), 0);
-                const pending = cSales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
-                const prodsSummary = cSales.slice(0, 3).map(s => `${s.folio}: ` + (s.items || []).map(i => `${i.cantidad}x ${i.nombre}`).join(', ')).join(' | ');
-
-                const card = document.createElement('div');
-                card.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;';
-                card.innerHTML = `
-                    <div style="flex:1;">
-                        <div style="color:#FFF; font-weight:bold; font-size:14px;">👤 ${escapeHtml(c.name)} ${c.phone ? `<span style="color:#00FF7F; font-size:12px;">📱 ${escapeHtml(c.phone)}</span>` : ''}</div>
-                        ${c.notes ? `<div style="color:#94A3B8; font-size:12px;">📝 ${escapeHtml(c.notes)}</div>` : ''}
-                        <div style="color:#CBD5E1; font-size:12px; margin-top:4px;">🛍️ ${cSales.length} compra(s) • Total: <b>$${totalBought.toFixed(2)} MXN</b> ${pending > 0 ? `• <span style="color:#F59E0B; font-weight:bold;">⏳ Pendiente: $${pending.toFixed(2)}</span>` : ''}</div>
-                        ${prodsSummary ? `<div style="color:#94A3B8; font-size:11px; margin-top:3px;">📦 Últimas compras: ${escapeHtml(prodsSummary)}</div>` : ''}
-                    </div>
-                    <div style="display:flex; gap:6px;">
-                        <button onclick="document.getElementById('posCustomerSelect').value='${c.id}'; switchPosWebTab(0);" style="background:#00FF7F; color:#000; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">Venderle</button>
-                        <button onclick="deletePosCustomerWeb('${c.id}')" style="background:#EF4444; color:#FFF; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">🗑️</button>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        function deletePosCustomerWeb(id) {
-            const custs = getPosCustomersWeb().filter(c => c.id !== id);
-            savePosCustomersWeb(custs);
-            renderPosCustomersListWeb();
-            refreshPosCustomerSelectWeb();
-        }
-
-        function promptAddPosProductWeb() {
-            const name = prompt('📦 Nombre del Producto o Servicio:');
-            if (!name || !name.trim()) return;
-            const price = prompt('💲 Precio en MXN (ej: 25):', '0');
-            if (price === null) return;
-            const catalog = getPosCatalogWeb();
-            catalog.push({
-                codigo: catalog.length + 1,
-                nombre: name.trim().toUpperCase(),
-                precio: String(parseFloat(price) || 0)
-            });
-            savePosCatalogWeb(catalog);
-            renderPosCatalogManageWeb();
-            showToast('✅ Producto añadido al catálogo');
-        }
-
-        function renderPosCatalogManageWeb() {
-            const container = document.getElementById('posCatalogManageListWeb');
-            if (!container) return;
-            const catalog = getPosCatalogWeb();
-            container.innerHTML = '';
-            catalog.forEach((p, idx) => {
-                const row = document.createElement('div');
-                row.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;';
-                row.innerHTML = `
-                    <div>
-                        <span style="color:#FFF; font-weight:bold; font-size:13px;">[${p.codigo || (idx + 1)}] ${escapeHtml(p.nombre)}</span>
-                        <span style="color:#00FF7F; font-weight:bold; font-size:13px; margin-left:8px;">$${escapeHtml(String(p.precio))} MXN</span>
-                    </div>
-                    <button onclick="deletePosProductWeb(${idx})" style="background:rgba(239,68,68,0.2); color:#EF4444; border:1px solid #EF4444; padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer;">🗑️ Eliminar</button>
-                `;
-                container.appendChild(row);
-            });
-        }
-
-        function deletePosProductWeb(idx) {
-            const catalog = getPosCatalogWeb();
-            catalog.splice(idx, 1);
-            savePosCatalogWeb(catalog);
-            renderPosCatalogManageWeb();
-        }
-
-        function renderPosSalesCutWeb() {
-            const container = document.getElementById('posSalesHistoryListWeb');
-            if (!container) return;
-            const sales = getPosSalesWeb();
-            const nowStr = new Date().toDateString();
-
-            // SOLO LOS TICKETS APLICADOS (isPaid === true) ENTRAN AL CORTE DEL DÍA
-            const todayApplied = sales.filter(s => new Date(s.timestamp).toDateString() === nowStr && s.isPaid);
-            const todayCut = todayApplied.reduce((a, b) => a + (b.total || 0), 0);
-            const allApplied = sales.filter(s => s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
-            const allPending = sales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
-
-            document.getElementById('posCutTodayWeb').innerText = `$${todayCut.toFixed(2)} MXN`;
-            document.getElementById('posCutAllPaidWeb').innerText = `$${allApplied.toFixed(2)} MXN`;
-            document.getElementById('posCutPendingWeb').innerText = `$${allPending.toFixed(2)} MXN`;
-
-            container.innerHTML = '';
-            if (sales.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay ventas registradas aún.</div>';
-                return;
-            }
-
-            sales.forEach(s => {
-                const itemsText = (s.items || []).map(i => `${i.cantidad}x ${i.nombre} ($${Number(i.subtotal || 0).toFixed(2)})`).join(' • ');
-                const card = document.createElement('div');
-                card.style.cssText = `background:#1E293B; border:1px solid ${s.isPaid ? 'rgba(0,255,127,0.4)' : 'rgba(245,158,11,0.5)'}; border-radius:10px; padding:10px 12px;`;
-                card.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">${escapeHtml(s.folio)} • 👤 ${escapeHtml(s.customerName)}</span>
-                        <span style="color:#94A3B8; font-size:11px;">${new Date(s.timestamp).toLocaleString()}</span>
-                    </div>
-                    <div style="color:#CBD5E1; font-size:12px; margin-bottom:8px;">${escapeHtml(itemsText)}</div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="color:${s.isPaid ? '#00FF7F' : '#F59E0B'}; font-weight:900; font-size:14px;">TOTAL: $${Number(s.total || 0).toFixed(2)} MXN</span>
-                        <div style="display:flex; gap:6px;">
-                            <button onclick="togglePosSaleAppliedWeb('${s.id}')" style="background:${s.isPaid ? '#065F46' : '#00FF7F'}; color:${s.isPaid ? '#FFF' : '#000'}; border:none; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
-                                ${s.isPaid ? '✅ En Corte' : '✅ Aplicar al Corte'}
-                            </button>
-                            <button onclick="deletePosSaleWeb('${s.id}')" style="background:rgba(239,68,68,0.15); color:#EF4444; border:1px solid #EF4444; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
-                                🗑️ Eliminar No Vendido
-                            </button>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        function togglePosSaleAppliedWeb(saleId) {
-            const sales = getPosSalesWeb().map(s => {
-                if (s.id === saleId) s.isPaid = !s.isPaid;
-                return s;
-            });
-            savePosSalesWeb(sales);
-            renderPosSalesCutWeb();
-        }
-
-        function deletePosSaleWeb(saleId) {
-            const sales = getPosSalesWeb().filter(s => s.id !== saleId);
-            savePosSalesWeb(sales);
-            renderPosSalesCutWeb();
-            showToast('🗑️ Ticket eliminado (no entra al Corte del Día)');
-        }
-    </script>
-
-</body></html>'
+                '</scr' + 'ipt>',
+                '</bo' + 'dy></ht' + 'ml>'
             ].join('');
             printWin.document.open();
             printWin.document.write(html);
@@ -4795,9 +4358,29 @@
             // 2. Escuchar lista de bloqueados
             listenToBlockedUsers();
 
-            // 3. Escuchar usuarios de la red
+            // 3. Escuchar usuarios de la red + mantener presencia propia en vivo
+            const myClean10Init = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (myClean10Init) {
+                const myPresenceRef = db.ref(`users/${myClean10Init}`);
+                db.ref('.info/connected').on('value', cSnap => {
+                    if (cSnap.val() === true) {
+                        myPresenceRef.update({ online: true, status: 'Conectado', lastSeen: firebase.database.ServerValue.TIMESTAMP });
+                        myPresenceRef.child('online').onDisconnect().set(false);
+                        myPresenceRef.child('status').onDisconnect().set('Desconectado');
+                        myPresenceRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+                    }
+                });
+                setInterval(() => {
+                    myPresenceRef.update({ online: true, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+                }, 60000);
+            }
+
             db.ref('users').on('value', (snap) => {
                 usersMap = snap.val() || {};
+                if (window.currentActiveContactPhone) {
+                    lastActiveContactData = findUserInMapByPhone(window.currentActiveContactPhone);
+                    updateActiveContactPresenceUI();
+                }
                 renderChatsList();
                 renderContactsList();
             });
@@ -5237,87 +4820,65 @@
         // ESCUCHAR CHATS ACTIVOS (MODO ULTRA-LIGERO: CERO DESCARGA MASIVA DE FIREBASE + RESPALDO LOCAL)
         const watchedChatIdsWeb = new Set();
 
-        function getMyClean10Web() {
-            return String(myPhone || '').replace(/\D/g, '').slice(-10) || 'default';
-        }
-
-        function getDeletedForMeSetWeb() {
+        // ALMACEN LOCAL EN INDEXEDDB (cientos de MB): ya no se pierden fotos ni mensajes por el limite de 5 MB de localStorage
+        const neoMsgCache = {};
+        let neoMsgIdb = null;
+        const neoMsgReady = new Promise(resolve => {
             try {
-                const raw = localStorage.getItem('neo_deleted_for_me_' + getMyClean10Web());
-                const arr = raw ? JSON.parse(raw) : [];
-                return new Set(Array.isArray(arr) ? arr : []);
-            } catch (_) { return new Set(); }
-        }
-
-        function markMsgDeletedForMeWeb(chatId, msgId) {
-            if (!msgId) return;
-            try {
-                const set = getDeletedForMeSetWeb();
-                set.add(msgId);
-                const arr = Array.from(set).slice(-2000);
-                localStorage.setItem('neo_deleted_for_me_' + getMyClean10Web(), JSON.stringify(arr));
-                if (chatId) {
-                    const raw = localStorage.getItem('neo_web_msgs_' + chatId);
-                    const map = raw ? JSON.parse(raw) : {};
-                    if (map && map[msgId]) {
-                        delete map[msgId];
-                        localStorage.setItem('neo_web_msgs_' + chatId, JSON.stringify(map));
-                    }
-                }
-            } catch (_) {}
-        }
-
-        function getChatClearedAtWeb(chatId) {
-            if (!chatId) return 0;
-            try {
-                return Number(localStorage.getItem('neo_cleared_chat_' + getMyClean10Web() + '_' + chatId) || '0') || 0;
-            } catch (_) { return 0; }
-        }
-
-        function markChatClearedLocallyWeb(chatId) {
-            if (!chatId) return;
-            try {
-                const nowTs = Date.now();
-                localStorage.setItem('neo_cleared_chat_' + getMyClean10Web() + '_' + chatId, String(nowTs));
-                const raw = localStorage.getItem('neo_web_msgs_' + chatId);
-                const map = raw ? JSON.parse(raw) : {};
-                const set = getDeletedForMeSetWeb();
-                Object.keys(map || {}).forEach(id => set.add(id));
-                localStorage.setItem('neo_deleted_for_me_' + getMyClean10Web(), JSON.stringify(Array.from(set).slice(-2000)));
-                localStorage.removeItem('neo_web_msgs_' + chatId);
-            } catch (_) {}
-        }
-
-        function isMsgHiddenForMeWeb(chatId, msgId, timestamp) {
-            if (msgId && getDeletedForMeSetWeb().has(msgId)) return true;
-            const clearedAt = getChatClearedAtWeb(chatId);
-            const ts = Number(timestamp) || 0;
-            if (clearedAt > 0 && ts > 0 && ts <= clearedAt) return true;
-            return false;
-        }
+                const req = indexedDB.open('neo_web_msgs', 1);
+                req.onupgradeneeded = () => req.result.createObjectStore('msgs');
+                req.onsuccess = () => {
+                    neoMsgIdb = req.result;
+                    try {
+                        const cur = neoMsgIdb.transaction('msgs', 'readonly').objectStore('msgs').openCursor();
+                        cur.onsuccess = () => {
+                            const c = cur.result;
+                            if (c) {
+                                neoMsgCache[c.key] = Object.assign({}, c.value || {}, neoMsgCache[c.key] || {});
+                                c.continue();
+                            } else {
+                                resolve();
+                            }
+                        };
+                        cur.onerror = () => resolve();
+                    } catch (_) { resolve(); }
+                };
+                req.onerror = () => resolve();
+            } catch (_) { resolve(); }
+        });
 
         function getLocalChatMessages(chatId) {
+            if (neoMsgCache[chatId]) return Object.assign({}, neoMsgCache[chatId]);
             try {
                 const raw = localStorage.getItem('neo_web_msgs_' + chatId);
-                const parsed = raw ? JSON.parse(raw) : {};
-                const filtered = {};
-                Object.keys(parsed || {}).forEach(k => {
-                    const m = parsed[k];
-                    if (m && !isMsgHiddenForMeWeb(chatId, m.id || k, m.timestamp)) {
-                        filtered[k] = m;
-                    }
-                });
-                return filtered;
-            } catch (_) { return {}; }
+                if (raw) {
+                    const m = JSON.parse(raw);
+                    neoMsgCache[chatId] = m;
+                    return Object.assign({}, m);
+                }
+            } catch (_) {}
+            return {};
         }
 
         function saveLocalChatMessages(chatId, msgsMap) {
             try {
-                const entries = Object.values(msgsMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-80);
+                const entries = Object.values(msgsMap).filter(m => m && m.id).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-400);
                 const pruned = {};
-                entries.forEach(m => { if (m && m.id) pruned[m.id] = m; });
-                localStorage.setItem('neo_web_msgs_' + chatId, JSON.stringify(pruned));
+                entries.forEach(m => { pruned[m.id] = m; });
+                neoMsgCache[chatId] = pruned;
+                neoMsgReady.then(() => {
+                    try { if (neoMsgIdb) neoMsgIdb.transaction('msgs', 'readwrite').objectStore('msgs').put(pruned, chatId); } catch (_) {}
+                });
+                try { localStorage.removeItem('neo_web_msgs_' + chatId); } catch (_) {}
             } catch (_) {}
+        }
+
+        function clearLocalChatMessages(chatId) {
+            delete neoMsgCache[chatId];
+            neoMsgReady.then(() => {
+                try { if (neoMsgIdb) neoMsgIdb.transaction('msgs', 'readwrite').objectStore('msgs').delete(chatId); } catch (_) {}
+            });
+            try { localStorage.removeItem('neo_web_msgs_' + chatId); } catch (_) {}
         }
 
         function saveLocalConversationsWeb() {
@@ -5381,7 +4942,6 @@
                 if (!val) return;
                 const lastM = Object.values(val)[0];
                 if (!lastM) return;
-                if (isMsgHiddenForMeWeb(cId, lastM.id, lastM.timestamp)) return;
 
                 // Guardar en el respaldo local de la PC
                 const mapNow = getLocalChatMessages(cId);
@@ -5461,22 +5021,49 @@
                 });
             });
 
+            // 3.5 SINCRONIZACION CELULAR -> PC: mensajes enviados desde mi celular (otro dispositivo de MI cuenta)
+            db.ref(`sync/${myCleanPhone}`).on('child_added', snap => {
+                const v = snap.val();
+                if (!v || !v.msg || !v.chatId) { snap.ref.remove(); return; }
+                if (v.origin === 'pc') {
+                    if (Date.now() - (v.msg.timestamp || 0) > 3 * 24 * 3600 * 1000) snap.ref.remove();
+                    return;
+                }
+                const cId = v.chatId;
+                const m = v.msg;
+                m.id = m.id || snap.key;
+                const localMap = getLocalChatMessages(cId);
+                localMap[m.id] = m;
+                saveLocalChatMessages(cId, localMap);
+                snap.ref.remove();
+
+                const parts = cId.replace('private_', '').split('_');
+                const p0 = (parts[0] || '').replace(/\D/g, '').slice(-10);
+                const other = p0 === myCleanPhone ? (parts[1] || '') : (parts[0] || '');
+                const otherPhone = other.replace(/\D/g, '').slice(-10);
+                const isGrp = cId.startsWith('group_');
+                const isSelf = !isGrp && otherPhone === myCleanPhone;
+                attachLightweightChatWatcher(cId, isGrp ? cId : otherPhone, isGrp, null);
+                upsertConversationWeb({
+                    chatId: cId,
+                    recipientPhone: isGrp ? cId : otherPhone,
+                    name: isSelf ? 'Mis Notas Personales (Tú)' : (isGrp ? ((conversations.find(c => c.chatId === cId) || {}).name || 'Grupo') : resolveContactNameWeb(otherPhone, null)),
+                    lastText: formatPreviewText(m.text),
+                    timestamp: m.timestamp || Date.now(),
+                    isGroup: isGrp,
+                    isSelf: isSelf
+                });
+                if (currentChatId === cId) {
+                    const it = conversations.find(c => c.chatId === cId);
+                    if (it) selectChat(it);
+                }
+            });
+
             // 4. Escuchar avisos ligeros entrantes en inbox/{myCleanPhone} (< 200 bytes)
             db.ref(`inbox/${myCleanPhone}`).on('child_added', snap => {
                 const notice = snap.val();
                 if (!notice) return;
                 const cId = notice.chatId || '';
-                if (notice.text === '[DELETED]' && cId && notice.id) {
-                    const mapNow = getLocalChatMessages(cId);
-                    if (mapNow[notice.id]) {
-                        mapNow[notice.id].text = '[DELETED]';
-                        mapNow[notice.id].deleted = true;
-                        mapNow[notice.id].isDeletedForEveryone = true;
-                        saveLocalChatMessages(cId, mapNow);
-                    }
-                    try { snap.ref.remove(); } catch (_) {}
-                    return;
-                }
                 const sPhone = String(notice.senderId || '').replace(/\D/g, '').slice(-10);
                 if (cId && sPhone) {
                     attachLightweightChatWatcher(cId, sPhone, cId.startsWith('group_'), notice.senderName);
@@ -5561,8 +5148,13 @@
                 const u = findUserInMapByPhone(item.recipientPhone);
                 const photoStyle = (u && (u.photoUrl || u.profilePhoto)) ? `background-image: url(${u.photoUrl || u.profilePhoto});` : '';
 
+                const isContactOnline = (!item.isSelf && !item.isGroup && u) ? isUserReallyOnlineWeb(u) : false;
+                const contactPresenceSub = (!item.isSelf && !item.isGroup && u) ? getUserPresenceLabelWeb(u) : '';
                 row.innerHTML = `
-                    <div class="chat-avatar" style="${avatarBg} ${photoStyle}">${photoStyle ? '' : initial}</div>
+                    <div class="chat-avatar" style="position:relative; ${avatarBg} ${photoStyle}">
+                        ${photoStyle ? '' : initial}
+                        ${!item.isSelf && !item.isGroup ? `<span title="${escapeHtml(contactPresenceSub)}" style="position:absolute; bottom:0; right:0; width:11px; height:11px; border-radius:50%; background:${isContactOnline ? '#00FF7F' : '#64748B'}; border:2px solid #111B21;"></span>` : ''}
+                    </div>
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name" style="display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis;">
@@ -5571,9 +5163,13 @@
                             </span>
                             <span class="chat-time">${timeStr}</span>
                         </div>
+                        ${(!item.isSelf && !item.isGroup && contactPresenceSub) ? `<div style="font-size:10.5px; color:${isContactOnline ? '#00FF7F' : '#94A3B8'}; font-weight:${isContactOnline ? '600' : '400'}; margin-bottom:2px;">${isContactOnline ? '🟢 en línea' : ('🕒 ' + escapeHtml(contactPresenceSub))}</div>` : ''}
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span class="chat-last-msg">${escapeHtml(item.lastText)}</span>
-                            ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🗑️</button>` : ''}
+                            <span class="chat-last-msg" style="${(item.unreadCount && item.unreadCount > 0) ? 'font-weight:700; color:#FFFFFF;' : ''}">${escapeHtml(item.lastText)}</span>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                ${(item.unreadCount && item.unreadCount > 0) ? `<span style="background:#00A884; color:#000; font-weight:800; font-size:11px; min-width:18px; height:18px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; padding:0 4px;">${item.unreadCount}</span>` : ''}
+                                ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🧹</button><button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Eliminar conversación de la lista">🗑️</button>` : ''}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -5583,34 +5179,63 @@
             });
         }
 
-        // VACIAR HISTORIAL DEL CHAT SOLO EN MI DISPOSITIVO (SIN AFECTAR AL OTRO USUARIO NI ELIMINAR EL CONTACTO)
+        // VACIAR HISTORIAL DEL CHAT (SIN ELIMINAR EL CONTACTO - IGUAL QUE ANDROID)
         function clearChatHistory(chatId, recipientPhone, displayName) {
-            if (confirm(`🧹 ¿Vaciar mensajes de este chat con ${displayName} solo en tu PC?\n\nSe limpiará el historial únicamente en tu dispositivo (el otro usuario conservará su historial intacto) y el contacto seguirá guardado.`)) {
-                // 1. Marcar como vaciado localmente en esta PC (NUNCA borrar de Firebase para no borrarle el historial al otro usuario)
-                markChatClearedLocallyWeb(chatId);
+            if (!chatId) return;
+            const nameLabel = displayName || currentContactName || recipientPhone || 'este contacto';
+            if (confirm(`🧹 ¿Vaciar todos los mensajes de este chat con ${nameLabel}?\n\nSe borrarán todos los mensajes de esta conversación en tu PC y en Firebase, pero el contacto seguirá guardado.`)) {
+                // 1. Borrar respaldo local de mensajes en esta PC
+                clearLocalChatMessages(chatId);
 
-                // 2. Si estaba abierto en pantalla, limpiar la vista de mensajes
+                // 2. Borrar los mensajes del chat en Firebase
+                db.ref(`chats/${chatId}/messages`).remove().catch(() => {});
+
+                // 3. Actualizar el subtítulo de la conversación en la lista lateral
+                const idx = conversations.findIndex(c => c.chatId === chatId);
+                if (idx !== -1) {
+                    conversations[idx].lastText = 'Conversación vaciada';
+                    saveLocalConversationsWeb();
+                }
+
+                // 4. Si estaba abierto en pantalla, limpiar la vista de mensajes de inmediato
                 if (currentChatId === chatId) {
                     const mList = document.getElementById('messagesList');
                     if (mList) {
-                        mList.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:40px;">🧹 Historial vaciado en tu dispositivo.</div>';
+                        mList.innerHTML = '<div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:40px;">🧹 Conversación vaciada. ¡Escribe un mensaje cuando gustes!</div>';
                     }
                 }
 
-                // 3. Actualizar la vista previa local en la lista de conversaciones
-                const idx = conversations.findIndex(c => c.chatId === chatId);
-                if (idx !== -1) {
-                    conversations[idx].lastText = 'Chat vaciado';
-                    saveLocalConversationsWeb();
-                    renderChatsList();
-                }
-
-                showToast(`🧹 Chat con ${displayName} vaciado solo en tu PC`);
+                renderChatsList();
+                showToast(`🧹 Mensajes del chat con ${nameLabel} vaciados`);
             }
         }
 
+        // ELIMINAR CHAT DE LA LISTA (IGUAL QUE ANDROID)
         function deleteChatWithNoTrace(chatId, recipientPhone, displayName) {
-            clearChatHistory(chatId, recipientPhone, displayName || 'este contacto');
+            if (!chatId) return;
+            const nameLabel = displayName || currentContactName || recipientPhone || 'este chat';
+            if (confirm(`🗑️ ¿Eliminar la conversación con ${nameLabel} de tu lista de chats?\n\nSe borrarán los mensajes y se quitará de tu lista de conversaciones.`)) {
+                clearLocalChatMessages(chatId);
+
+                db.ref(`chats/${chatId}/messages`).remove().catch(() => {});
+
+                conversations = conversations.filter(c => c.chatId !== chatId);
+                saveLocalConversationsWeb();
+
+                if (currentChatId === chatId) {
+                    if (messagesListener) messagesListener.off();
+                    currentChatId = '';
+                    currentRecipient = '';
+                    currentContactName = '';
+                    const cBox = document.getElementById('activeChatBox');
+                    const ePlace = document.getElementById('emptyPlaceholder');
+                    if (cBox) cBox.style.display = 'none';
+                    if (ePlace) ePlace.style.display = 'flex';
+                }
+
+                renderChatsList();
+                showToast(`🗑️ Conversación con ${nameLabel} eliminada`);
+            }
         }
 
         function handleChatHeaderClick() {
@@ -5767,7 +5392,8 @@
                         combinedMap.set(p10, {
                             id: p10,
                             name: resolvedName,
-                            status: u.status || 'En línea',
+                            isOnline: isUserReallyOnlineWeb(u),
+                            presenceText: getUserPresenceLabelWeb(u),
                             photo: u.photoUrl || u.profilePhoto || null,
                             isSaved: true
                         });
@@ -5784,7 +5410,8 @@
                     combinedMap.set(p10, {
                         id: p10,
                         name: resolvedName,
-                        status: u.status || 'En línea',
+                        isOnline: isUserReallyOnlineWeb(u),
+                        presenceText: getUserPresenceLabelWeb(u),
                         photo: u.photoUrl || u.profilePhoto || null,
                         isSaved: true
                     });
@@ -5824,7 +5451,7 @@
                             <span class="chat-name">${escapeHtml(c.name)}</span>
                             <span style="font-size:11px; color:#00FF7F; font-weight:bold;">📱 ${escapeHtml(c.id)}</span>
                         </div>
-                        <span class="chat-last-msg">Tel: ${escapeHtml(c.id)} • ${escapeHtml(c.status)}</span>
+                        <span class="chat-last-msg" style="color:${c.isOnline ? '#00FF7F' : 'var(--text-secondary)'}; font-weight:${c.isOnline ? '600' : '400'};">${c.isOnline ? '🟢 en línea' : ('🕒 ' + escapeHtml(c.presenceText))}</span>
                     </div>
                 `;
 
@@ -5980,6 +5607,7 @@
 
         // SELECCIONAR CHAT
         function selectChat(item) {
+            item.unreadCount = 0;
             currentChatId = item.chatId;
             currentRecipient = item.recipientPhone;
             const resolvedName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
@@ -6034,15 +5662,17 @@
                     if (cm) {
                         const mid = cm.id || k;
                         cm.id = mid;
-                        if (isMsgHiddenForMeWeb(currentChatId, mid, cm.timestamp)) return;
-                        mergedMap[mid] = cm;
-                        // Si el mensaje ya fue recibido por nosotros o tiene más de 10 minutos, limpiarlo de Firebase tras respaldarlo localmente
-                        const sClean10 = String(cm.senderId || '').replace(/\D/g, '').slice(-10);
+                        if (cm.deleted || cm.isDeletedForEveryone || cm.text === '[DELETED]') {
+                            delete mergedMap[mid];
+                        } else {
+                            mergedMap[mid] = cm;
+                        }
+                        // LIMPIEZA SEGURA DE TRÁNSITO EN FIREBASE (0 GB EN NUBE SIN BORRAR NADA DE LA PC)
                         const ageMs = Date.now() - (Number(cm.timestamp) || 0);
-                        if ((sClean10 && sClean10 !== myClean10 && ageMs > 15000) || ageMs > 10 * 60 * 1000) {
-                            setTimeout(() => {
-                                db.ref(`chats/${currentChatId}/messages/${mid}`).remove().catch(() => {});
-                            }, 5000);
+                        const isReadByBoth = (cm.readBy && Object.keys(cm.readBy).length > 1 && ageMs > 3600 * 1000);
+                        const isVeryOld = ageMs > 24 * 3600 * 1000;
+                        if (isReadByBoth || isVeryOld) {
+                            db.ref(`chats/${currentChatId}/messages/${mid}`).remove().catch(() => {});
                         }
                     }
                 });
@@ -6110,7 +5740,7 @@
 
         function clearActiveChatMessages() {
             if (!currentChatId) return;
-            clearChatHistory(currentChatId, currentRecipient, currentContactName || 'este chat');
+            clearChatHistory(currentChatId, currentRecipient, currentContactName);
         }
 
         function deleteActiveChatEntirely() {
@@ -6120,73 +5750,61 @@
 
         function deleteMessageForMeWeb(msgId) {
             if (!currentChatId || !msgId) return;
-            markMsgDeletedForMeWeb(currentChatId, msgId);
-            const bubble = document.getElementById('msg_' + msgId);
-            if (bubble) bubble.remove();
-            const remaining = Object.values(getLocalChatMessages(currentChatId)).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            // 1. Quitar del respaldo local de esta PC
+            const localMap = getLocalChatMessages(currentChatId);
+            delete localMap[msgId];
+            saveLocalChatMessages(currentChatId, localMap);
+
+            // 2. Si era un mensaje recibido que seguía en Firebase, limpiarlo también de Firebase
+            db.ref(`chats/${currentChatId}/messages/${msgId}`).remove().catch(() => {});
+
+            // 3. Quitar burbuja de la pantalla al instante
+            const el = document.getElementById('msg_' + msgId);
+            if (el) el.remove();
+
+            // Actualizar vista previa lateral
+            const remaining = Object.values(localMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
             const idx = conversations.findIndex(c => c.chatId === currentChatId);
             if (idx !== -1) {
-                conversations[idx].lastText = remaining.length > 0 ? formatPreviewText(remaining[remaining.length - 1].text) : 'Mensaje eliminado';
+                conversations[idx].lastText = remaining.length > 0 ? formatPreviewText(remaining[remaining.length - 1].text) : 'Sin mensajes';
                 saveLocalConversationsWeb();
                 renderChatsList();
             }
-            showToast('🗑️ Mensaje eliminado para ti (solo en tu PC)');
+            showToast('🗑️ Mensaje eliminado de tu chat');
         }
 
         function deleteSingleMessage(msgId) {
             if (!currentChatId || !msgId) return;
-            const localMap = getLocalChatMessages(currentChatId);
-            const existingMsg = localMap[msgId];
-            const isTargetMine = (contextTargetMsg && contextTargetMsg.id === msgId && contextTargetMsg.isMine) ||
-                                 (existingMsg && isSameSender(existingMsg.senderId, myPhone));
-            if (!isTargetMine) {
-                showToast('⚠️ Solo puedes eliminar para todos los mensajes que tú enviaste');
-                return;
-            }
-            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Se eliminará para ti y para el otro usuario\n• Cancelar: No eliminar");
+            const opt = confirm("¿Eliminar este mensaje para todos?\n\n• Aceptar: Eliminar para todos\n• Cancelar: No eliminar");
             if (opt) {
-                const updatedPayload = Object.assign({}, existingMsg || {}, {
-                    id: msgId,
-                    senderId: (existingMsg && existingMsg.senderId) || myPhone,
-                    senderName: (existingMsg && existingMsg.senderName) || myName || myPhone,
-                    timestamp: (existingMsg && existingMsg.timestamp) || Date.now(),
+                // 1. Quitar del respaldo local de esta PC inmediatamente
+                const localMap = getLocalChatMessages(currentChatId);
+                delete localMap[msgId];
+                saveLocalChatMessages(currentChatId, localMap);
+
+                // 2. Quitar burbuja de la pantalla al instante
+                const el = document.getElementById('msg_' + msgId);
+                if (el) el.remove();
+
+                // 3. Marcar como eliminado / borrar en Firebase para que se elimine en el otro equipo
+                db.ref(`chats/${currentChatId}/messages/${msgId}`).update({
                     text: '[DELETED]',
                     deleted: true,
                     isDeletedForEveryone: true
-                });
-                localMap[msgId] = updatedPayload;
-                saveLocalChatMessages(currentChatId, localMap);
+                }).then(() => {
+                    setTimeout(() => {
+                        db.ref(`chats/${currentChatId}/messages/${msgId}`).remove().catch(() => {});
+                    }, 4000);
+                }).catch(() => {});
 
-                const bubble = document.getElementById('msg_' + msgId);
-                if (bubble) {
-                    const delDiv = bubble.querySelector('.msg-text, .msg-deleted, img, audio, video');
-                    if (delDiv) {
-                        bubble.innerHTML = `
-                            <div class="msg-deleted">
-                                <span style="font-size:14px;">🚫</span>
-                                <span>Eliminaste este mensaje.</span>
-                            </div>
-                            <div class="msg-footer">
-                                <span>${formatTime(updatedPayload.timestamp)}</span>
-                            </div>
-                        `;
-                    }
+                const remaining = Object.values(localMap).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                const idx = conversations.findIndex(c => c.chatId === currentChatId);
+                if (idx !== -1) {
+                    conversations[idx].lastText = remaining.length > 0 ? formatPreviewText(remaining[remaining.length - 1].text) : 'Mensaje eliminado';
+                    saveLocalConversationsWeb();
+                    renderChatsList();
                 }
-
-                db.ref(`chats/${currentChatId}/messages/${msgId}`).update(updatedPayload).then(() => {
-                    const rec10 = String(currentRecipient || '').replace(/\D/g, '').slice(-10);
-                    if (rec10 && rec10.length === 10 && !currentChatId.startsWith('group_')) {
-                        db.ref(`inbox/${rec10}/${msgId}`).set({
-                            id: msgId,
-                            chatId: currentChatId,
-                            senderId: myPhone,
-                            senderName: myName || myPhone,
-                            text: '[DELETED]',
-                            timestamp: updatedPayload.timestamp
-                        }).catch(() => {});
-                    }
-                    showToast('🚫 Mensaje eliminado para todos');
-                });
+                showToast('🚫 Mensaje eliminado');
             }
         }
 
@@ -6200,6 +5818,58 @@
             if (s1 === s2) return true;
             if (s1.length >= 10 && s2.length >= 10 && s1.slice(-10) === s2.slice(-10)) return true;
             return false;
+        }
+
+
+        function formatMessageTextWithLinks(text) {
+            if (!text) return { html: '', preview: '' };
+            const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`]+|www\.[^\s<>"'{}|\\^`]+)/gi;
+            let preview = '';
+            const foundUrls = text.match(urlRegex);
+            if (foundUrls && foundUrls.length > 0) {
+                const firstUrl = foundUrls[0].trim().replace(/[.,;!?)]+$/, '');
+                const href = firstUrl.startsWith('www.') ? 'https://' + firstUrl : firstUrl;
+                let icon = '🌐';
+                let label = 'Abrir Enlace Web';
+                let domain = 'Enlace externo';
+                try { domain = new URL(href).hostname.replace('www.', ''); } catch(_) {}
+                const low = href.toLowerCase();
+                if (low.includes('tiktok.com')) {
+                    icon = '🎵';
+                    label = 'Ver Video en TikTok ↗';
+                } else if (low.includes('youtube.com/shorts')) {
+                    icon = '▶️';
+                    label = 'Ver en YouTube Shorts ↗';
+                } else if (low.includes('youtube.com') || low.includes('youtu.be')) {
+                    icon = '▶️';
+                    label = 'Ver en YouTube ↗';
+                } else if (low.includes('facebook.com') || low.includes('fb.watch')) {
+                    icon = '📘';
+                    label = 'Ver en Facebook ↗';
+                } else if (low.includes('instagram.com')) {
+                    icon = '📸';
+                    label = 'Ver en Instagram ↗';
+                }
+                preview = `
+                    <div class="web-link-preview-box" onclick="event.stopPropagation(); window.open('${href}', '_blank')" style="margin-top:8px; padding:8px 12px; background:rgba(15,23,42,0.85); border:1px solid rgba(56,189,248,0.45); border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:10px; max-width:320px; transition:transform 0.15s ease;" onmouseover="this.style.borderColor='#00FF7F'" onmouseout="this.style.borderColor='rgba(56,189,248,0.45)'">
+                        <span style="font-size:22px; line-height:1;">${icon}</span>
+                        <div style="flex:1; overflow:hidden; text-align:left;">
+                            <div style="font-size:10.5px; color:#94A3B8; text-transform:uppercase; font-weight:700; letter-spacing:0.3px;">${escapeHtml(domain)}</div>
+                            <div style="font-size:12px; color:#38BDF8; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(label)}</div>
+                        </div>
+                        <span style="color:#38BDF8; font-size:12px; font-weight:bold;">↗</span>
+                    </div>
+                `;
+            }
+
+            let escaped = escapeHtml(text);
+            const htmlWithLinks = escaped.replace(urlRegex, function(url) {
+                let clean = url.trim().replace(/[.,;!?)]+$/, '');
+                let href = clean.startsWith('www.') ? 'https://' + clean : clean;
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#38BDF8; text-decoration:underline; font-weight:600; word-break:break-all;" onclick="event.stopPropagation();">${escapeHtml(url)}</a>`;
+            }).replace(/\n/g, '<br>');
+
+            return { html: htmlWithLinks, preview: preview };
         }
 
         function renderMessageBubble(msg) {
@@ -6250,7 +5920,7 @@
             }
 
             // 1. MENSAJES ELIMINADOS
-            if (text === '[DELETED]' || msg.deleted || msg.isDeletedForEveryone || text === '🚫 Este mensaje fue eliminado') {
+            if (text === '[DELETED]' || msg.deleted) {
                 b.innerHTML = `
                     ${menuBtnHtml}
                     <div class="msg-deleted">
@@ -6546,11 +6216,13 @@
                 `;
             } else {
                 // 8. TEXTO ESTÁNDAR
+                const formatted = formatMessageTextWithLinks(text);
                 b.innerHTML = `
                     ${menuBtnHtml}
                     ${quoteHtml}
                     ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
-                    <div class="msg-text-content">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+                    <div class="msg-text-content">${formatted.html}</div>
+                    ${formatted.preview}
                     ${!isMine && text.length > 2 ? `
                         <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
                             <button onclick="promptTranslateMessage('${msg.id}', decodeURIComponent('${encodeURIComponent(text)}'))" style="background: rgba(0, 168, 132, 0.12); color: #00FF7F; border: 1px solid rgba(0, 255, 127, 0.3); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: 500;">
@@ -6671,6 +6343,10 @@
 
             // 1. Firebase (entrega en tiempo real + aviso ligero < 200 bytes en inbox)
             newRef.set(msgObj);
+            const syncMe10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (syncMe10.length === 10) {
+                db.ref(`sync/${syncMe10}/${msgId}`).set({ origin: 'pc', chatId: currentChatId, msg: msgObj });
+            }
             const cleanRecip10 = String(currentRecipient || '').replace(/\D/g, '').slice(-10);
             const myClean10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
             if (cleanRecip10 && cleanRecip10.length === 10 && cleanRecip10 !== myClean10 && !String(currentChatId).startsWith('group_')) {
@@ -6820,7 +6496,7 @@
                         if (s.timestamp && s.timestamp > twentyFourHoursAgo) {
                             list.push(s);
                         } else if (s.timestamp) {
-                            db.ref(`status/${id}`).remove();
+                            db.ref(`status/${id}`).remove(); db.ref(`status_media/${id}`).remove();
                         }
                     }
                 });
@@ -6883,11 +6559,13 @@
                 const item = document.createElement('div');
                 item.className = 'chat-row';
                 const initial = (s.senderName ? s.senderName.charAt(0) : '?').toUpperCase();
+                const sUser = findUserInMapByPhone(s.senderId);
+                const sPhoto = sUser ? (sUser.photoUrl || sUser.profilePhoto || '') : '';
                 const ringClass = isViewed ? 'status-ring-gray' : 'status-ring-green';
                 const timeStr = formatStatusTime(s.timestamp);
 
                 item.innerHTML = `
-                    <div class="chat-avatar ${ringClass}">${initial}</div>
+                    <div class="chat-avatar ${ringClass}" style="${sPhoto ? `background-image:url(${sPhoto}); background-size:cover; background-position:center;` : ''}">${sPhoto ? '' : initial}</div>
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name">${escapeHtml(s.senderName || 'Contacto')}</span>
@@ -7010,6 +6688,11 @@
             input.value = '';
         }
 
+        let storyAudioEl = null;
+        function stopStoryAudio() {
+            if (storyAudioEl) { try { storyAudioEl.pause(); } catch (_) {} storyAudioEl = null; }
+        }
+
         function openStoryViewer(status) {
             currentViewingStory = status;
             const overlay = document.getElementById('storyViewerOverlay');
@@ -7021,51 +6704,74 @@
             const progressBar = document.getElementById('storyProgressBar');
 
             authorName.innerText = status.senderName || 'Contacto';
-            timeLabel.innerText = formatStatusTime(status.timestamp);
-
+            timeLabel.innerText = formatStatusTime(status.timestamp) + (status.musicName ? '  🎵 ' + status.musicName : '');
             const isMine = (status.senderId || '').replace(/\D/g, '') === myPhone.replace(/\D/g, '');
             delBtn.style.display = isMine ? 'block' : 'none';
 
-            content.innerHTML = '';
-            const isVid = status.mediaType === 'video' || status.videoUrl || (status.imageUrl && status.imageUrl.startsWith('data:video/'));
-
-            if (isVid) {
-                const vidSrc = status.videoUrl || status.imageUrl;
-                content.style.background = '#000';
-                content.innerHTML = `<video id="storyVideoPlayer" src="${vidSrc}" autoplay playsinline controls style="max-width:100%; max-height:100%; object-fit:contain; border-radius:10px;"></video>`;
-                caption.innerText = status.text && status.text !== 'Video de estado' ? status.text : '';
-                caption.style.display = caption.innerText ? 'block' : 'none';
-
-                const vEl = document.getElementById('storyVideoPlayer');
-                vEl.onended = () => { closeStoryViewer(); };
-            } else if (status.imageUrl) {
-                content.style.background = '#000';
-                content.innerHTML = `<img src="${status.imageUrl}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
-                caption.innerText = status.text && status.text !== 'Foto de estado' ? status.text : '';
-                caption.style.display = caption.innerText ? 'block' : 'none';
-            } else {
-                const bg = status.musicUrl || '#005C4B';
-                content.style.background = bg;
-                content.innerHTML = `<div style="padding:24px; color:#FFF; font-size:26px; font-weight:bold; text-align:center; word-break:break-word;">${escapeHtml(status.text)}</div>`;
-                caption.style.display = 'none';
-            }
-
+            stopStoryAudio();
+            if (storyProgressInterval) clearInterval(storyProgressInterval);
+            progressBar.style.width = '0%';
+            content.style.background = '#000';
+            content.innerHTML = '<div style="color:#FFF; font-size:14px;">⏳ Cargando estado...</div>';
+            caption.style.display = 'none';
             overlay.style.display = 'flex';
 
-            if (storyProgressInterval) clearInterval(storyProgressInterval);
-            let progress = 0;
-            progressBar.style.width = '0%';
-            storyProgressInterval = setInterval(() => {
-                progress += 2;
-                progressBar.style.width = progress + '%';
-                if (progress >= 100) {
-                    closeStoryViewer();
+            const render = (media) => {
+                if (!currentViewingStory || currentViewingStory.id !== status.id) return;
+                media = media || {};
+                const videoSrc = media.video || status.videoUrl || ((status.imageUrl || '').startsWith('data:video/') ? status.imageUrl : '');
+                const audioSrc = media.audio || '';
+                content.innerHTML = '';
+
+                if (videoSrc) {
+                    content.style.background = '#000';
+                    content.innerHTML = `<video id="storyVideoPlayer" src="${videoSrc}" autoplay playsinline controls style="max-width:100%; max-height:100%; object-fit:contain; border-radius:10px;"></video>`;
+                    const t = status.text && status.text !== 'Video de estado' ? status.text : '';
+                    caption.innerText = t;
+                    caption.style.display = t ? 'block' : 'none';
+                    document.getElementById('storyVideoPlayer').onended = () => { closeStoryViewer(); };
+                } else if (status.imageUrl) {
+                    content.style.background = '#000';
+                    content.innerHTML = `<img src="${status.imageUrl}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
+                    const t = status.text && status.text !== 'Foto de estado' && status.text !== 'Estado NeoMessage' ? status.text : '';
+                    caption.innerText = t;
+                    caption.style.display = t ? 'block' : 'none';
+                } else {
+                    const bg = status.musicUrl || '#005C4B';
+                    content.style.background = bg;
+                    content.innerHTML = `<div style="padding:24px; color:#FFF; font-size:26px; font-weight:bold; text-align:center; word-break:break-word;">${escapeHtml(status.text)}</div>`;
+                    caption.style.display = 'none';
                 }
-            }, 100);
+
+                if (audioSrc) {
+                    storyAudioEl = new Audio(audioSrc);
+                    storyAudioEl.loop = true;
+                    storyAudioEl.play().catch(() => {});
+                }
+
+                if (!videoSrc) {
+                    const total = audioSrc ? 15000 : 5000;
+                    let progress = 0;
+                    storyProgressInterval = setInterval(() => {
+                        progress += (100 / total) * 100;
+                        progressBar.style.width = progress + '%';
+                        if (progress >= 100) closeStoryViewer();
+                    }, 100);
+                }
+            };
+
+            if (status.hasMedia) {
+                db.ref(`status_media/${status.id}`).once('value').then(s => render(s.val() || {})).catch(() => render({}));
+            } else {
+                render(null);
+            }
         }
 
         function closeStoryViewer() {
             if (storyProgressInterval) clearInterval(storyProgressInterval);
+            stopStoryAudio();
+            const v = document.getElementById('storyVideoPlayer');
+            if (v) { try { v.pause(); } catch (_) {} }
             document.getElementById('storyViewerOverlay').style.display = 'none';
             currentViewingStory = null;
         }
@@ -7073,7 +6779,7 @@
         function deleteCurrentViewingStory() {
             if (!currentViewingStory) return;
             if (confirm('¿Eliminar este estado?')) {
-                db.ref(`status/${currentViewingStory.id}`).remove().then(() => {
+                db.ref(`status_media/${currentViewingStory.id}`).remove(); db.ref(`status/${currentViewingStory.id}`).remove().then(() => {
                     closeStoryViewer();
                     showToast('🗑️ Estado eliminado');
                 });
@@ -7103,6 +6809,10 @@
             if (!text) return '';
             if (text.startsWith('[NEO_QUOTE]|')) return '📄 Presupuesto';
             if (text.startsWith('[Media]')) return '📷 Foto';
+            if (text.startsWith('[Video]')) return '🎬 Video';
+            if (text.startsWith('[Document]|') || text.startsWith('[File]')) return '📄 Archivo';
+            if (text.startsWith('[Audio]')) return '🎤 Nota de voz';
+            if (text.startsWith('[Sticker]')) return '✨ Sticker';
             if (text.startsWith('[NEO_HEALTH]')) return '❤️ Salud';
             return text;
         }
@@ -7180,10 +6890,10 @@
             
             const isTextOnly = !text.startsWith('[Media]') && !text.startsWith('[File]') && !text.startsWith('[Document]|') && !text.startsWith('[Audio]') && !text.startsWith('[Video]') && !text.startsWith('[Sticker]') && !text.startsWith('[DELETED]');
             
-            const delForMeBtn = document.getElementById('contextDeleteForMeBtn');
-            if (delForMeBtn) delForMeBtn.style.display = 'flex';
             const delBtn = document.getElementById('contextDeleteBtn');
             if (delBtn) delBtn.style.display = isMine ? 'flex' : 'none';
+            const delMeBtn = document.getElementById('contextDeleteForMeBtn');
+            if (delMeBtn) delMeBtn.style.display = 'flex';
             const editBtn = document.getElementById('contextEditBtn');
             if (editBtn) editBtn.style.display = (isMine && isTextOnly) ? 'flex' : 'none';
 
@@ -7252,11 +6962,6 @@
 
         function triggerDeleteFromContext() {
             if (!contextTargetMsg) return;
-            if (!contextTargetMsg.isMine) {
-                showToast('⚠️ Solo puedes eliminar para todos los mensajes que tú enviaste');
-                document.getElementById('msgContextMenu').style.display = 'none';
-                return;
-            }
             deleteSingleMessage(contextTargetMsg.id);
             document.getElementById('msgContextMenu').style.display = 'none';
         }
@@ -7268,38 +6973,74 @@
             showToast(`Reacción ${emoji} enviada`);
         }
 
-        // Reenviar mensaje
+        // Reenviar mensaje (texto, fotos, videos, documentos, audios) a cualquier chat, contacto o grupo
         function triggerForwardFromContext() {
             if (!contextTargetMsg) return;
-            const modal = document.getElementById('forwardModal');
-            const list = document.getElementById('forwardContactsList');
-            list.innerHTML = '';
+            const txt = contextTargetMsg.text || '';
+            if (!txt || txt === '[DELETED]') {
+                showToast('⚠️ Este mensaje no se puede reenviar');
+                document.getElementById('msgContextMenu').style.display = 'none';
+                return;
+            }
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            const targets = [];
+            const seen = new Set();
+            const addT = (chatId, phone, name, isGroup, isSelf) => {
+                if (!chatId || chatId === currentChatId || seen.has(chatId)) return;
+                seen.add(chatId);
+                targets.push({ chatId, phone, name: name || phone || 'Chat', isGroup: !!isGroup, isSelf: !!isSelf });
+            };
 
-            const contacts = Object.values(cachedChats || {});
-            if (contacts.length === 0) {
-                list.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats recientes</div>';
-            } else {
-                contacts.forEach(c => {
+            addT(`private_${myPhone}_${myPhone}`, myPhone, 'Mis Notas Personales (Tú)', false, true);
+            conversations.forEach(c => {
+                if (c.isSelf) return;
+                const isGrp = !!c.isGroup || String(c.chatId).startsWith('group_');
+                addT(c.chatId, c.recipientPhone, c.name, isGrp, false);
+            });
+            mySavedContacts.forEach(c => {
+                const p10 = String((c && c.id) || '').replace(/\D/g, '').slice(-10);
+                if (p10.length === 10 && p10 !== myP10) {
+                    const ids = [myP10, p10].sort();
+                    addT(`private_${ids[0]}_${ids[1]}`, p10, resolveContactNameWeb(p10, c.name), false, false);
+                }
+            });
+
+            const list = document.getElementById('forwardContactsList');
+            list.innerHTML = '<input type="text" id="fwdSearchInput" placeholder="🔍 Buscar chat, contacto o grupo..." style="width:100%; box-sizing:border-box; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:9px 12px; color:#FFF; font-size:13px; margin-bottom:8px;"><div id="fwdItems"></div>';
+
+            const renderItems = (q) => {
+                const box = document.getElementById('fwdItems');
+                box.innerHTML = '';
+                const query = (q || '').toLowerCase().trim();
+                const shown = targets.filter(t => !query || t.name.toLowerCase().includes(query) || String(t.phone || '').includes(query));
+                if (shown.length === 0) {
+                    box.innerHTML = '<div style="padding:20px; text-align:center; color:#8696A0;">No hay chats disponibles.</div>';
+                    return;
+                }
+                shown.forEach(t => {
                     const item = document.createElement('div');
-                    item.className = 'contact-item';
-                    item.style.padding = '10px 14px';
-                    item.style.cursor = 'pointer';
+                    item.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 8px; cursor:pointer; border-radius:8px;';
+                    item.onmouseover = () => item.style.background = 'rgba(255,255,255,0.07)';
+                    item.onmouseout = () => item.style.background = 'transparent';
+                    const initial = t.isSelf ? '📌' : (t.isGroup ? '👥' : (t.name || 'C').charAt(0).toUpperCase());
+                    const sub = t.isGroup ? 'Grupo' : (t.isSelf ? 'Notas personales' : '📱 ' + (t.phone || ''));
                     item.innerHTML = `
-                        <div class="avatar" style="width:40px;height:40px;font-size:16px;">${(c.name || 'C')[0]}</div>
-                        <div class="contact-info">
-                            <div class="contact-name">${escapeHtml(c.name || c.phone || 'Contacto')}</div>
-                            <div class="contact-last-msg" style="color:#8696A0;font-size:12px;">${escapeHtml(c.phone || '')}</div>
-                        </div>
-                    `;
+                        <div class="chat-avatar" style="width:38px; height:38px; font-size:15px; margin:0;">${initial}</div>
+                        <div>
+                            <div style="color:#FFF; font-weight:600; font-size:14px;">${escapeHtml(t.name)}</div>
+                            <div style="color:#94A3B8; font-size:11px;">${escapeHtml(sub)}</div>
+                        </div>`;
                     item.onclick = () => {
-                        forwardMessageToChat(c.id || c.phone, contextTargetMsg.text);
+                        forwardMessageToChat(t, txt);
                         closeForwardModal();
                     };
-                    list.appendChild(item);
+                    box.appendChild(item);
                 });
-            }
+            };
+            renderItems('');
+            document.getElementById('fwdSearchInput').oninput = (e) => renderItems(e.target.value);
 
-            modal.style.display = 'flex';
+            document.getElementById('forwardModal').style.display = 'flex';
             document.getElementById('msgContextMenu').style.display = 'none';
         }
 
@@ -7307,24 +7048,57 @@
             document.getElementById('forwardModal').style.display = 'none';
         }
 
-        function forwardMessageToChat(targetId, textPayload) {
-            if (!targetId || !textPayload) return;
-            const targetChatId = targetId.includes('_') ? targetId : [myPhone.replace(/\D/g,''), targetId.replace(/\D/g,'')].sort().join('_');
-            const newRef = db.ref(`chats/${targetChatId}/messages`).push();
-            newRef.set({
-                id: newRef.key,
+        function forwardMessageToChat(t, textPayload) {
+            if (!t || !t.chatId || !textPayload) return;
+            const newRef = db.ref(`chats/${t.chatId}/messages`).push();
+            const msgId = newRef.key;
+            const msgObj = {
+                id: msgId,
                 text: textPayload,
                 timestamp: Date.now(),
                 senderId: myPhone,
                 senderName: myName,
                 rank: 'PC Desktop',
                 readBy: {}
-            }).then(() => {
-                showToast('↪ Mensaje reenviado');
+            };
+
+            // Respaldo local en esta PC
+            const localMap = getLocalChatMessages(t.chatId);
+            localMap[msgId] = msgObj;
+            saveLocalChatMessages(t.chatId, localMap);
+
+            // Entrega por Firebase + aviso ligero (< 200 bytes)
+            newRef.set(msgObj);
+            const myP10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (myP10.length === 10) {
+                db.ref(`sync/${myP10}/${msgId}`).set({ origin: 'pc', chatId: t.chatId, msg: msgObj });
+            }
+            const rec10 = String(t.phone || '').replace(/\D/g, '').slice(-10);
+            if (!t.isGroup && !t.isSelf && rec10.length === 10 && rec10 !== myP10) {
+                db.ref(`inbox/${rec10}/${msgId}`).set({
+                    id: msgId,
+                    chatId: t.chatId,
+                    senderId: myPhone,
+                    senderName: myName,
+                    text: formatPreviewText(textPayload).slice(0, 80),
+                    timestamp: msgObj.timestamp
+                });
+            }
+
+            // Actualizar la lista de chats y vigilar el chat destino
+            attachLightweightChatWatcher(t.chatId, t.phone, t.isGroup, t.name);
+            upsertConversationWeb({
+                chatId: t.chatId,
+                recipientPhone: t.isGroup ? t.chatId : t.phone,
+                name: t.name,
+                lastText: formatPreviewText(textPayload),
+                timestamp: msgObj.timestamp,
+                isGroup: t.isGroup,
+                isSelf: t.isSelf
             });
+            showToast(`↪ Reenviado a ${t.name}`);
         }
 
-    
         // ========================================================
         // MOTOR COMPLETO DE EMOJIS, GIFS Y STICKERS TIPO WHATSAPP
         // ========================================================
@@ -7568,7 +7342,7 @@
             <span>⭐</span>
             <span>Destacar</span>
         </div>
-        <div class="context-item" id="contextDeleteForMeBtn" onclick="triggerDeleteForMeFromContext()">
+        <div class="context-item danger" id="contextDeleteForMeBtn" onclick="triggerDeleteForMeFromContext()">
             <span>🗑️</span>
             <span>Eliminar para mí</span>
         </div>
@@ -8321,6 +8095,511 @@
             </div>
         </div>
     </div>
+
+
+    <!-- MODAL: PUNTO DE VENTA (POS BÁSICO OPCIONAL) CON CATÁLOGO, CLIENTES Y CORTE DEL DÍA -->
+    <div id="posStoreModal" class="modal-overlay" style="display: none; z-index: 100020;">
+        <div class="dialog-card" style="max-width: 760px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <div>
+                    <h3 style="color: #00FF7F; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
+                        <span>🛒</span> Punto de Venta (POS Básico) & Control de Tienda
+                    </h3>
+                    <div style="font-size:11px; color:#94A3B8; margin-top:2px;">100% Memoria Local (0 KB en Firebase) • Solo los tickets aplicados entran al Corte del Día</div>
+                </div>
+                <button onclick="document.getElementById('posStoreModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:20px; cursor:pointer;">✕</button>
+            </div>
+
+            <!-- SUB-TABS POS -->
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <button id="posTabBtn0" onclick="switchPosWebTab(0)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #00FF7F; background:#00FF7F; color:#000; font-weight:bold; font-size:12px; cursor:pointer;">🛍️ Nueva Venta</button>
+                <button id="posTabBtn1" onclick="switchPosWebTab(1)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">👥 Clientes</button>
+                <button id="posTabBtn2" onclick="switchPosWebTab(2)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📦 Catálogo</button>
+                <button id="posTabBtn3" onclick="switchPosWebTab(3)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📊 Corte del Día</button>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 0: NUEVA VENTA -->
+            <div id="posWebPane0" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:8px; flex:1;">
+                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">👤 Cliente:</span>
+                        <select id="posCustomerSelect" style="flex:1; background:#1E293B; color:#FFF; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:13px;"></select>
+                    </div>
+                    <button onclick="promptCreatePosCustomerWeb()" style="background:#10B981; color:#000; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Nuevo Cliente</button>
+                </div>
+
+                <input type="text" id="posProductSearchWeb" oninput="renderPosCatalogSaleWeb()" placeholder="🔍 Buscar producto o código del catálogo para marcar..." style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:9px 12px; color:#FFF; font-size:13px; margin-bottom:8px;">
+
+                <div id="posProductsSaleListWeb" style="flex:1; overflow-y:auto; max-height:280px; display:flex; flex-direction:column; gap:6px; padding-right:4px;"></div>
+
+                <div style="background:#0F172A; border:1px solid #00FF7F; border-radius:12px; padding:12px; margin-top:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div id="posCartCountWeb" style="font-size:12px; color:#94A3B8;">0 artículos marcados</div>
+                            <div id="posCartTotalWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">TOTAL: $0.00 MXN</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <label style="font-size:12px; color:#FFF; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                                <input type="checkbox" id="posApplyToCutCheckbox" checked>
+                                <span>✅ Aplicar al Corte (Pagado)</span>
+                            </label>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button onclick="submitPosSaleWeb(false)" style="background:#00FF7F; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">💾 Registrar Venta</button>
+                            <button onclick="submitPosSaleWeb(true)" style="background:#FFD700; color:#000; border:none; padding:9px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">📲 Guardar + Enviar Ticket</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 1: CLIENTES -->
+            <div id="posWebPane1" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Cartera de Clientes</span>
+                    <button onclick="promptCreatePosCustomerWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Crear Cliente</button>
+                </div>
+                <div id="posCustomersListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 2: CATÁLOGO -->
+            <div id="posWebPane2" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="color:#FFF; font-weight:bold; font-size:14px;">Catálogo de Productos de tu Tienda</span>
+                    <button onclick="promptAddPosProductWeb()" style="background:#00FF7F; color:#000; border:none; padding:7px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">➕ Añadir Producto</button>
+                </div>
+                <div id="posCatalogManageListWeb" style="flex:1; overflow-y:auto; max-height:380px; display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 3: CORTE DEL DÍA -->
+            <div id="posWebPane3" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <div style="flex:1; background:#0F172A; border:1px solid #00FF7F; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Corte de Hoy (Aplicado)</div>
+                        <div id="posCutTodayWeb" style="font-size:18px; font-weight:900; color:#00FF7F;">$0.00 MXN</div>
+                    </div>
+                    <div style="flex:1; background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Total Aplicado General</div>
+                        <div id="posCutAllPaidWeb" style="font-size:18px; font-weight:bold; color:#FFF;">$0.00 MXN</div>
+                    </div>
+                    <div style="flex:1; background:#0F172A; border:1px solid #F59E0B; border-radius:10px; padding:10px;">
+                        <div style="font-size:11px; color:#94A3B8;">Sin Aplicar / Pendientes</div>
+                        <div id="posCutPendingWeb" style="font-size:18px; font-weight:bold; color:#F59E0B;">$0.00 MXN</div>
+                    </div>
+                </div>
+                <div style="font-size:11px; color:#CBD5E1; margin-bottom:8px;">
+                    💡 <b>Nota:</b> Los tickets que <b>NO se vendan</b> pueden eliminarse con <b>🗑️ Eliminar</b>. Solo los tickets con <b>✅ En Corte</b> suman al Corte del Día.
+                </div>
+                <div id="posSalesHistoryListWeb" style="flex:1; overflow-y:auto; max-height:320px; display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_POS_CATALOG_WEB = [
+            { codigo: 1, nombre: "IMPRESIONES B/N", precio: "1" },
+            { codigo: 2, nombre: "IMPRESIONES A COLOR LETRAS", precio: "2" },
+            { codigo: 3, nombre: "IMPRESIONES A COLOR IMÁGENES GDES", precio: "5" },
+            { codigo: 4, nombre: "CARGA DE BATERIA COCHE O MOTO", precio: "50" },
+            { codigo: 5, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 400 ML", precio: "24" },
+            { codigo: 6, nombre: "ACEITE NUTRIOLI COMESTIBLE PURO DE SOYA 850 ML", precio: "44" },
+            { codigo: 7, nombre: "AGUA CIEL PURIFICADA BOTTLE 1 LTS NR", precio: "16" },
+            { codigo: 8, nombre: "AGUA CRISTAL PURIFICADA 20 LTS", precio: "50" },
+            { codigo: 9, nombre: "AZUCAR KILO", precio: "22" },
+            { codigo: 10, nombre: "COCA COLA 600 ML", precio: "18" },
+            { codigo: 11, nombre: "COCA COLA 2.5 LTS", precio: "38" },
+            { codigo: 12, nombre: "HUEVO CONO 30 PZAS", precio: "85" },
+            { codigo: 13, nombre: "LECHE LALA ENTERA 1 LTS", precio: "26" }
+        ];
+
+        let posCartMapWeb = {}; // idx -> qty
+
+        function getPosCatalogWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_catalog');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                }
+            } catch (_) {}
+            return DEFAULT_POS_CATALOG_WEB.slice();
+        }
+
+        function savePosCatalogWeb(list) {
+            try { localStorage.setItem('neo_pos_catalog', JSON.stringify(list)); } catch (_) {}
+        }
+
+        function getPosCustomersWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_customers');
+                return raw ? JSON.parse(raw) : [];
+            } catch (_) { return []; }
+        }
+
+        function savePosCustomersWeb(list) {
+            try { localStorage.setItem('neo_pos_customers', JSON.stringify(list)); } catch (_) {}
+        }
+
+        function getPosSalesWeb() {
+            try {
+                const raw = localStorage.getItem('neo_pos_sales');
+                return raw ? JSON.parse(raw) : [];
+            } catch (_) { return []; }
+        }
+
+        function savePosSalesWeb(list) {
+            try { localStorage.setItem('neo_pos_sales', JSON.stringify(list.slice(0, 500))); } catch (_) {}
+        }
+
+        function openPosStoreModal() {
+            // Sincronizar catálogo del bot desde Firebase 1 sola vez si existe
+            const cleanMy10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+            if (cleanMy10) {
+                db.ref(`bot_configs/${cleanMy10}/catalogo`).once('value', snap => {
+                    const cat = snap.val();
+                    if (Array.isArray(cat) && cat.length > 0) {
+                        savePosCatalogWeb(cat);
+                        renderPosCatalogSaleWeb();
+                        renderPosCatalogManageWeb();
+                    }
+                });
+            }
+            document.getElementById('posStoreModal').style.display = 'flex';
+            switchPosWebTab(0);
+        }
+
+        function switchPosWebTab(idx) {
+            for (let i = 0; i < 4; i++) {
+                const pane = document.getElementById('posWebPane' + i);
+                const btn = document.getElementById('posTabBtn' + i);
+                if (pane) pane.style.display = (i === idx) ? 'flex' : 'none';
+                if (btn) {
+                    btn.style.background = (i === idx) ? '#00FF7F' : '#1E293B';
+                    btn.style.color = (i === idx) ? '#000' : '#FFF';
+                    btn.style.borderColor = (i === idx) ? '#00FF7F' : '#334155';
+                }
+            }
+            refreshPosCustomerSelectWeb();
+            if (idx === 0) renderPosCatalogSaleWeb();
+            else if (idx === 1) renderPosCustomersListWeb();
+            else if (idx === 2) renderPosCatalogManageWeb();
+            else if (idx === 3) renderPosSalesCutWeb();
+        }
+
+        function refreshPosCustomerSelectWeb() {
+            const sel = document.getElementById('posCustomerSelect');
+            if (!sel) return;
+            const currentVal = sel.value;
+            const custs = getPosCustomersWeb();
+            sel.innerHTML = '<option value="mostrador">Público en General (Mostrador)</option>';
+            custs.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.phone ? `${c.name} (📱 ${c.phone})` : c.name;
+                sel.appendChild(opt);
+            });
+            if (currentVal && Array.from(sel.options).some(o => o.value === currentVal)) {
+                sel.value = currentVal;
+            }
+        }
+
+        function promptCreatePosCustomerWeb() {
+            const name = prompt('👤 Nombre del Cliente:');
+            if (!name || !name.trim()) return;
+            const phone = prompt('📱 Teléfono de 10 dígitos (opcional, para enviarle tickets al chat):', '') || '';
+            const notes = prompt('📝 Nota o Dirección (opcional):', '') || '';
+            const custs = getPosCustomersWeb();
+            const newC = {
+                id: 'cli_' + Date.now(),
+                name: name.trim(),
+                phone: phone.replace(/\D/g, '').slice(-10),
+                notes: notes.trim(),
+                createdAt: Date.now()
+            };
+            custs.push(newC);
+            savePosCustomersWeb(custs);
+            refreshPosCustomerSelectWeb();
+            const sel = document.getElementById('posCustomerSelect');
+            if (sel) sel.value = newC.id;
+            renderPosCustomersListWeb();
+            showToast(`✅ Cliente "${newC.name}" creado`);
+        }
+
+        function changePosQtyWeb(idx, delta) {
+            const cur = posCartMapWeb[idx] || 0;
+            const next = cur + delta;
+            if (next <= 0) delete posCartMapWeb[idx];
+            else posCartMapWeb[idx] = next;
+            renderPosCatalogSaleWeb();
+        }
+
+        function renderPosCatalogSaleWeb() {
+            const container = document.getElementById('posProductsSaleListWeb');
+            if (!container) return;
+            const q = (document.getElementById('posProductSearchWeb').value || '').toLowerCase().trim();
+            const catalog = getPosCatalogWeb();
+            container.innerHTML = '';
+
+            let totalItems = 0;
+            let totalAmount = 0;
+
+            catalog.forEach((p, idx) => {
+                const qty = posCartMapWeb[idx] || 0;
+                const unitPrice = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
+                if (qty > 0) {
+                    totalItems += qty;
+                    totalAmount += qty * unitPrice;
+                }
+                const code = p.codigo || (idx + 1);
+                if (q && !String(p.nombre || '').toLowerCase().includes(q) && !String(code).includes(q)) return;
+
+                const row = document.createElement('div');
+                row.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-radius:8px; background:${qty > 0 ? '#064E3B' : '#1E293B'}; border:1px solid ${qty > 0 ? '#00FF7F' : '#334155'};`;
+                row.innerHTML = `
+                    <div>
+                        <div style="color:#FFF; font-weight:bold; font-size:13px;">[${code}] ${escapeHtml(p.nombre)}</div>
+                        <div style="color:#00FF7F; font-weight:bold; font-size:12px;">$${unitPrice.toFixed(2)} MXN</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button onclick="changePosQtyWeb(${idx}, -1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#334155; color:#FFF; font-weight:bold; cursor:pointer;">-</button>
+                        <span style="min-width:22px; text-align:center; color:${qty > 0 ? '#00FF7F' : '#94A3B8'}; font-weight:bold; font-size:14px;">${qty}</span>
+                        <button onclick="changePosQtyWeb(${idx}, 1)" style="width:28px; height:28px; border-radius:6px; border:none; background:#00FF7F; color:#000; font-weight:bold; cursor:pointer;">+</button>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            document.getElementById('posCartCountWeb').innerText = `${totalItems} artículo(s) marcados`;
+            document.getElementById('posCartTotalWeb').innerText = `TOTAL: $${totalAmount.toFixed(2)} MXN`;
+        }
+
+        function submitPosSaleWeb(sendToChat) {
+            const catalog = getPosCatalogWeb();
+            const items = [];
+            Object.keys(posCartMapWeb).forEach(k => {
+                const idx = parseInt(k);
+                const qty = posCartMapWeb[idx] || 0;
+                const p = catalog[idx];
+                if (p && qty > 0) {
+                    const price = parseFloat(String(p.precio || '0').replace(/[^0-9.]/g, '')) || 0;
+                    items.push({
+                        codigo: p.codigo || (idx + 1),
+                        nombre: p.nombre,
+                        precioUnitario: price,
+                        cantidad: qty,
+                        subtotal: price * qty
+                    });
+                }
+            });
+
+            if (items.length === 0) {
+                alert('Marca al menos 1 producto del catálogo con el botón [+] para registrar la venta.');
+                return;
+            }
+
+            const selVal = document.getElementById('posCustomerSelect').value;
+            const custs = getPosCustomersWeb();
+            const cust = custs.find(c => c.id === selVal) || null;
+            const isPaid = document.getElementById('posApplyToCutCheckbox').checked;
+            const total = items.reduce((acc, it) => acc + it.subtotal, 0);
+            const sales = getPosSalesWeb();
+            const folio = '#POS-' + String(sales.length + 1).padStart(4, '0');
+
+            const record = {
+                id: 'sale_' + Date.now(),
+                folio: folio,
+                customerId: cust ? cust.id : 'mostrador',
+                customerName: cust ? cust.name : 'Público en General',
+                customerPhone: cust ? (cust.phone || '') : '',
+                items: items,
+                total: total,
+                isPaid: isPaid,
+                timestamp: Date.now()
+            };
+
+            sales.unshift(record);
+            savePosSalesWeb(sales);
+            posCartMapWeb = {};
+            renderPosCatalogSaleWeb();
+            showToast(`✅ Venta ${folio} registrada ($${total.toFixed(2)} MXN)`);
+
+            if (sendToChat) {
+                const targetPhone = record.customerPhone || currentRecipient;
+                if (!targetPhone) {
+                    alert('Venta guardada. Para enviarla por chat, selecciona un cliente con teléfono o abre primero el chat del cliente.');
+                    return;
+                }
+                const p10 = String(targetPhone).replace(/\D/g, '').slice(-10);
+                const my10 = String(myPhone || '').replace(/\D/g, '').slice(-10);
+                const ids = [my10, p10].sort();
+                const tChatId = `private_${ids[0]}_${ids[1]}`;
+                let ticket = `🧾 *NOTA DE VENTA ${record.folio}*\n👤 Cliente: *${record.customerName}*\n━━━━━━━━━━━━━━━━━━━━\n`;
+                record.items.forEach(it => {
+                    ticket += `• ${it.cantidad}x ${it.nombre} ($${it.precioUnitario.toFixed(2)}) = *$${it.subtotal.toFixed(2)}*\n`;
+                });
+                ticket += `━━━━━━━━━━━━━━━━━━━━\n💰 *TOTAL: $${record.total.toFixed(2)} MXN*\n📌 Estado: ${record.isPaid ? '✅ PAGADO' : '⏳ PENDIENTE POR COBRAR'}\n🙏 ¡Gracias por su compra!`;
+
+                selectChat({
+                    chatId: tChatId,
+                    recipientPhone: p10,
+                    name: record.customerName,
+                    lastText: ticket,
+                    timestamp: Date.now(),
+                    isSelf: false
+                });
+                dispatchMessageObject(ticket);
+                document.getElementById('posStoreModal').style.display = 'none';
+            }
+        }
+
+        function renderPosCustomersListWeb() {
+            const container = document.getElementById('posCustomersListWeb');
+            if (!container) return;
+            const custs = getPosCustomersWeb();
+            const sales = getPosSalesWeb();
+            container.innerHTML = '';
+
+            if (custs.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay clientes registrados. Haz clic en "➕ Crear Cliente".</div>';
+                return;
+            }
+
+            custs.forEach(c => {
+                const cSales = sales.filter(s => s.customerId === c.id);
+                const totalBought = cSales.reduce((a, b) => a + (b.total || 0), 0);
+                const pending = cSales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+                const prodsSummary = cSales.slice(0, 3).map(s => `${s.folio}: ` + (s.items || []).map(i => `${i.cantidad}x ${i.nombre}`).join(', ')).join(' | ');
+
+                const card = document.createElement('div');
+                card.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;';
+                card.innerHTML = `
+                    <div style="flex:1;">
+                        <div style="color:#FFF; font-weight:bold; font-size:14px;">👤 ${escapeHtml(c.name)} ${c.phone ? `<span style="color:#00FF7F; font-size:12px;">📱 ${escapeHtml(c.phone)}</span>` : ''}</div>
+                        ${c.notes ? `<div style="color:#94A3B8; font-size:12px;">📝 ${escapeHtml(c.notes)}</div>` : ''}
+                        <div style="color:#CBD5E1; font-size:12px; margin-top:4px;">🛍️ ${cSales.length} compra(s) • Total: <b>$${totalBought.toFixed(2)} MXN</b> ${pending > 0 ? `• <span style="color:#F59E0B; font-weight:bold;">⏳ Pendiente: $${pending.toFixed(2)}</span>` : ''}</div>
+                        ${prodsSummary ? `<div style="color:#94A3B8; font-size:11px; margin-top:3px;">📦 Últimas compras: ${escapeHtml(prodsSummary)}</div>` : ''}
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="document.getElementById('posCustomerSelect').value='${c.id}'; switchPosWebTab(0);" style="background:#00FF7F; color:#000; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">Venderle</button>
+                        <button onclick="deletePosCustomerWeb('${c.id}')" style="background:#EF4444; color:#FFF; border:none; padding:6px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">🗑️</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function deletePosCustomerWeb(id) {
+            const custs = getPosCustomersWeb().filter(c => c.id !== id);
+            savePosCustomersWeb(custs);
+            renderPosCustomersListWeb();
+            refreshPosCustomerSelectWeb();
+        }
+
+        function promptAddPosProductWeb() {
+            const name = prompt('📦 Nombre del Producto o Servicio:');
+            if (!name || !name.trim()) return;
+            const price = prompt('💲 Precio en MXN (ej: 25):', '0');
+            if (price === null) return;
+            const catalog = getPosCatalogWeb();
+            catalog.push({
+                codigo: catalog.length + 1,
+                nombre: name.trim().toUpperCase(),
+                precio: String(parseFloat(price) || 0)
+            });
+            savePosCatalogWeb(catalog);
+            renderPosCatalogManageWeb();
+            showToast('✅ Producto añadido al catálogo');
+        }
+
+        function renderPosCatalogManageWeb() {
+            const container = document.getElementById('posCatalogManageListWeb');
+            if (!container) return;
+            const catalog = getPosCatalogWeb();
+            container.innerHTML = '';
+            catalog.forEach((p, idx) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'background:#1E293B; border:1px solid #334155; border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;';
+                row.innerHTML = `
+                    <div>
+                        <span style="color:#FFF; font-weight:bold; font-size:13px;">[${p.codigo || (idx + 1)}] ${escapeHtml(p.nombre)}</span>
+                        <span style="color:#00FF7F; font-weight:bold; font-size:13px; margin-left:8px;">$${escapeHtml(String(p.precio))} MXN</span>
+                    </div>
+                    <button onclick="deletePosProductWeb(${idx})" style="background:rgba(239,68,68,0.2); color:#EF4444; border:1px solid #EF4444; padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer;">🗑️ Eliminar</button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function deletePosProductWeb(idx) {
+            const catalog = getPosCatalogWeb();
+            catalog.splice(idx, 1);
+            savePosCatalogWeb(catalog);
+            renderPosCatalogManageWeb();
+        }
+
+        function renderPosSalesCutWeb() {
+            const container = document.getElementById('posSalesHistoryListWeb');
+            if (!container) return;
+            const sales = getPosSalesWeb();
+            const nowStr = new Date().toDateString();
+
+            // SOLO LOS TICKETS APLICADOS (isPaid === true) ENTRAN AL CORTE DEL DÍA
+            const todayApplied = sales.filter(s => new Date(s.timestamp).toDateString() === nowStr && s.isPaid);
+            const todayCut = todayApplied.reduce((a, b) => a + (b.total || 0), 0);
+            const allApplied = sales.filter(s => s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+            const allPending = sales.filter(s => !s.isPaid).reduce((a, b) => a + (b.total || 0), 0);
+
+            document.getElementById('posCutTodayWeb').innerText = `$${todayCut.toFixed(2)} MXN`;
+            document.getElementById('posCutAllPaidWeb').innerText = `$${allApplied.toFixed(2)} MXN`;
+            document.getElementById('posCutPendingWeb').innerText = `$${allPending.toFixed(2)} MXN`;
+
+            container.innerHTML = '';
+            if (sales.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748B;">No hay ventas registradas aún.</div>';
+                return;
+            }
+
+            sales.forEach(s => {
+                const itemsText = (s.items || []).map(i => `${i.cantidad}x ${i.nombre} ($${Number(i.subtotal || 0).toFixed(2)})`).join(' • ');
+                const card = document.createElement('div');
+                card.style.cssText = `background:#1E293B; border:1px solid ${s.isPaid ? 'rgba(0,255,127,0.4)' : 'rgba(245,158,11,0.5)'}; border-radius:10px; padding:10px 12px;`;
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="color:#FFD700; font-weight:bold; font-size:13px;">${escapeHtml(s.folio)} • 👤 ${escapeHtml(s.customerName)}</span>
+                        <span style="color:#94A3B8; font-size:11px;">${new Date(s.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div style="color:#CBD5E1; font-size:12px; margin-bottom:8px;">${escapeHtml(itemsText)}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:${s.isPaid ? '#00FF7F' : '#F59E0B'}; font-weight:900; font-size:14px;">TOTAL: $${Number(s.total || 0).toFixed(2)} MXN</span>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="togglePosSaleAppliedWeb('${s.id}')" style="background:${s.isPaid ? '#065F46' : '#00FF7F'}; color:${s.isPaid ? '#FFF' : '#000'}; border:none; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
+                                ${s.isPaid ? '✅ En Corte' : '✅ Aplicar al Corte'}
+                            </button>
+                            <button onclick="deletePosSaleWeb('${s.id}')" style="background:rgba(239,68,68,0.15); color:#EF4444; border:1px solid #EF4444; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
+                                🗑️ Eliminar No Vendido
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function togglePosSaleAppliedWeb(saleId) {
+            const sales = getPosSalesWeb().map(s => {
+                if (s.id === saleId) s.isPaid = !s.isPaid;
+                return s;
+            });
+            savePosSalesWeb(sales);
+            renderPosSalesCutWeb();
+        }
+
+        function deletePosSaleWeb(saleId) {
+            const sales = getPosSalesWeb().filter(s => s.id !== saleId);
+            savePosSalesWeb(sales);
+            renderPosSalesCutWeb();
+            showToast('🗑️ Ticket eliminado (no entra al Corte del Día)');
+        }
+    </script>
 
 </body>
 </html>

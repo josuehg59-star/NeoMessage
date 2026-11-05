@@ -252,7 +252,9 @@ data class UserStatus(
     val senderId: String = "",
     val imageUrl: String = "",
     val musicName: String? = null,
-    val musicUrl: String? = null
+    val musicUrl: String? = null,
+    val mediaType: String = "",
+    val hasMedia: Boolean = false
 )
 
 data class NeoGroup(

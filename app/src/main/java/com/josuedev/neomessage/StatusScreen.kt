@@ -41,6 +41,9 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -89,59 +92,137 @@ fun StatusScreen(
     var showMusicDialog by remember { mutableStateOf(false) }
     var selectedMusicName by remember { mutableStateOf<String?>(null) }
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingIsVideo by remember { mutableStateOf(false) }
+    var selectedAudioUri by remember { mutableStateOf<Uri?>(null) }
     var selectedStatusForView by remember { mutableStateOf<UserStatus?>(null) }
     var showTextStatusDialog by remember { mutableStateOf(false) }
     var textStatusInput by remember { mutableStateOf("") }
     var textStatusColor by remember { mutableStateOf("#00FF7F") }
 
-    // Función para manejar la subida (NUEVO: SOPORTE VIDEO Y MÚSICA MAESTRA)
-    val uploadStatus = { uri: Uri ->
+    val toastMain: (String) -> Unit = { msg ->
+        coroutineScope.launch(Dispatchers.Main) { Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
+    }
+    val displayNameOf: (Uri) -> String = { u ->
+        try {
+            context.contentResolver.query(u, null, null, null, null)?.use { cur ->
+                val i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (cur.moveToFirst() && i >= 0) cur.getString(i) else null
+            } ?: "Canción"
+        } catch (_: Exception) { "Canción" }
+    }
+
+    // Subida de estados: FOTO o VIDEO, con MÚSICA opcional (estilo WhatsApp).
+    // Lo pesado (video/audio) va a status_media/{id} y solo se descarga al abrir el estado,
+    // así la lista de estados se mantiene ligera y no gasta tu cuota de Firebase.
+    val uploadStatus = { uri: Uri, isVideo: Boolean ->
         if (!isUploading) {
             isUploading = true
+            val audioUri = selectedAudioUri
+            val audioName = selectedMusicName
             Toast.makeText(context, "📡 Publicando estado por 24 horas...", Toast.LENGTH_SHORT).show()
             coroutineScope.launch(Dispatchers.IO) {
                 try {
-                    // 1. Compresión optimizada para Base64 ultraligero (40-60 KB)
-                    val bytes = NeoUtils.compressImage(context, uri, quality = 60, maxDimension = 600)
-                    val imgData = if (bytes != null) "data:image/jpeg;base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP) else ""
-
                     val newId = database.push().key ?: UUID.randomUUID().toString()
+                    val mediaDb = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("status_media").child(newId)
+                    var thumb = ""
+                    var hasMedia = false
+                    var audioOk = false
+
+                    if (isVideo) {
+                        val vbytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        if (vbytes == null || vbytes.size > 8 * 1024 * 1024) {
+                            toastMain("⚠️ El video pesa más de 8 MB. Elige uno más corto (hasta ~30 s).")
+                            isUploading = false
+                            return@launch
+                        }
+                        try {
+                            val r = android.media.MediaMetadataRetriever()
+                            r.setDataSource(context, uri)
+                            val frame = r.getFrameAtTime(0)
+                            r.release()
+                            if (frame != null) {
+                                val w = 400
+                                val h = (frame.height * (w.toFloat() / frame.width)).toInt().coerceAtLeast(1)
+                                val sc = android.graphics.Bitmap.createScaledBitmap(frame, w, h, true)
+                                val bos = java.io.ByteArrayOutputStream()
+                                sc.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, bos)
+                                thumb = "data:image/jpeg;base64," + android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP)
+                            }
+                        } catch (_: Exception) {}
+                        mediaDb.child("video").setValue("data:video/mp4;base64," + android.util.Base64.encodeToString(vbytes, android.util.Base64.NO_WRAP)).await()
+                        hasMedia = true
+                    } else {
+                        val bytes = NeoUtils.compressImage(context, uri, quality = 60, maxDimension = 600)
+                        thumb = if (bytes != null) "data:image/jpeg;base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP) else ""
+                    }
+
+                    if (audioUri != null) {
+                        val abytes = try { context.contentResolver.openInputStream(audioUri)?.use { it.readBytes() } } catch (_: Exception) { null }
+                        if (abytes != null && abytes.size <= 2 * 1024 * 1024) {
+                            val mime = context.contentResolver.getType(audioUri) ?: "audio/mpeg"
+                            mediaDb.child("audio").setValue("data:$mime;base64," + android.util.Base64.encodeToString(abytes, android.util.Base64.NO_WRAP)).await()
+                            hasMedia = true
+                            audioOk = true
+                        } else {
+                            toastMain("⚠️ La canción pesa más de 2 MB. Se publicó sin música (usa un fragmento de ~1 min).")
+                        }
+                    }
+
                     val status = UserStatus(
                         id = newId,
-                        text = "Estado NeoMessage",
+                        text = if (isVideo) "Video de estado" else "Estado NeoMessage",
                         timestamp = System.currentTimeMillis(),
                         senderName = myName.ifEmpty { "Usuario" },
                         senderId = userId,
-                        imageUrl = imgData,
-                        musicName = selectedMusicName,
-                        musicUrl = null
+                        imageUrl = thumb,
+                        musicName = if (audioOk) audioName else null,
+                        musicUrl = null,
+                        mediaType = if (isVideo) "video" else "image",
+                        hasMedia = hasMedia
                     )
-                    
-                    // 2. Guardar en Firebase sin requerir FirebaseAuth anónimo bloqueante
                     database.child(newId).setValue(status)
                         .addOnSuccessListener {
                             isUploading = false
                             selectedMusicName = null
-                            Toast.makeText(context, "✅ ¡Estado publicado! Durará 24 horas.", Toast.LENGTH_SHORT).show()
+                            selectedAudioUri = null
+                            toastMain("✅ ¡Estado publicado! Durará 24 horas.")
                         }
                         .addOnFailureListener { err ->
                             isUploading = false
-                            Toast.makeText(context, "❌ Error al publicar: ${err.message}", Toast.LENGTH_LONG).show()
+                            toastMain("❌ Error al publicar: ${err.message}")
                         }
                 } catch (e: Exception) {
-                    coroutineScope.launch(Dispatchers.Main) {
-                        isUploading = false
-                        Toast.makeText(context, "❌ Error al procesar imagen: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
+                    isUploading = false
+                    toastMain("❌ Error al procesar el estado: ${e.message}")
                 }
             }
         }
     }
 
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { 
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
             pendingUri = it
-            showMusicDialog = true 
+            pendingIsVideo = false
+            selectedAudioUri = null
+            selectedMusicName = null
+            showMusicDialog = true
+        }
+    }
+    val videoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            pendingUri = it
+            pendingIsVideo = true
+            selectedAudioUri = null
+            selectedMusicName = null
+            showMusicDialog = true
+        }
+    }
+    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            selectedAudioUri = it
+            selectedMusicName = displayNameOf(it)
+            showMusicDialog = false
+            pendingUri?.let { p -> uploadStatus(p, pendingIsVideo) }
         }
     }
 
@@ -160,6 +241,7 @@ fun StatusScreen(
                         } else {
                             // Borrar estados viejos
                             snap.ref.removeValue()
+                            try { FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("status_media").child(s.id).removeValue() } catch (_: Exception) {}
                         }
                     }
                 }
@@ -194,7 +276,17 @@ fun StatusScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     FloatingActionButton(
-                        onClick = { galleryLauncher.launch("image/*") },
+                        onClick = { videoLauncher.launch("video/*") },
+                        containerColor = Color(0xFF1F2C34),
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.size(45.dp)
+                    ) {
+                        Icon(Icons.Filled.Videocam, "Video", modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    FloatingActionButton(
+                        onClick = { photoLauncher.launch("image/*") },
                         containerColor = Color(0xFF00FF7F),
                         contentColor = Color.Black,
                         shape = RoundedCornerShape(16.dp),
@@ -239,7 +331,7 @@ fun StatusScreen(
                                 .clip(RoundedCornerShape(16.dp))
                                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
                                 .background(surfaceColor)
-                                .clickable { galleryLauncher.launch("image/*") }
+                                .clickable { photoLauncher.launch("image/*") }
                         ) {
                             // Avatar placeholder
                             Box(modifier = Modifier.fillMaxSize().background(Color(0xFF222222)), contentAlignment = Alignment.Center) {
@@ -287,6 +379,9 @@ fun StatusScreen(
                                 )
                             }
                             
+                            if (status.mediaType == "video") {
+                                Icon(Icons.Filled.PlayCircle, null, tint = Color.White.copy(0.9f), modifier = Modifier.align(Alignment.Center).size(40.dp))
+                            }
                             // Miniatura del autor arriba a la izquierda
                             Box(
                                 modifier = Modifier
@@ -403,33 +498,42 @@ fun StatusScreen(
 
     if (showMusicDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showMusicDialog = false
-                pendingUri?.let { uploadStatus(it) }
+                pendingUri = null
             },
             containerColor = surfaceColor,
-            title = { Text("Añadir banda sonora", color = textColor, fontWeight = FontWeight.Bold) },
+            title = { Text("Añadir música al estado", color = textColor, fontWeight = FontWeight.Bold) },
             text = {
-                val musicList = listOf("NeoPhonk 2026", "Cyber Stream", "Emerald Night", "Bass Protocol", "Sin Música")
                 Column {
-                    musicList.forEach { music ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable { 
-                                selectedMusicName = if(music == "Sin Música") null else music
-                                showMusicDialog = false
-                                pendingUri?.let { uploadStatus(it) }
-                                Unit
-                            }.padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(if(music == "Sin Música") Icons.Filled.MusicOff else Icons.Filled.MusicNote, null, tint = NeoTheme.Green)
-                            Spacer(Modifier.width(12.dp))
-                            Text(music, color = textColor)
-                        }
+                    Text("Elige una canción de tu celular (máx. 2 MB, un fragmento de ~1 min) o publica sin música.", color = textSubColor, fontSize = 12.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clickable { audioLauncher.launch("audio/*") }.padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.MusicNote, null, tint = NeoTheme.Green)
+                        Spacer(Modifier.width(12.dp))
+                        Text("🎵 Elegir canción de mi celular", color = textColor)
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            selectedAudioUri = null
+                            selectedMusicName = null
+                            showMusicDialog = false
+                            pendingUri?.let { uploadStatus(it, pendingIsVideo) }
+                            Unit
+                        }.padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.MusicOff, null, tint = NeoTheme.Green)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Publicar sin música", color = textColor)
                     }
                 }
             },
-            confirmButton = {}
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showMusicDialog = false; pendingUri = null }) { Text("CANCELAR", color = Color.Gray) } }
         )
     }
 
@@ -504,13 +608,53 @@ fun StatusScreen(
         val isMyStatus = status.senderId == userId
         var progress by remember { mutableFloatStateOf(0f) }
 
+        var videoPath by remember(status.id) { mutableStateOf<String?>(null) }
+        var audioPath by remember(status.id) { mutableStateOf<String?>(null) }
+
         LaunchedEffect(status.id) {
             progress = 0f
-            while (progress < 1f) {
-                kotlinx.coroutines.delay(50)
-                progress += 0.01f
+            if (status.hasMedia) {
+                try {
+                    val snap = FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL)
+                        .getReference("status_media").child(status.id).get().await()
+                    withContext(Dispatchers.IO) {
+                        fun save(key: String, ext: String): String? {
+                            val raw = snap.child(key).getValue(String::class.java) ?: return null
+                            val data = raw.substringAfter("base64,", "")
+                            if (data.isEmpty()) return null
+                            val f = java.io.File(context.cacheDir, "status_${status.id}_$key.$ext")
+                            f.writeBytes(android.util.Base64.decode(data, android.util.Base64.DEFAULT))
+                            return f.absolutePath
+                        }
+                        videoPath = save("video", "mp4")
+                        audioPath = save("audio", "mp3")
+                    }
+                } catch (_: Exception) {}
             }
-            selectedStatusForView = null
+            if (status.mediaType != "video") {
+                val total = if (audioPath != null) 15000f else 5000f
+                while (progress < 1f) {
+                    kotlinx.coroutines.delay(50)
+                    progress += 50f / total
+                }
+                selectedStatusForView = null
+            }
+        }
+
+        DisposableEffect(audioPath) {
+            var player: android.media.MediaPlayer? = null
+            val ap = audioPath
+            if (ap != null) {
+                try {
+                    player = android.media.MediaPlayer().apply {
+                        setDataSource(ap)
+                        isLooping = true
+                        prepare()
+                        start()
+                    }
+                } catch (_: Exception) {}
+            }
+            onDispose { try { player?.stop(); player?.release() } catch (_: Exception) {} }
         }
 
         val bgHex = status.musicUrl ?: "#00FF7F"
@@ -519,10 +663,21 @@ fun StatusScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(if (status.imageUrl.isEmpty()) statusBgColor else Color.Black)
+                .background(if (status.imageUrl.isEmpty() && status.mediaType != "video") statusBgColor else Color.Black)
                 .clickable { selectedStatusForView = null }
         ) {
-            if (status.imageUrl.isNotEmpty()) {
+            if (status.mediaType == "video" && videoPath != null) {
+                AndroidView(
+                    factory = { ctx ->
+                        android.widget.VideoView(ctx).apply {
+                            setVideoPath(videoPath)
+                            setOnPreparedListener { mp -> mp.isLooping = false; start() }
+                            setOnCompletionListener { selectedStatusForView = null }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (status.imageUrl.isNotEmpty()) {
                 AsyncImage(
                     model = status.imageUrl,
                     contentDescription = null,
@@ -565,7 +720,10 @@ fun StatusScreen(
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(status.senderName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(status.timestamp)), color = Color.LightGray, fontSize = 11.sp)
+                        Text(
+                            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(status.timestamp)) + (if (status.musicName != null) "  🎵 ${status.musicName}" else ""),
+                            color = Color.LightGray, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
                     }
                     Spacer(Modifier.weight(1f))
 
@@ -573,6 +731,7 @@ fun StatusScreen(
                     if (isMyStatus) {
                         IconButton(onClick = {
                             database.child(status.id).removeValue()
+                            try { FirebaseDatabase.getInstance(NetworkConfig.FIREBASE_DATABASE_URL).getReference("status_media").child(status.id).removeValue() } catch (_: Exception) {}
                             selectedStatusForView = null
                             Toast.makeText(context, "🗑️ Estado eliminado", Toast.LENGTH_SHORT).show()
                         }) {
