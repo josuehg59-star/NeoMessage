@@ -2350,6 +2350,7 @@
             <div class="sidebar-header">
                 <div class="sidebar-title" id="sidebarTitle">Chats</div>
                 <div class="header-actions" style="display: flex; align-items: center; gap: 6px;">
+                    <button class="icon-btn" onclick="testNotificationFromHeader()" id="notifBellHeaderBtn" title="Activar / Probar Notificaciones de Escritorio y Sonido en PC" style="color: #FACC15; font-size: 13px; font-weight: bold; background: rgba(250, 204, 21, 0.15); padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(250, 204, 21, 0.35); cursor: pointer; display: flex; align-items: center; gap: 4px;">🔔 Notificaciones</button>
                     <button class="icon-btn" onclick="triggerPwaInstall()" id="pwaInstallHeaderBtn" title="Instalar App en Celular o PC" style="color: #38BDF8; font-size: 12px; font-weight: bold; background: rgba(56, 189, 248, 0.15); padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); cursor: pointer; display: flex; align-items: center; gap: 4px;">📲 Instalar App</button>
                     <button class="icon-btn" onclick="openCreateGroupModal()" title="Crear Nuevo Grupo Escolar o de Trabajo" style="color: #00FF7F; font-size: 12px; font-weight: bold; background: rgba(0, 255, 127, 0.15); padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(0, 255, 127, 0.35); cursor: pointer; display: flex; align-items: center; gap: 4px;">👥 Nuevo Grupo</button>
                     <button class="icon-btn" onclick="openAddContactModal()" title="Nuevo Chat / Contacto">➕</button>
@@ -2362,6 +2363,18 @@
                 <div class="search-box">
                     <span>🔍</span>
                     <input type="text" id="searchFilter" placeholder="Buscar o empezar un nuevo chat..." oninput="handleSearchFilter(this.value)">
+                </div>
+            </div>
+
+            <!-- BANNER RECORDATORIO DE NOTIFICACIONES DE ESCRITORIO PC -->
+            <div id="desktopNotifBanner" style="display: none; margin: 6px 12px; padding: 8px 12px; background: linear-gradient(135deg, rgba(0,255,127,0.12), rgba(0,168,132,0.2)); border: 1px solid #00FF7F; border-radius: 8px; font-size: 11.5px; color: #FFFFFF; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                    <span style="font-size: 16px;">🔔</span>
+                    <span style="line-height: 1.3;"><b>Notificaciones PC:</b> Actívalas para que te avise con sonido y alerta en pantalla al recibir mensajes.</span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button onclick="requestDesktopNotificationPermission(true)" style="background: #00FF7F; color: #000; border: none; border-radius: 6px; font-weight: 800; font-size: 11px; padding: 5px 10px; cursor: pointer;">Activar</button>
+                    <button onclick="dismissDesktopNotifBanner()" style="background: transparent; color: #94A3B8; border: none; font-size: 13px; cursor: pointer; padding: 2px 4px;" title="Cerrar">✕</button>
                 </div>
             </div>
 
@@ -2866,6 +2879,160 @@
                 } catch (_) {}
                 audioRingOsc = null;
             }
+        }
+
+        // ========================================================
+        // SISTEMA DE NOTIFICACIONES DE ESCRITORIO Y AUDIO EN PC
+        // ========================================================
+        const neoWebStartTime = Date.now();
+        const processedAlertIds = new Set();
+        let titleNotificationInterval = null;
+        const originalDocumentTitle = document.title || 'NeoMessage';
+
+        function playMessageNotificationSound() {
+            try {
+                const ctx = getAudioContext();
+                if (!ctx) return;
+                if (ctx.state === 'suspended') ctx.resume();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                // Doble sonido suave tipo WhatsApp Web (campanilla 800Hz -> 1200Hz)
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.setValueAtTime(1200, now + 0.08);
+
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            } catch (_) {}
+        }
+
+        function showNativeDesktopNotification(senderName, text, chatId) {
+            if (!('Notification' in window)) return;
+            if (Notification.permission !== 'granted') return;
+
+            try {
+                const preview = (text || 'Nuevo mensaje recibido').toString().replace(/\n/g, ' ').slice(0, 100);
+                const notif = new Notification(`💬 ${senderName || 'NeoMessage'}`, {
+                    body: preview,
+                    icon: 'favicon.ico',
+                    badge: 'favicon.ico',
+                    tag: 'neomsg_' + (chatId || 'general'),
+                    renotify: true
+                });
+
+                notif.onclick = function() {
+                    window.focus();
+                    if (chatId) {
+                        const targetChat = conversations.find(c => c.chatId === chatId);
+                        if (targetChat) selectChat(targetChat);
+                    }
+                    try { notif.close(); } catch (_) {}
+                };
+
+                setTimeout(() => {
+                    try { notif.close(); } catch (_) {}
+                }, 6000);
+            } catch (err) {
+                console.warn('Error al mostrar notificación de escritorio:', err);
+            }
+        }
+
+        function flashTitleNotification(senderName) {
+            if (document.hasFocus && document.hasFocus() && !document.hidden) return;
+
+            if (titleNotificationInterval) clearInterval(titleNotificationInterval);
+            let toggle = false;
+            titleNotificationInterval = setInterval(() => {
+                if (document.hasFocus && document.hasFocus() && !document.hidden) {
+                    resetTitleNotification();
+                    return;
+                }
+                const unreadTotal = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0) || 1;
+                document.title = toggle ? originalDocumentTitle : `💬 (${unreadTotal}) Mensaje de ${senderName || 'NeoMessage'}`;
+                toggle = !toggle;
+            }, 1200);
+        }
+
+        function resetTitleNotification() {
+            if (titleNotificationInterval) {
+                clearInterval(titleNotificationInterval);
+                titleNotificationInterval = null;
+            }
+            document.title = originalDocumentTitle;
+        }
+
+        window.addEventListener('focus', resetTitleNotification);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && document.hasFocus && document.hasFocus()) {
+                resetTitleNotification();
+            }
+        });
+
+        function handleIncomingMessageAlert(msgId, senderName, text, chatId, timestamp) {
+            if (msgId && processedAlertIds.has(msgId)) return;
+            if (msgId) processedAlertIds.add(msgId);
+
+            // Evitar alertar mensajes viejos cargados durante el arranque inicial
+            if (timestamp && (Date.now() - timestamp > 120000)) return;
+
+            // 1. Sonido de notificación
+            playMessageNotificationSound();
+
+            // 2. Notificación flotante de escritorio en Windows PC
+            showNativeDesktopNotification(senderName, text, chatId);
+
+            // 3. Parpadeo en pestaña del navegador
+            flashTitleNotification(senderName);
+        }
+
+        function requestDesktopNotificationPermission(interactive = false) {
+            if (!('Notification' in window)) {
+                if (interactive) alert('Tu navegador no cuenta con soporte para notificaciones de escritorio.');
+                return;
+            }
+            if (Notification.permission === 'default') {
+                Notification.requestPermission().then(perm => {
+                    checkAndUpdateDesktopNotifBanner();
+                    if (perm === 'granted') {
+                        playMessageNotificationSound();
+                        showNativeDesktopNotification('🔔 NeoMessage', '¡Notificaciones en PC activadas con éxito!');
+                        showToast('✅ ¡Notificaciones de escritorio y sonido activados en tu PC!');
+                    } else if (interactive && perm === 'denied') {
+                        showToast('⚠️ Permiso de notificaciones denegado en tu navegador');
+                    }
+                }).catch(() => {});
+            } else if (Notification.permission === 'granted' && interactive) {
+                playMessageNotificationSound();
+                showNativeDesktopNotification('🔔 NeoMessage PC', '¡Notificaciones funcionando correctamente!');
+                showToast('🔔 Notificación de prueba emitida');
+            }
+        }
+
+        function checkAndUpdateDesktopNotifBanner() {
+            const banner = document.getElementById('desktopNotifBanner');
+            if (!banner) return;
+            if (!('Notification' in window) || Notification.permission === 'granted' || localStorage.getItem('neo_dismiss_notif_banner') === '1') {
+                banner.style.display = 'none';
+            } else {
+                banner.style.display = 'flex';
+            }
+        }
+
+        function dismissDesktopNotifBanner() {
+            localStorage.setItem('neo_dismiss_notif_banner', '1');
+            const banner = document.getElementById('desktopNotifBanner');
+            if (banner) banner.style.display = 'none';
+        }
+
+        function testNotificationFromHeader() {
+            requestDesktopNotificationPermission(true);
         }
 
         async function startCall(callType) {
@@ -4617,6 +4784,9 @@
 
             // 7. Conectar Relay local
             connectLocalRelaySSE();
+
+            // 8. Notificaciones de escritorio en PC
+            checkAndUpdateDesktopNotifBanner();
         }
 
         // PROTOCOLO DE VINCULACIÓN SEGURA (QR DINÁMICO ANTIFRAUDE)
@@ -5113,14 +5283,23 @@
         function upsertConversationWeb(entry) {
             const idx = conversations.findIndex(c => c.chatId === entry.chatId);
             if (idx !== -1) {
+                if (entry.incrementUnread) {
+                    conversations[idx].unreadCount = (conversations[idx].unreadCount || 0) + 1;
+                }
                 conversations[idx] = Object.assign({}, conversations[idx], entry);
             } else {
+                if (entry.incrementUnread) {
+                    entry.unreadCount = 1;
+                }
                 conversations.push(entry);
             }
             conversations.sort((a, b) => {
+                const timeA = a.timestamp || 0;
+                const timeB = b.timestamp || 0;
+                if (timeB !== timeA) return timeB - timeA;
                 if (a.isSelf) return -1;
                 if (b.isSelf) return 1;
-                return (b.timestamp || 0) - (a.timestamp || 0);
+                return 0;
             });
             saveLocalConversationsWeb();
             renderChatsList();
@@ -5172,7 +5351,17 @@
                 }
 
                 const sId = String(lastM.senderId || '').replace(/\D/g, '').slice(-10);
-                const peerName = (sId && sId !== myCleanPhone && isValidPersonNameWeb(lastM.senderName)) ? lastM.senderName.trim() : null;
+                const isFromOther = sId && sId !== myCleanPhone;
+                const peerName = (isFromOther && isValidPersonNameWeb(lastM.senderName)) ? lastM.senderName.trim() : null;
+
+                const msgTime = Number(lastM.timestamp) || Date.now();
+                const isLive = msgTime > (neoWebStartTime - 8000);
+                const isUnfocusedOrDifferentChat = (currentChatId !== cId || document.hidden || !(document.hasFocus && document.hasFocus()));
+                const shouldNotify = isFromOther && isLive && isUnfocusedOrDifferentChat;
+
+                if (shouldNotify) {
+                    handleIncomingMessageAlert(lastM.id, peerName || groupTitle || otherPhone, lastM.text, cId, msgTime);
+                }
 
                 upsertConversationWeb({
                     chatId: cId,
@@ -5180,9 +5369,10 @@
                     name: isGroup ? (groupTitle || 'Grupo') : resolveContactNameWeb(otherPhone, peerName),
                     peerSenderName: peerName,
                     lastText: formatPreviewText(lastM.text),
-                    timestamp: lastM.timestamp || Date.now(),
+                    timestamp: msgTime,
                     isGroup: !!isGroup,
-                    isSelf: false
+                    isSelf: false,
+                    incrementUnread: shouldNotify
                 });
             });
         }
@@ -5288,14 +5478,25 @@
                 const sPhone = String(notice.senderId || '').replace(/\D/g, '').slice(-10);
                 if (cId && sPhone) {
                     attachLightweightChatWatcher(cId, sPhone, cId.startsWith('group_'), notice.senderName);
+
+                    const noticeTime = Number(notice.timestamp) || Date.now();
+                    const isLive = noticeTime > (neoWebStartTime - 8000);
+                    const isUnfocusedOrDifferentChat = (currentChatId !== cId || document.hidden || !(document.hasFocus && document.hasFocus()));
+                    const shouldNotify = isLive && isUnfocusedOrDifferentChat;
+
+                    if (shouldNotify) {
+                        handleIncomingMessageAlert(notice.id || snap.key, notice.senderName || sPhone, notice.text || 'Nuevo mensaje', cId, noticeTime);
+                    }
+
                     upsertConversationWeb({
                         chatId: cId,
                         recipientPhone: sPhone,
                         name: resolveContactNameWeb(sPhone, notice.senderName),
                         peerSenderName: notice.senderName,
                         lastText: formatPreviewText(notice.text || 'Nuevo mensaje'),
-                        timestamp: notice.timestamp || Date.now(),
-                        isSelf: false
+                        timestamp: noticeTime,
+                        isSelf: false,
+                        incrementUnread: shouldNotify
                     });
                 }
             });
@@ -5356,8 +5557,13 @@
             }
 
             filtered.forEach(item => {
+                const hasUnread = Boolean(item.unreadCount && item.unreadCount > 0);
                 const row = document.createElement('div');
-                row.className = `chat-row ${currentChatId === item.chatId ? 'active' : ''}`;
+                row.className = `chat-row ${currentChatId === item.chatId ? 'active' : ''} ${hasUnread ? 'has-unread' : ''}`;
+                if (hasUnread) {
+                    row.style.borderLeft = '4px solid #00FF7F';
+                    row.style.background = 'rgba(0, 255, 127, 0.08)';
+                }
                 
                 const displayName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
                 const p10 = (!item.isSelf && !item.isGroup && item.recipientPhone) ? String(item.recipientPhone).replace(/\D/g, '').slice(-10) : '';
@@ -5379,16 +5585,16 @@
                     <div class="chat-meta">
                         <div class="chat-title-row">
                             <span class="chat-name" style="display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis;">
-                                <span>${escapeHtml(displayName)}</span>
+                                <span style="${hasUnread ? 'font-weight:800; color:#FFFFFF;' : ''}">${escapeHtml(displayName)}</span>
                                 ${showPhoneBadge ? `<span style="font-size:11px; color:#00FF7F; font-weight:600; flex-shrink:0;">📱 ${escapeHtml(p10)}</span>` : ''}
                             </span>
-                            <span class="chat-time">${timeStr}</span>
+                            <span class="chat-time" style="${hasUnread ? 'color:#00FF7F; font-weight:700;' : ''}">${timeStr}</span>
                         </div>
                         ${(!item.isSelf && !item.isGroup && contactPresenceSub) ? `<div style="font-size:10.5px; color:${isContactOnline ? '#00FF7F' : '#94A3B8'}; font-weight:${isContactOnline ? '600' : '400'}; margin-bottom:2px;">${isContactOnline ? '🟢 en línea' : ('🕒 ' + escapeHtml(contactPresenceSub))}</div>` : ''}
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span class="chat-last-msg" style="${(item.unreadCount && item.unreadCount > 0) ? 'font-weight:700; color:#FFFFFF;' : ''}">${escapeHtml(item.lastText)}</span>
+                            <span class="chat-last-msg" style="${hasUnread ? 'font-weight:700; color:#FFFFFF;' : ''}">${escapeHtml(item.lastText)}</span>
                             <div style="display:flex; gap:6px; align-items:center;">
-                                ${(item.unreadCount && item.unreadCount > 0) ? `<span style="background:#00A884; color:#000; font-weight:800; font-size:11px; min-width:18px; height:18px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; padding:0 4px;">${item.unreadCount}</span>` : ''}
+                                ${hasUnread ? `<span style="background: linear-gradient(135deg, #00FF7F, #00C853); color: #000; font-weight: 800; font-size: 11px; min-width: 20px; height: 20px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; box-shadow: 0 0 8px rgba(0,255,127,0.5);">● ${item.unreadCount}</span>` : ''}
                                 ${!item.isSelf ? `<button class="row-delete-btn" onclick="event.stopPropagation(); clearChatHistory('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Vaciar mensajes del chat">🧹</button><button class="row-delete-btn" onclick="event.stopPropagation(); deleteChatWithNoTrace('${item.chatId}', '${item.recipientPhone}', '${escapeHtml(displayName)}')" title="Eliminar conversación de la lista">🗑️</button>` : ''}
                             </div>
                         </div>
@@ -5829,7 +6035,9 @@
         // SELECCIONAR CHAT
         function selectChat(item) {
             item.unreadCount = 0;
+            resetTitleNotification();
             currentChatId = item.chatId;
+            saveLocalConversationsWeb();
             currentRecipient = item.recipientPhone;
             const resolvedName = (item.isSelf || item.isGroup) ? item.name : resolveContactNameWeb(item.recipientPhone, item.peerSenderName || item.name);
             const p10 = (!item.isSelf && !item.isGroup && item.recipientPhone) ? String(item.recipientPhone).replace(/\D/g, '').slice(-10) : '';
