@@ -8489,6 +8489,30 @@ function forwardMessageToChat(t, textPayload) {
     <!-- MODAL: PUNTO DE VENTA (POS BÁSICO OPCIONAL) CON CATÁLOGO, CLIENTES Y CORTE DEL DÍA -->
     
     <!-- MODAL NEOSALUD: FICHA MÉDICA SOBERANA Y BOTÓN SOS DE EMERGENCIA CON GPS -->
+    
+    <!-- MODAL DE ACTUALIZACIÓN AUTOMÁTICA PARA PC & WEB -->
+    <div id="pcUpdateModal" class="modal-overlay" style="display: none; z-index: 100050;">
+        <div class="dialog-card" style="max-width: 440px; text-align: center; border: 2px solid #00FF7F; box-shadow: 0 0 35px rgba(0, 255, 127, 0.45); padding: 24px;">
+            <div style="font-size: 42px; margin-bottom: 8px;">🚀</div>
+            <h3 style="color: #00FF7F; margin: 0 0 6px 0; font-size: 20px; font-weight: 900;">¡Nueva Versión de NeoMessage!</h3>
+            <div id="updateVersionBadge" style="display: inline-block; background: rgba(0, 255, 127, 0.15); color: #00FF7F; font-weight: bold; font-size: 13px; padding: 4px 14px; border-radius: 20px; border: 1px solid #00FF7F; margin-bottom: 12px;">v3.47 Disponible</div>
+            
+            <div style="text-align: left; font-size: 12px; color: #94A3B8; margin-bottom: 4px; font-weight: bold;">Novedades y Mejoras:</div>
+            <div id="updateChangelogText" style="background: #0F172A; border: 1px solid #334155; border-radius: 10px; padding: 12px; font-size: 13px; color: #CBD5E1; text-align: left; line-height: 1.5; margin-bottom: 16px; max-height: 140px; overflow-y: auto;">
+                Mejoras de rendimiento, estabilidad y nuevas funciones soberanas.
+            </div>
+            
+            <div id="updateCountdownBox" style="font-size: 13px; color: #FFD700; font-weight: bold; margin-bottom: 16px; background: rgba(255, 215, 0, 0.1); padding: 8px; border-radius: 8px; border: 1px solid rgba(255, 215, 0, 0.3);">
+                ⚡ Actualizando automáticamente en <span id="updateCountdownSecs" style="font-size: 16px; color: #00FF7F;">5</span> segundos...
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button id="btnDismissUpdate" onclick="closeUpdateModal()" style="flex: 1; background: #334155; color: #FFF; border: none; padding: 11px; border-radius: 8px; font-weight: bold; font-size: 13px; cursor: pointer;">Recordar después</button>
+                <button id="btnApplyUpdateNow" onclick="applyPcUpdateNow()" style="flex: 1.5; background: #00FF7F; color: #000; border: none; padding: 11px; border-radius: 8px; font-weight: 900; font-size: 13px; cursor: pointer; box-shadow: 0 4px 15px rgba(0, 255, 127, 0.5);">🔄 Actualizar Ahora</button>
+            </div>
+        </div>
+    </div>
+
     <div id="healthModal" class="modal-overlay" style="display: none; z-index: 100025;">
         <div class="dialog-card" style="max-width: 580px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
@@ -9287,6 +9311,93 @@ function forwardMessageToChat(t, textPayload) {
             dispatchMessageObject(txt);
             showToast('⌚ Signos vitales compartidos.');
             document.getElementById('healthModal').style.display = 'none';
+        }
+
+    
+        // =========================================================================
+        // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA PARA PC (WINDOWS) Y WEB
+        // =========================================================================
+        const CURRENT_APP_VERSION_CODE = 56;
+        const CURRENT_APP_VERSION_NAME = "3.46";
+        let updateCountdownTimer = null;
+        let pendingUpdateData = null;
+
+        function listenForPcAndWebUpdates() {
+            try {
+                if (typeof db === 'undefined' || !db) return;
+                db.ref('app_updates').on('value', snap => {
+                    const data = snap.val();
+                    if (!data) return;
+                    const serverCode = parseInt(data.versionCode || 0);
+                    const serverName = data.versionName || '';
+                    const changelog = data.changelog || data.changeLog || 'Mejoras de estabilidad, rendimiento y nuevas funciones.';
+                    const isMandatory = (data.isMandatory === true || String(data.isMandatory) === 'true');
+
+                    if (serverCode > CURRENT_APP_VERSION_CODE) {
+                        console.log(`[NeoUpdate PC] Nueva versión en servidor: v${serverName} (${serverCode}) > local (${CURRENT_APP_VERSION_CODE})`);
+                        pendingUpdateData = { serverCode, serverName, changelog, isMandatory };
+                        showPcAutoUpdate(serverName, changelog, isMandatory);
+                    }
+                });
+            } catch (err) {
+                console.warn('Update listener error:', err);
+            }
+        }
+
+        function showPcAutoUpdate(serverName, changelog, isMandatory) {
+            const m = document.getElementById('pcUpdateModal');
+            if (!m) return;
+            const badge = document.getElementById('updateVersionBadge');
+            if (badge) badge.innerText = `Versión ${serverName} disponible (Tu versión actual: v${CURRENT_APP_VERSION_NAME})`;
+            
+            const clBox = document.getElementById('updateChangelogText');
+            if (clBox) clBox.innerText = changelog;
+            
+            const btnDismiss = document.getElementById('btnDismissUpdate');
+            if (btnDismiss) {
+                btnDismiss.style.display = isMandatory ? 'none' : 'block';
+            }
+
+            let count = 5;
+            const countSpan = document.getElementById('updateCountdownSecs');
+            if (countSpan) countSpan.innerText = count;
+
+            if (updateCountdownTimer) clearInterval(updateCountdownTimer);
+            updateCountdownTimer = setInterval(() => {
+                count--;
+                if (countSpan) countSpan.innerText = count;
+                if (count <= 0) {
+                    clearInterval(updateCountdownTimer);
+                    applyPcUpdateNow();
+                }
+            }, 1000);
+
+            m.style.display = 'flex';
+        }
+
+        function closeUpdateModal() {
+            if (updateCountdownTimer) clearInterval(updateCountdownTimer);
+            const m = document.getElementById('pcUpdateModal');
+            if (m) m.style.display = 'none';
+        }
+
+        function applyPcUpdateNow() {
+            if (updateCountdownTimer) clearInterval(updateCountdownTimer);
+            const countBox = document.getElementById('updateCountdownBox');
+            if (countBox) countBox.innerText = '⏳ Aplicando actualización más reciente...';
+
+            // 1. Limpiar Service Workers y cachés
+            if ('caches' in window) {
+                caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).catch(() => {});
+            }
+
+            // 2. Si se ejecuta desde archivo local de PC (file:///)
+            if (window.location.protocol === 'file:') {
+                window.location.href = 'https://josuehg59-star.github.io/NeoMessage/?updated=' + Date.now();
+            } else {
+                const cleanUrl = window.location.origin + window.location.pathname + '?v=' + Date.now();
+                window.location.replace(cleanUrl);
+            }
         }
 
     </script>
