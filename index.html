@@ -1768,6 +1768,111 @@
             color: var(--neon-green);
         }
 
+    
+        /* SOPORTE COMPLETO IPHONE / IOS / MÓVIL PWA & SAFE-AREAS */
+        :root {
+            --sat: env(safe-area-inset-top, 0px);
+            --sab: env(safe-area-inset-bottom, 0px);
+            --sal: env(safe-area-inset-left, 0px);
+            --sar: env(safe-area-inset-right, 0px);
+        }
+
+        body {
+            padding-top: var(--sat);
+            padding-bottom: var(--sab);
+            padding-left: var(--sal);
+            padding-right: var(--sar);
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .mobile-back-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 4px 8px;
+            margin-right: 4px;
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 768px) {
+            .desktop-app {
+                flex-direction: column;
+                height: 100vh;
+                height: 100dvh;
+                overflow: hidden;
+                position: relative;
+            }
+
+            /* Dock bar convertida en barra inferior de navegación estilo iOS */
+            .dock-bar {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                width: 100vw;
+                height: calc(56px + var(--sab));
+                padding-bottom: var(--sab);
+                flex-direction: row;
+                justify-content: space-around;
+                align-items: center;
+                border-right: none;
+                border-top: 1px solid var(--border);
+                background: var(--bg-panel);
+                z-index: 100;
+            }
+
+            .sidebar {
+                width: 100vw !important;
+                min-width: 100vw !important;
+                height: calc(100vh - 56px - var(--sab)) !important;
+                height: calc(100dvh - 56px - var(--sab)) !important;
+                border-right: none;
+            }
+
+            .main-chat {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw !important;
+                height: 100vh !important;
+                height: 100dvh !important;
+                z-index: 150;
+                display: none;
+            }
+
+            body.in-chat-mobile .main-chat {
+                display: flex !important;
+            }
+
+            body.in-chat-mobile .dock-bar {
+                display: none !important;
+            }
+
+            .mobile-back-btn {
+                display: flex !important;
+            }
+
+            .chat-header {
+                padding-top: max(8px, var(--sat));
+                height: auto;
+                min-height: 56px;
+            }
+
+            .input-bar {
+                padding-bottom: max(8px, var(--sab));
+            }
+
+            .dialog-card {
+                width: 96% !important;
+                max-width: 96% !important;
+                padding: 16px !important;
+            }
+        }
+
     </style>
 </head>
 <body data-theme="default">
@@ -2379,6 +2484,7 @@
             <!-- SALA DE CHAT ACTIVA -->
             <div id="activeChatBox" style="display: none; flex-direction: column; height: 100%; position: relative; z-index: 2;">
                 <div class="chat-header">
+                    <button id="mobileBackBtn" class="mobile-back-btn" onclick="backToChatsList()" title="Volver a los chats">←</button>
                     <div class="chat-header-info" onclick="handleChatHeaderClick()">
                         <div class="chat-avatar" id="activeAvatar" style="width: 40px; height: 40px; font-size: 16px; margin: 0;">C</div>
                         <div>
@@ -2388,6 +2494,9 @@
                     </div>
 
                     <div class="header-actions">
+                        <button class="icon-btn" onclick="openPosStoreModal()" title="🛍️ Catálogo y Tienda POS (Pilar 2: NeoComercio)" style="color: #00FF7F; font-size: 16px;">🛍️</button>
+                        <button class="icon-btn" onclick="openHealthModal()" title="❤️ Ficha Médica y Botón SOS Familiar (Pilar 4: NeoSalud)" style="color: #EF4444; font-size: 16px;">❤️</button>
+
                         <button class="icon-btn" onclick="syncActiveChatToPhone()" title="🔄 Sincronizar todos los mensajes con celular" style="color: #25D366; font-size: 16px; font-weight: bold;">🔄</button>
                         <button class="icon-btn" onclick="openClassroomAssignmentModal()" title="📚 Asignar Tarea Escolar (Classroom)" style="color: #FFD700; font-size: 16px;">📚</button>
                         <button class="icon-btn" onclick="openWikipediaModal()" title="📖 Consultar y Compartir Wikipedia" style="color: #60A5FA; font-size: 16px;">📖</button>
@@ -2399,6 +2508,9 @@
                         
                         <!-- MENÚ DESPLEGABLE CON ACCIONES COMPLETAS -->
                         <div class="dropdown-menu" id="chatDropdownMenu">
+                            <div class="dropdown-item" onclick="openPosStoreModal(); toggleDropdownMenu();">🛍️ Catálogo y Tienda POS (NeoComercio)</div>
+                            <div class="dropdown-item" onclick="openHealthModal(); toggleDropdownMenu();">❤️ Ficha Médica y Botón SOS (NeoSalud)</div>
+
                             <div class="dropdown-item" id="menuItemViewGroup" onclick="openGroupInfo(); toggleDropdownMenu();" style="display: none;">👥 Ver Integrantes del Grupo</div>
                             <div class="dropdown-item" id="menuItemAddGroupMember" onclick="openGroupInfo(); toggleDropdownMenu();" style="display: none;">➕ Añadir Integrante al Grupo</div>
                             <div class="dropdown-item" id="menuItemCreateGroup" onclick="openCreateGroupModal(); toggleDropdownMenu();">👥 Crear Grupo con este Contacto</div>
@@ -2429,6 +2541,15 @@
                 <div class="input-bar" id="chatInputBar" style="position: relative;">
                     <!-- MENÚ EMERGENTE DE ADJUNTOS TIPO WHATSAPP -->
                     <div class="attachment-popup" id="attachmentPopup" style="display: none;">
+                        <div class="attachment-item" onclick="openPosStoreModal(); toggleAttachmentPopup();">
+                            <div class="attachment-item-icon" style="background: #00FF7F; color:#000;">🛍️</div>
+                            <span>Catálogo / POS</span>
+                        </div>
+                        <div class="attachment-item" onclick="openHealthModal(); toggleAttachmentPopup();">
+                            <div class="attachment-item-icon" style="background: #EF4444; color:#FFF;">❤️</div>
+                            <span>Ficha Salud / SOS</span>
+                        </div>
+
                         <div class="attachment-item" onclick="openClassroomAssignmentModal(); toggleAttachmentPopup();">
                             <div class="attachment-item-icon" style="background: #FFD700; color:#000;">📚</div>
                             <span>Tarea Escolar</span>
@@ -5709,6 +5830,7 @@
             document.getElementById('emptyPlaceholder').style.display = 'none';
             document.getElementById('statusWelcomePane').style.display = 'none';
             document.getElementById('activeChatBox').style.display = 'flex';
+            document.body.classList.add('in-chat-mobile');
             document.getElementById('activeChatName').innerText = (p10 && !resolvedName.includes(p10)) ? `${resolvedName} • 📱 ${p10}` : resolvedName;
 
             const activeAv = document.getElementById('activeAvatar');
@@ -6191,7 +6313,58 @@
                     </div>
                     ${reactionsHtml}
                 `;
-            } else if (text.startsWith('[NEO_ASSIGNMENT]|')) {
+                        } else if (text.startsWith('[NEO_HEALTH]|')) {
+                // TARJETA DE SALUD SOBERANA / ALERTA SOS (PILAR 4)
+                const parts = text.substring(13).split('|');
+                const steps = parts[0] || '0';
+                const hr = parts[1] || '72';
+                const cals = parts[2] || '0';
+                const statusTxt = parts[3] || 'Normal';
+                const bp = parts[5] || '120/80 mmHg';
+                const spo2 = parts[6] || '98%';
+                const source = parts[7] || '';
+                const isSos = statusTxt.includes('SOS') || statusTxt.includes('EMERGENCIA') || text.includes('🚨');
+
+                let gpsUrl = '';
+                if (source && source.includes('http')) {
+                    const m = source.match(/https?:\/\/[^\s]+/);
+                    if (m) gpsUrl = m[0];
+                }
+
+                b.innerHTML = `
+                    ${menuBtnHtml}
+                    ${quoteHtml}
+                    ${!isMine && msg.senderName ? `<div class="msg-sender">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div style="background: ${isSos ? 'linear-gradient(135deg, #450A0A, #1C1917)' : 'linear-gradient(135deg, #064E3B, #0F172A)'}; border: 2px solid ${isSos ? '#EF4444' : '#00FF7F'}; border-radius: 12px; padding: 12px; margin-top: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); min-width: 260px; max-width: 320px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="background: ${isSos ? '#EF4444' : '#00FF7F'}; color: ${isSos ? '#FFF' : '#000'}; font-weight: 900; font-size: 11px; padding: 3px 8px; border-radius: 6px;">
+                                ${isSos ? '🚨 ALERTA SOS FAMILIAR' : '🩺 FICHA MÉDICA SOBERANA'}
+                            </span>
+                            <span style="font-size:11px; color:#94A3B8;">${timeStr}</span>
+                        </div>
+                        <div style="font-size: 14px; font-weight: bold; color: #FFF; margin-bottom: 6px;">${escapeHtml(statusTxt)}</div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; background:rgba(0,0,0,0.3); padding:8px; border-radius:8px; font-size:11px; color:#CBD5E1; margin-bottom:8px;">
+                            <div>❤️ Ritmo: <b style="color:#FCA5A5;">${escapeHtml(hr)} BPM</b></div>
+                            <div>🫀 Presión: <b style="color:#93C5FD;">${escapeHtml(bp)}</b></div>
+                            <div>🫁 Oxígeno: <b style="color:#C4B5FD;">${escapeHtml(spo2)} SpO2</b></div>
+                            <div>👟 Pasos: <b style="color:#FDE047;">${escapeHtml(steps)}</b></div>
+                        </div>
+                        ${gpsUrl ? `
+                            <a href="${gpsUrl}" target="_blank" style="display:flex; align-items:center; justify-content:center; gap:6px; background:#EF4444; color:#FFF; font-weight:bold; font-size:12px; padding:8px; border-radius:8px; text-decoration:none; margin-bottom:6px; box-shadow:0 2px 8px rgba(239,68,68,0.4);">
+                                📍 Abrir Ubicación Satelital en Google Maps
+                            </a>
+                        ` : ''}
+                        <button onclick="openHealthModal()" style="width:100%; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#FFF; font-size:11px; padding:6px; border-radius:6px; cursor:pointer;">
+                            🔍 Ver Ficha Médica Completa
+                        </button>
+                    </div>
+                    <div class="msg-footer">
+                        <span>${timeStr}</span>
+                        ${isMine ? checkmarksHtml : ''}
+                    </div>
+                    ${reactionsHtml}
+                `;
+} else if (text.startsWith('[NEO_ASSIGNMENT]|')) {
                 // TAREA ESCOLAR (NEOCLASSROOM)
                 let assign = {};
                 try { assign = JSON.parse(text.replace('[NEO_ASSIGNMENT]|', '')); } catch(_) {}
@@ -8306,6 +8479,119 @@ function forwardMessageToChat(t, textPayload) {
 
 
     <!-- MODAL: PUNTO DE VENTA (POS BÁSICO OPCIONAL) CON CATÁLOGO, CLIENTES Y CORTE DEL DÍA -->
+    
+    <!-- MODAL NEOSALUD: FICHA MÉDICA SOBERANA Y BOTÓN SOS DE EMERGENCIA CON GPS -->
+    <div id="healthModal" class="modal-overlay" style="display: none; z-index: 100025;">
+        <div class="dialog-card" style="max-width: 580px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <div>
+                    <h3 style="color: #EF4444; margin: 0; font-size: 18px; display:flex; align-items:center; gap:8px;">
+                        <span>❤️</span> NeoSalud: Ficha Médica & Botón SOS Familiar
+                    </h3>
+                    <div style="font-size:11px; color:#94A3B8; margin-top:2px;">100% Soberano y Privado • Geolocalización GPS precisa y Ficha de Emergencia</div>
+                </div>
+                <button onclick="document.getElementById('healthModal').style.display='none'" style="background:transparent; border:none; color:#AAA; font-size:20px; cursor:pointer;">✕</button>
+            </div>
+
+            <!-- TABS NEOSALUD -->
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <button id="healthTabBtn0" onclick="switchHealthTab(0)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #EF4444; background:#EF4444; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">🚨 Botón SOS</button>
+                <button id="healthTabBtn1" onclick="switchHealthTab(1)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">📋 Ficha Médica</button>
+                <button id="healthTabBtn2" onclick="switchHealthTab(2)" style="flex:1; padding:9px; border-radius:8px; border:1px solid #334155; background:#1E293B; color:#FFF; font-weight:bold; font-size:12px; cursor:pointer;">⌚ Biometría / Reloj</button>
+            </div>
+
+            <!-- PESTAÑA 0: BOTÓN SOS DE EMERGENCIA CON GPS -->
+            <div id="healthPane0" style="display:flex; flex-direction:column; flex:1; overflow-y:auto; gap:12px;">
+                <div style="background: rgba(239, 68, 68, 0.12); border: 2px solid #EF4444; border-radius: 12px; padding: 14px; text-align: center;">
+                    <div style="font-size: 13px; color: #FCA5A5; line-height: 1.5; margin-bottom: 12px;">
+                        Al presionar el botón SOS, se obtiene inmediatamente tu <b>ubicación GPS satelital</b> y se envía a este chat tu ficha médica de emergencia y enlace a Google Maps.
+                    </div>
+                    <button id="btnSosTrigger" onclick="sendEmergencySosAlert()" style="width: 100%; padding: 18px 12px; background: linear-gradient(135deg, #DC2626, #991B1B); color: #FFF; border: none; border-radius: 12px; font-weight: 900; font-size: 17px; cursor: pointer; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.6); display: flex; align-items: center; justify-content: center; gap: 10px; transition: transform 0.15s;">
+                        <span>🚨</span> ENVIAR ALERTA SOS FAMILIAR (GPS + FICHA)
+                    </button>
+                    <div id="sosStatusText" style="font-size: 12px; color: #94A3B8; margin-top: 8px;">Listo para emitir alerta inmediata.</div>
+                </div>
+
+                <div style="background: #0F172A; border: 1px solid #334155; border-radius: 10px; padding: 12px;">
+                    <div style="font-weight: bold; color: #FFD700; font-size: 13px; margin-bottom: 6px;">🛡️ Resumen de Emergencia Adjunto:</div>
+                    <div id="sosQuickSummary" style="font-size: 12px; color: #CBD5E1; line-height: 1.5;">Cargando perfil médico...</div>
+                </div>
+            </div>
+
+            <!-- PESTAÑA 1: FICHA MÉDICA SOBERANA -->
+            <div id="healthPane1" style="display:none; flex-direction:column; flex:1; overflow-y:auto; gap:10px;">
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:1;">
+                        <label style="font-size:11px; color:#94A3B8; display:block; margin-bottom:4px;">Nombre Completo:</label>
+                        <input type="text" id="hmFullName" placeholder="Tu nombre y apellidos" style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:8px 10px; color:#FFF; font-size:13px;">
+                    </div>
+                    <div style="width:110px;">
+                        <label style="font-size:11px; color:#94A3B8; display:block; margin-bottom:4px;">Tipo Sangre:</label>
+                        <select id="hmBloodType" style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:8px 10px; color:#FFF; font-size:13px;">
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size:11px; color:#94A3B8; display:block; margin-bottom:4px;">Contacto de Emergencia (Nombre y Teléfono):</label>
+                    <input type="text" id="hmEmergencyContact" placeholder="Ej: Dra. María / Mamá (55-1234-5678)" style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:8px 10px; color:#FFF; font-size:13px;">
+                </div>
+
+                <div>
+                    <label style="font-size:11px; color:#94A3B8; display:block; margin-bottom:4px;">Alergias a Medicamentos / Sustancias:</label>
+                    <input type="text" id="hmAllergies" placeholder="Ej: Penicilina, Sulfas, Ninguna conocida" style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:8px 10px; color:#FFF; font-size:13px;">
+                </div>
+
+                <div>
+                    <label style="font-size:11px; color:#94A3B8; display:block; margin-bottom:4px;">Padecimientos Crónicos / Notas:</label>
+                    <textarea id="hmConditions" rows="2" placeholder="Ej: Hipertensión controlada, Asma leve..." style="width:100%; background:#0F172A; border:1px solid #334155; border-radius:8px; padding:8px 10px; color:#FFF; font-size:13px; resize:none;"></textarea>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; gap:10px; margin-top:6px;">
+                    <button onclick="saveHealthProfileWeb()" style="flex:1; background:#00FF7F; color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">💾 Guardar Ficha Soberana</button>
+                    <button onclick="shareHealthCardToChat()" style="flex:1; background:#38BDF8; color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">📤 Compartir en este Chat</button>
+                </div>
+            </div>
+
+            <!-- PESTAÑA 2: BIOMETRÍA Y RELOJ -->
+            <div id="healthPane2" style="display:none; flex-direction:column; flex:1; overflow-y:auto; gap:10px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; text-align:center;">
+                        <div style="font-size:11px; color:#94A3B8;">❤️ Ritmo Cardíaco</div>
+                        <input type="number" id="hmHeartRate" value="72" style="width:70px; text-align:center; background:#1E293B; border:1px solid #00FF7F; border-radius:6px; color:#00FF7F; font-size:18px; font-weight:bold; padding:4px;">
+                        <span style="font-size:11px; color:#94A3B8;"> BPM</span>
+                    </div>
+                    <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; text-align:center;">
+                        <div style="font-size:11px; color:#94A3B8;">🫀 Presión Arterial</div>
+                        <input type="text" id="hmBloodPressure" value="120/80" style="width:85px; text-align:center; background:#1E293B; border:1px solid #38BDF8; border-radius:6px; color:#38BDF8; font-size:16px; font-weight:bold; padding:4px;">
+                        <span style="font-size:11px; color:#94A3B8;"> mmHg</span>
+                    </div>
+                    <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; text-align:center;">
+                        <div style="font-size:11px; color:#94A3B8;">🫁 Oxígeno SpO2</div>
+                        <input type="number" id="hmSpO2" value="98" style="width:70px; text-align:center; background:#1E293B; border:1px solid #A855F7; border-radius:6px; color:#A855F7; font-size:18px; font-weight:bold; padding:4px;">
+                        <span style="font-size:11px; color:#94A3B8;"> %</span>
+                    </div>
+                    <div style="background:#0F172A; border:1px solid #334155; border-radius:10px; padding:10px; text-align:center;">
+                        <div style="font-size:11px; color:#94A3B8;">👟 Pasos del Día</div>
+                        <input type="number" id="hmSteps" value="6450" style="width:85px; text-align:center; background:#1E293B; border:1px solid #FFD700; border-radius:6px; color:#FFD700; font-size:16px; font-weight:bold; padding:4px;">
+                    </div>
+                </div>
+
+                <button onclick="sendVitalsReportToChat()" style="background:#00FF7F; color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-top:8px;">
+                    📤 Enviar Reporte Biométrico al Chat
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="posStoreModal" class="modal-overlay" style="display: none; z-index: 100020;">
         <div class="dialog-card" style="max-width: 760px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
@@ -8807,6 +9093,194 @@ function forwardMessageToChat(t, textPayload) {
             renderPosSalesCutWeb();
             showToast('🗑️ Ticket eliminado (no entra al Corte del Día)');
         }
+    
+        // =========================================================================
+        // MÓDULO NEOSALUD: FICHA MÉDICA SOBERANA & BOTÓN SOS FAMILIAR (PILAR 4)
+        // =========================================================================
+        function backToChatsList() {
+            document.body.classList.remove('in-chat-mobile');
+            const acb = document.getElementById('activeChatBox');
+            if (acb) acb.style.display = 'none';
+            const ep = document.getElementById('emptyPlaceholder');
+            if (ep) ep.style.display = 'flex';
+        }
+
+        function getHealthProfileWeb() {
+            try {
+                const raw = localStorage.getItem('neo_health_profile');
+                if (raw) return JSON.parse(raw);
+            } catch (_) {}
+            return {
+                name: myName || 'Usuario Soberano',
+                bloodType: 'O+',
+                emergencyContact: 'Familiar Principal',
+                allergies: 'Ninguna conocida',
+                conditions: 'Ninguno informado',
+                heartRate: 72,
+                bloodPressure: '120/80',
+                spo2: 98,
+                steps: 5000
+            };
+        }
+
+        function saveHealthProfileWeb() {
+            const p = {
+                name: document.getElementById('hmFullName').value.trim() || myName || 'Usuario',
+                bloodType: document.getElementById('hmBloodType').value,
+                emergencyContact: document.getElementById('hmEmergencyContact').value.trim() || 'No asignado',
+                allergies: document.getElementById('hmAllergies').value.trim() || 'Ninguna conocida',
+                conditions: document.getElementById('hmConditions').value.trim() || 'Sin padecimientos crónicos',
+                heartRate: parseInt(document.getElementById('hmHeartRate').value) || 72,
+                bloodPressure: document.getElementById('hmBloodPressure').value.trim() || '120/80',
+                spo2: parseInt(document.getElementById('hmSpO2').value) || 98,
+                steps: parseInt(document.getElementById('hmSteps').value) || 0
+            };
+            try {
+                localStorage.setItem('neo_health_profile', JSON.stringify(p));
+                showToast('✅ Ficha médica guardada soberanamente en tu dispositivo.');
+                updateHealthModalUI();
+            } catch (e) {
+                alert('Error al guardar ficha médica: ' + e.message);
+            }
+        }
+
+        function openHealthModal() {
+            updateHealthModalUI();
+            const m = document.getElementById('healthModal');
+            if (m) m.style.display = 'flex';
+        }
+
+        function switchHealthTab(idx) {
+            for (let i = 0; i < 3; i++) {
+                const pane = document.getElementById('healthPane' + i);
+                const btn = document.getElementById('healthTabBtn' + i);
+                if (pane) pane.style.display = (i === idx) ? 'flex' : 'none';
+                if (btn) {
+                    btn.style.background = (i === idx) ? '#EF4444' : '#1E293B';
+                    btn.style.borderColor = (i === idx) ? '#EF4444' : '#334155';
+                }
+            }
+        }
+
+        function updateHealthModalUI() {
+            const p = getHealthProfileWeb();
+            if (document.getElementById('hmFullName')) document.getElementById('hmFullName').value = p.name;
+            if (document.getElementById('hmBloodType')) document.getElementById('hmBloodType').value = p.bloodType || 'O+';
+            if (document.getElementById('hmEmergencyContact')) document.getElementById('hmEmergencyContact').value = p.emergencyContact || '';
+            if (document.getElementById('hmAllergies')) document.getElementById('hmAllergies').value = p.allergies || '';
+            if (document.getElementById('hmConditions')) document.getElementById('hmConditions').value = p.conditions || '';
+            if (document.getElementById('hmHeartRate')) document.getElementById('hmHeartRate').value = p.heartRate || 72;
+            if (document.getElementById('hmBloodPressure')) document.getElementById('hmBloodPressure').value = p.bloodPressure || '120/80';
+            if (document.getElementById('hmSpO2')) document.getElementById('hmSpO2').value = p.spo2 || 98;
+            if (document.getElementById('hmSteps')) document.getElementById('hmSteps').value = p.steps || 5000;
+
+            const sum = document.getElementById('sosQuickSummary');
+            if (sum) {
+                sum.innerHTML = `
+                    • 👤 <b>Paciente:</b> ${escapeHtml(p.name)}<br>
+                    • 🩸 <b>Tipo de Sangre:</b> <span style="color:#EF4444; font-weight:bold;">${escapeHtml(p.bloodType)}</span><br>
+                    • 📞 <b>Contacto de Emergencia:</b> ${escapeHtml(p.emergencyContact)}<br>
+                    • ⚠️ <b>Alergias:</b> ${escapeHtml(p.allergies)}
+                `;
+            }
+        }
+
+        function sendEmergencySosAlert() {
+            const btn = document.getElementById('btnSosTrigger');
+            const st = document.getElementById('sosStatusText');
+            if (btn) btn.disabled = true;
+            if (st) st.innerText = '🛰️ Obteniendo coordenadas satelitales GPS precisas...';
+
+            const p = getHealthProfileWeb();
+
+            const finalizeSos = (lat, lng) => {
+                let gpsUrl = '';
+                if (lat && lng) {
+                    gpsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+                }
+                const now = Date.now();
+                const sosPayload = `[NEO_HEALTH]|0|${p.heartRate || 72}|0|🚨 ALERTA SOS EMERGENCIA FAMILIAR|${now}|${p.bloodType || 'O+'}|${p.spo2 || 98}|${gpsUrl ? gpsUrl : 'Ubicación Manual'}`;
+                
+                let readableText = `🚨 *¡ALERTA DE EMERGENCIA FAMILIAR!* 🚨\n`;
+                readableText += `👤 *Paciente:* ${p.name}\n`;
+                readableText += `🩸 *Tipo de Sangre:* ${p.bloodType}\n`;
+                readableText += `📞 *Contacto de Emergencia:* ${p.emergencyContact}\n`;
+                readableText += `⚠️ *Alergias:* ${p.allergies}\n`;
+                readableText += `🩺 *Padecimientos:* ${p.conditions}\n`;
+                if (gpsUrl) {
+                    readableText += `📍 *Ubicación GPS Satelital:*\n${gpsUrl}\n`;
+                }
+                readableText += `━━━━━━━━━━━━━━━━━━━━\n`;
+                readableText += sosPayload;
+
+                if (typeof dispatchMessageObject === 'function') {
+                    dispatchMessageObject(readableText);
+                    showToast('🚨 ¡Alerta SOS emitida al chat con éxito!');
+                } else if (typeof sendMessage === 'function') {
+                    sendMessage(readableText);
+                }
+
+                if (st) st.innerText = '✅ Alerta SOS enviada correctamente.';
+                if (btn) btn.disabled = false;
+                document.getElementById('healthModal').style.display = 'none';
+            };
+
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        finalizeSos(pos.coords.latitude, pos.coords.longitude);
+                    },
+                    (err) => {
+                        console.warn('Geolocation error:', err);
+                        if (st) st.innerText = '⚠️ No se pudo obtener GPS satelital, enviando ficha sin coordenadas...';
+                        finalizeSos(null, null);
+                    },
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+                );
+            } else {
+                finalizeSos(null, null);
+            }
+        }
+
+        function shareHealthCardToChat() {
+            const p = getHealthProfileWeb();
+            const now = Date.now();
+            const payload = `[NEO_HEALTH]|${p.steps || 0}|${p.heartRate || 72}|0|Ficha Médica: ${p.name}|${now}|${p.bloodPressure || '120/80'}|${p.spo2 || 98}|Perfil Soberano`;
+            
+            let txt = `🩺 *FICHA MÉDICA SOBERANA (NEOHEALTH)*\n`;
+            txt += `👤 Paciente: *${p.name}*\n`;
+            txt += `🩸 Tipo de Sangre: *${p.bloodType}*\n`;
+            txt += `📞 Contacto de Emergencia: ${p.emergencyContact}\n`;
+            txt += `⚠️ Alergias: ${p.allergies}\n`;
+            txt += `📋 Notas Médicas: ${p.conditions}\n`;
+            txt += `━━━━━━━━━━━━━━━━━━━━\n` + payload;
+
+            dispatchMessageObject(txt);
+            showToast('📋 Ficha médica compartida en el chat.');
+            document.getElementById('healthModal').style.display = 'none';
+        }
+
+        function sendVitalsReportToChat() {
+            const p = getHealthProfileWeb();
+            const hr = parseInt(document.getElementById('hmHeartRate').value) || 72;
+            const bp = document.getElementById('hmBloodPressure').value.trim() || '120/80';
+            const spo2 = parseInt(document.getElementById('hmSpO2').value) || 98;
+            const steps = parseInt(document.getElementById('hmSteps').value) || 0;
+            const now = Date.now();
+
+            const payload = `[NEO_HEALTH]|${steps}|${hr}|0|Biometría en Tiempo Real|${now}|${bp}|${spo2}|Reloj Inteligente`;
+            let txt = `⌚ *REPORTE DE SIGNOS VITALES (NEOHEALTH)*\n`;
+            txt += `❤️ Ritmo Cardíaco: *${hr} BPM*\n`;
+            txt += `🫀 Presión Arterial: *${bp} mmHg*\n`;
+            txt += `🫁 Oxígeno en Sangre: *${spo2}% SpO2*\n`;
+            txt += `👟 Pasos del Día: *${steps}*\n`;
+            txt += `━━━━━━━━━━━━━━━━━━━━\n` + payload;
+
+            dispatchMessageObject(txt);
+            showToast('⌚ Signos vitales compartidos.');
+            document.getElementById('healthModal').style.display = 'none';
+        }
+
     </script>
 
 </body>
