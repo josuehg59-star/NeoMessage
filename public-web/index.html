@@ -1905,7 +1905,7 @@
             </div>
 
             <div style="font-size: 11px; color: var(--neon-green); font-weight: bold; margin-bottom: 16px;">
-                ⚡ Enlace permanente y directo a la versión oficial v3.46
+                ⚡ Enlace permanente y directo a la versión oficial v3.47
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -3601,34 +3601,92 @@
             p.style.display = (p.style.display === 'none' || !p.style.display) ? 'flex' : 'none';
         }
 
-        function handleDocumentSelected(input) {
+        async function handleDocumentSelected(input) {
             if (!input.files || input.files.length === 0 || !currentChatId) return;
             const files = Array.from(input.files);
             const total = files.length;
             const captionInput = document.getElementById('messageInput');
             const typedCaption = captionInput ? captionInput.value.trim() : '';
             if (typedCaption && captionInput) captionInput.value = '';
-            showToast(`📦 Preparando ${total} archivo(s) para enviar...`);
+            showToast(`📦 Preparando ${total} archivo(s)...`);
 
-            files.forEach((file, index) => {
+            for (let index = 0; index < files.length; index++) {
+                const file = files[index];
                 const fileName = file.name;
                 const sizeBytes = file.size;
                 const sizeStr = formatFileSize(sizeBytes);
 
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const b64 = e.target.result;
+                try {
+                    const reader = new FileReader();
+                    const b64DataUrl = await new Promise((resolve, reject) => {
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+
+                    let fileSourceUrl = b64DataUrl;
+                    if (sizeBytes > 350 * 1024) {
+                        showToast(`🚀 Subiendo a la nube: ${fileName} (${sizeStr})...`);
+                        const fileId = 'vault_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+                        const pureB64 = b64DataUrl.split(',')[1] || '';
+                        const vaultUrl = `https://neomessage-19ab4-default-rtdb.firebaseio.com/file_vault/${fileId}.json`;
+                        await fetch(vaultUrl, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                name: fileName,
+                                size: sizeBytes,
+                                mime: file.type || getMimeByName(fileName),
+                                data: pureB64,
+                                timestamp: Date.now()
+                            })
+                        });
+                        fileSourceUrl = vaultUrl;
+                    }
+
                     const docPayload = (typedCaption && index === 0)
-                        ? `[Document]|${fileName}|${sizeStr}|${b64}\n${typedCaption}`
-                        : `[Document]|${fileName}|${sizeStr}|${b64}`;
-                    setTimeout(() => {
-                        dispatchMessageObject(docPayload);
-                        showToast(`✅ Archivo (${index + 1}/${total}): ${fileName}`);
-                    }, index * 200);
-                };
-                reader.readAsDataURL(file);
-            });
+                        ? `[Document]|${fileName}|${sizeStr}|${fileSourceUrl}\n${typedCaption}`
+                        : `[Document]|${fileName}|${sizeStr}|${fileSourceUrl}`;
+
+                    dispatchMessageObject(docPayload);
+                    showToast(`✅ Enviado (${index + 1}/${total}): ${fileName}`);
+                } catch (err) {
+                    console.error('Error al subir archivo:', err);
+                    showToast(`⚠️ Error al enviar ${fileName}: ${err.message || 'Fallo de red'}`);
+                }
+            }
             input.value = '';
+        }
+
+        function getMimeByName(name) {
+            const ext = (name || '').toLowerCase().split('.').pop();
+            switch (ext) {
+                case 'pdf': return 'application/pdf';
+                case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                case 'doc': return 'application/msword';
+                case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+                case 'xls': return 'application/vnd.ms-excel';
+                case 'pptx': return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+                case 'ppt': return 'application/vnd.ms-powerpoint';
+                case 'txt': return 'text/plain';
+                case 'csv': return 'text/comma-separated-values';
+                case 'mp3': return 'audio/mpeg';
+                case 'wav': return 'audio/wav';
+                case 'm4a': return 'audio/mp4';
+                case 'ogg': return 'audio/ogg';
+                case 'mp4': return 'video/mp4';
+                case 'mkv': return 'video/x-matroska';
+                case 'avi': return 'video/x-msvideo';
+                case 'jpg': case 'jpeg': return 'image/jpeg';
+                case 'png': return 'image/png';
+                case 'gif': return 'image/gif';
+                case 'webp': return 'image/webp';
+                case 'zip': return 'application/zip';
+                case 'rar': return 'application/x-rar-compressed';
+                case '7z': return 'application/x-7z-compressed';
+                case 'apk': return 'application/vnd.android.package-archive';
+                default: return 'application/octet-stream';
+            }
         }
 
         function handleMediaSelected(input) {
@@ -3786,68 +3844,83 @@
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
-        // DESCARGADOR UNIVERSAL NATIVO (BLOB / DATA-URI / HTTP)
-        function downloadFileSafely(fileName, fileSource) {
+        // DESCARGADOR Y VISOR UNIVERSAL NATIVO (BLOB / DATA-URI / FILE_VAULT / HTTP)
+        function downloadFileSafely(fileName, fileSource, autoOpen = false) {
             if (!fileSource) {
                 showToast("⚠️ Archivo no disponible");
                 return;
             }
             try {
-                showToast(`📥 Descargando ${fileName || 'archivo'}...`);
+                showToast(`📥 Procesando ${fileName || 'archivo'}...`);
+                if (fileSource.includes('/file_vault/') || (fileSource.startsWith('http') && fileSource.endsWith('.json'))) {
+                    fetch(fileSource)
+                        .then(r => r.json())
+                        .then(vaultData => {
+                            if (vaultData && vaultData.data) {
+                                openOrDownloadBase64Data(fileName, vaultData.data, vaultData.mime || getMimeByName(fileName), autoOpen);
+                            } else {
+                                window.open(fileSource, '_blank');
+                            }
+                        })
+                        .catch(() => {
+                            window.open(fileSource, '_blank');
+                        });
+                    return;
+                }
                 if (fileSource.startsWith('data:')) {
                     const parts = fileSource.split(',');
                     const mimeMatch = parts[0].match(/:(.*?);/);
-                    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-                    const b64Data = parts[1];
-                    const byteCharacters = atob(b64Data);
-                    const byteArrays = [];
-                    for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
-                        const slice = byteCharacters.slice(offset, offset + 1024);
-                        const byteNumbers = new Array(slice.length);
-                        for (let i = 0; i < slice.length; i++) {
-                            byteNumbers[i] = slice.charCodeAt(i);
-                        }
-                        byteArrays.push(new Uint8Array(byteNumbers));
-                    }
-                    const blob = new Blob(byteArrays, { type: mime });
-                    const blobUrl = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = blobUrl;
-                    a.download = fileName || 'descarga_neomessage';
-                    document.body.appendChild(a);
-                    a.click();
-                    setTimeout(() => {
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(blobUrl);
-                    }, 4000);
-                    showToast(`✅ Descarga completada: ${fileName}`);
-                } else {
-                    const a = document.createElement('a');
-                    a.href = fileSource;
-                    a.download = fileName || 'archivo_neomessage';
-                    a.target = '_blank';
-                    document.body.appendChild(a);
-                    a.click();
-                    setTimeout(() => {
-                        document.body.removeChild(a);
-                    }, 2000);
-                    showToast(`✅ Descargando: ${fileName}`);
+                    const mime = mimeMatch ? mimeMatch[1] : getMimeByName(fileName);
+                    openOrDownloadBase64Data(fileName, parts[1], mime, autoOpen);
+                    return;
                 }
+                const a = document.createElement('a');
+                a.href = fileSource;
+                a.download = fileName || 'archivo_neomessage';
+                a.target = '_blank';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => document.body.removeChild(a), 2000);
+                showToast(`✅ Descargando: ${fileName}`);
             } catch (err) {
                 console.error("Error al descargar:", err);
-                try {
-                    const a = document.createElement('a');
-                    a.href = fileSource;
-                    a.download = fileName || 'archivo';
-                    a.target = '_blank';
-                    document.body.appendChild(a);
-                    a.click();
-                    setTimeout(() => document.body.removeChild(a), 2000);
-                } catch (_) {
-                    showToast(`❌ Error al descargar: ${err.message}`);
-                }
             }
         }
+
+        function openOrDownloadBase64Data(fileName, b64Data, mime, autoOpen = false) {
+            const byteCharacters = atob(b64Data);
+            const byteArrays = [];
+            for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+                const slice = byteCharacters.slice(offset, offset + 1024);
+                const byteNumbers = new Array(slice.length);
+                for (let i = 0; i < slice.length; i++) {
+                    byteNumbers[i] = slice.charCodeAt(i);
+                }
+                byteArrays.push(new Uint8Array(byteNumbers));
+            }
+            const blob = new Blob(byteArrays, { type: mime || 'application/octet-stream' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const lower = (fileName || '').toLowerCase();
+            const canPreviewInBrowser = lower.endsWith('.pdf') || lower.endsWith('.mp3') || lower.endsWith('.wav') || lower.endsWith('.mp4') || lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.txt');
+            
+            if (autoOpen && canPreviewInBrowser) {
+                window.open(blobUrl, '_blank');
+                showToast(`📄 Abriendo ${fileName}...`);
+            } else {
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = fileName || 'descarga_neomessage';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(blobUrl);
+                }, 4000);
+                showToast(`✅ Descarga completada: ${fileName}`);
+            }
+        }
+
         function downloadDocumentFromB64(fileName, docUrl) {
             downloadFileSafely(fileName, docUrl);
         }
@@ -6437,6 +6510,7 @@
                         </div>
                     `;
                 } else {
+                    const isPdf = lowerName.endsWith('.pdf');
                     docBodyHtml = `
                         <div class="doc-msg-box">
                             <div class="doc-icon">${docIcon}</div>
@@ -6444,7 +6518,10 @@
                                 <div class="doc-name" title="${safeDocName}">${safeDocName}</div>
                                 <div class="doc-size">${escapeHtml(docSize)}</div>
                             </div>
-                            <button class="doc-btn-download" onclick="downloadFileSafely(decodeURIComponent('${encodeURIComponent(docName)}'), decodeURIComponent('${safeDocUrl}'))" title="Descargar archivo">⬇️ Descargar</button>
+                            <div style="display:flex; gap:6px;">
+                                <button class="doc-btn-download" style="background:#00A884; color:#FFF; font-weight:700;" onclick="downloadFileSafely(decodeURIComponent('${encodeURIComponent(docName)}'), decodeURIComponent('${safeDocUrl}'), true)" title="Abrir y ver archivo">${isPdf ? '👁️ Abrir PDF' : '📂 Abrir'}</button>
+                                <button class="doc-btn-download" onclick="downloadFileSafely(decodeURIComponent('${encodeURIComponent(docName)}'), decodeURIComponent('${safeDocUrl}'), false)" title="Descargar a la PC">⬇️ Guardar</button>
+                            </div>
                         </div>
                     `;
                 }
@@ -9526,7 +9603,7 @@ function forwardMessageToChat(t, textPayload) {
         // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA PARA PC (WINDOWS) Y WEB
         // =========================================================================
         const CURRENT_APP_VERSION_CODE = 56;
-        const CURRENT_APP_VERSION_NAME = "3.46";
+        const CURRENT_APP_VERSION_NAME = "3.47";
         let updateCountdownTimer = null;
         let pendingUpdateData = null;
 

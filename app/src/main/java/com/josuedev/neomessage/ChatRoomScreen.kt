@@ -602,36 +602,97 @@ fun ChatRoomScreen(
     }
 
     val performDocumentUpload = { uri: Uri ->
-        val fileSize = NeoUtils.getFileSize(context, uri)
         val fileName = NeoUtils.getFileName(context, uri) ?: "Documento"
-        val sizeMb = fileSize / (1024 * 1024)
-        val sizeText = if (sizeMb > 1024) "%.2f GB".format(fileSize.toDouble() / (1024 * 1024 * 1024)) else "${fileSize / 1024} KB"
+        Toast.makeText(context, "📄 Preparando $fileName...", Toast.LENGTH_SHORT).show()
 
-        Toast.makeText(context, "📄 Enviando $fileName ($sizeText)...", Toast.LENGTH_SHORT).show()
-        
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                // Hasta 5 MB viajan directo por Base64 en Firebase para entrega 100% inmediata en cualquier red
-                val directUrl = if (fileSize < 5_000_000) {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    if (bytes != null) {
-                        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                        "data:application/octet-stream;base64,$b64"
-                    } else {
-                        val meta = NeoLocalNodeServer.registerFileForSharing(context, uri)
-                        val myIp = NeoLocalNodeServer.getLocalIpAddress()
-                        "http://$myIp:${NeoLocalNodeServer.activePort}/download?fileId=${meta.fileId}"
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null || bytes.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "No se pudo leer el archivo seleccionado", Toast.LENGTH_SHORT).show()
                     }
+                    return@launch
+                }
+
+                val fileSize = bytes.size.toLong()
+                val sizeMb = fileSize / (1024 * 1024)
+                val sizeText = if (sizeMb > 1024) "%.2f GB".format(fileSize.toDouble() / (1024 * 1024 * 1024)) else if (sizeMb > 0) "$sizeMb MB" else "${fileSize / 1024} KB"
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "🚀 Enviando $fileName ($sizeText)...", Toast.LENGTH_SHORT).show()
+                }
+
+                val ext = fileName.substringAfterLast('.', "").lowercase()
+                val mimeType = context.contentResolver.getType(uri) ?: when (ext) {
+                    "pdf" -> "application/pdf"
+                    "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    "doc" -> "application/msword"
+                    "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    "xls" -> "application/vnd.ms-excel"
+                    "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    "ppt" -> "application/vnd.ms-powerpoint"
+                    "txt" -> "text/plain"
+                    "csv" -> "text/comma-separated-values"
+                    "mp3" -> "audio/mpeg"
+                    "wav" -> "audio/wav"
+                    "m4a" -> "audio/mp4"
+                    "ogg" -> "audio/ogg"
+                    "mp4" -> "video/mp4"
+                    "mkv" -> "video/x-matroska"
+                    "avi" -> "video/x-msvideo"
+                    "jpg", "jpeg" -> "image/jpeg"
+                    "png" -> "image/png"
+                    "gif" -> "image/gif"
+                    "webp" -> "image/webp"
+                    "zip" -> "application/zip"
+                    "rar" -> "application/x-rar-compressed"
+                    "7z" -> "application/x-7z-compressed"
+                    "apk" -> "application/vnd.android.package-archive"
+                    else -> "application/octet-stream"
+                }
+
+                val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                val fileUrl = if (fileSize <= 350 * 1024) {
+                    "data:$mimeType;base64,$b64"
                 } else {
-                    val meta = NeoLocalNodeServer.registerFileForSharing(context, uri)
-                    val myIp = NeoLocalNodeServer.getLocalIpAddress()
-                    "http://$myIp:${NeoLocalNodeServer.activePort}/download?fileId=${meta.fileId}"
+                    val fileId = "vault_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
+                    val jsonBody = org.json.JSONObject().apply {
+                        put("name", fileName)
+                        put("size", fileSize)
+                        put("mime", mimeType)
+                        put("data", b64)
+                        put("timestamp", System.currentTimeMillis())
+                    }
+                    val vaultUrl = "${NetworkConfig.FIREBASE_DATABASE_URL}/file_vault/$fileId.json"
+                    val client = okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                        .writeTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
+                    val body = jsonBody.toString().toRequestBody(mediaType)
+                    val request = okhttp3.Request.Builder()
+                        .url(vaultUrl)
+                        .put(body)
+                        .build()
+                    val response = client.newCall(request).execute()
+                    if (!response.isSuccessful) {
+                        throw Exception("Error de servidor (${response.code}) al subir archivo a la nube")
+                    }
+                    vaultUrl
                 }
 
                 val mid = database.push().key ?: UUID.randomUUID().toString()
                 val caption = messageText.trim()
-                val msgText = if (caption.isNotEmpty()) "[File] $fileName|$fileSize|$directUrl\n$caption" else "[File] $fileName|$fileSize|$directUrl"
+                val msgText = if (caption.isNotEmpty()) "[File] $fileName|$fileSize|$fileUrl\n$caption" else "[File] $fileName|$fileSize|$fileUrl"
                 val msg = CloudMessage(mid, msgText, System.currentTimeMillis(), cleanMyId, myName, "")
+
+                // Guardar copia local en caché para abrir inmediatamente
+                try {
+                    val cacheFile = File(context.cacheDir, fileName)
+                    FileOutputStream(cacheFile).use { it.write(bytes) }
+                } catch (_: Exception) {}
 
                 dao?.insertMessage(msg.toEntity(chatId))
                 withContext(Dispatchers.Main) {
@@ -640,7 +701,7 @@ fun ChatRoomScreen(
                         firebaseMessages.add(msg)
                         firebaseMessages.sortBy { it.timestamp }
                     }
-                    Toast.makeText(context, "✅ Enviado: $fileName", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "✅ Enviado con éxito: $fileName", Toast.LENGTH_SHORT).show()
                 }
 
                 // Enviar vía UDP Mesh local
@@ -663,10 +724,12 @@ fun ChatRoomScreen(
                                 mapOf("id" to mid, "chatId" to chatId, "senderId" to cleanMyId, "senderName" to myName, "text" to preview, "timestamp" to msg.timestamp)
                             )
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.e("NEO_FILE", "Error al registrar en nube: ${e.message}")
+                }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error al enviar: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Error al enviar: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -697,7 +760,7 @@ fun ChatRoomScreen(
         }
     }
     
-    val documentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+    val documentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (!uris.isNullOrEmpty()) {
             uris.forEach { uri -> performDocumentUpload(uri) }
         }
@@ -1219,7 +1282,7 @@ fun ChatRoomScreen(
                     when (action) {
                         "Foto a PDF" -> photoToPdfLauncher.launch("image/*")
                         "Galería" -> galleryLauncher.launch("image/*")
-                        "Documento" -> documentLauncher.launch("*/*")
+                        "Documento" -> documentLauncher.launch(arrayOf("*/*"))
                         "Cámara", "Tomar Foto" -> {
                             try {
                                 val photoFile = java.io.File(context.cacheDir, "camera_photo_${System.currentTimeMillis()}.jpg")
@@ -2170,11 +2233,21 @@ fun openDocumentFile(context: Context, file: File) {
             "txt" -> "text/plain"
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
             "mp4" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "mov" -> "video/quicktime"
             "mp3" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            "ogg" -> "audio/ogg"
+            "m4a" -> "audio/mp4"
             "zip" -> "application/zip"
             "rar" -> "application/x-rar-compressed"
-            else -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
+            "7z" -> "application/x-7z-compressed"
+            "apk" -> "application/vnd.android.package-archive"
+            else -> android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
         }
         val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.josuedev.neomessage.fileprovider", file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -2183,7 +2256,10 @@ fun openDocumentFile(context: Context, file: File) {
             addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        context.startActivity(Intent.createChooser(intent, "Abrir y Modificar con..."))
+        val chooser = Intent.createChooser(intent, "Abrir con...")
+        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
     } catch (e: Exception) {
         Toast.makeText(context, "No se encontró aplicación para abrir este archivo (${file.name}): ${e.message}", Toast.LENGTH_LONG).show()
     }
@@ -2510,6 +2586,7 @@ fun MessageContent(
                 } else ""
             }
 
+            val coroutineScope = rememberCoroutineScope()
             var isDownloading by remember { mutableStateOf(false) }
             var downloadProgress by remember { mutableIntStateOf(0) }
             var downloadedFile by remember { mutableStateOf<File?>(null) }
@@ -2522,27 +2599,92 @@ fun MessageContent(
                 lowerName.endsWith(".pdf") -> "📕"
                 lowerName.endsWith(".docx") || lowerName.endsWith(".doc") -> "📝"
                 lowerName.endsWith(".pptx") || lowerName.endsWith(".ppt") -> "📑"
-                lowerName.endsWith(".mp3") || lowerName.endsWith(".wav") || lowerName.endsWith(".ogg") -> "🎵"
-                lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") -> "🎬"
+                lowerName.endsWith(".mp3") || lowerName.endsWith(".wav") || lowerName.endsWith(".ogg") || lowerName.endsWith(".m4a") -> "🎵"
+                lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".avi") -> "🎬"
                 else -> "📄"
             }
 
-            // Decodificar Base64 en segundo plano sin congelar el hilo principal
-            LaunchedEffect(url) {
-                if (url.startsWith("data:") && downloadedFile == null) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val downloadAndOpenFile: (Boolean) -> Unit = { autoOpen ->
+                val cacheFile = File(context.cacheDir, name)
+                if (cacheFile.exists() && cacheFile.length() > 0) {
+                    downloadedFile = cacheFile
+                    if (autoOpen) openDocumentFile(context, cacheFile)
+                } else if (!isDownloading) {
+                    isDownloading = true
+                    downloadProgress = 15
+                    coroutineScope.launch(Dispatchers.IO) {
                         try {
-                            val cacheFile = File(context.cacheDir, name)
-                            if (cacheFile.exists() && cacheFile.length() > 0) {
-                                downloadedFile = cacheFile
-                            } else {
+                            if (url.startsWith("data:")) {
                                 val base64Data = url.substringAfter("base64,")
                                 val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
                                 FileOutputStream(cacheFile).use { it.write(bytes) }
                                 downloadedFile = cacheFile
+                                withContext(Dispatchers.Main) {
+                                    isDownloading = false
+                                    downloadProgress = 100
+                                    if (autoOpen) openDocumentFile(context, cacheFile)
+                                }
+                            } else if (url.contains("file_vault") || (url.startsWith("http") && url.endsWith(".json"))) {
+                                downloadProgress = 35
+                                val client = okhttp3.OkHttpClient.Builder()
+                                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                                    .build()
+                                val req = okhttp3.Request.Builder().url(url).build()
+                                val resp = client.newCall(req).execute()
+                                downloadProgress = 70
+                                if (resp.isSuccessful) {
+                                    val bodyStr = resp.body?.string() ?: ""
+                                    if (bodyStr.trim().startsWith("{")) {
+                                        val json = org.json.JSONObject(bodyStr)
+                                        val b64 = json.optString("data")
+                                        if (b64.isNotEmpty()) {
+                                            val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                                            FileOutputStream(cacheFile).use { it.write(bytes) }
+                                            downloadedFile = cacheFile
+                                            withContext(Dispatchers.Main) {
+                                                isDownloading = false
+                                                downloadProgress = 100
+                                                if (autoOpen) openDocumentFile(context, cacheFile)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    throw Exception("Error de descarga código ${resp.code}")
+                                }
+                            } else if (url.startsWith("http")) {
+                                val client = okhttp3.OkHttpClient.Builder().build()
+                                val req = okhttp3.Request.Builder().url(url).build()
+                                val resp = client.newCall(req).execute()
+                                if (resp.isSuccessful) {
+                                    val rawBytes = resp.body?.bytes()
+                                    if (rawBytes != null && rawBytes.isNotEmpty()) {
+                                        FileOutputStream(cacheFile).use { it.write(rawBytes) }
+                                        downloadedFile = cacheFile
+                                        withContext(Dispatchers.Main) {
+                                            isDownloading = false
+                                            downloadProgress = 100
+                                            if (autoOpen) openDocumentFile(context, cacheFile)
+                                        }
+                                    }
+                                }
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                isDownloading = false
+                                Toast.makeText(context, "Error al descargar: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
+                }
+            }
+
+            LaunchedEffect(url) {
+                val cacheFile = File(context.cacheDir, name)
+                if (cacheFile.exists() && cacheFile.length() > 0) {
+                    downloadedFile = cacheFile
+                } else {
+                    downloadAndOpenFile(false)
                 }
             }
 
@@ -2554,11 +2696,7 @@ fun MessageContent(
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .combinedClickable(
-                        onClick = {
-                            if (downloadedFile != null) {
-                                openDocumentFile(context, downloadedFile!!)
-                            }
-                        },
+                        onClick = { downloadAndOpenFile(true) },
                         onLongClick = { onMessageLongClick?.invoke() }
                     )
             ) {
@@ -2591,50 +2729,45 @@ fun MessageContent(
                             color = Color(0xFF00FF7F)
                         )
                         Spacer(Modifier.height(4.dp))
-                        Text("Descargando: $downloadProgress%", color = Color(0xFF00FF7F), fontSize = 10.sp)
-                    } else if (downloadedFile != null) {
-                        Button(
-                            onClick = {
-                                if (downloadedFile != null) {
-                                    openDocumentFile(context, downloadedFile!!)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F)),
-                            modifier = Modifier.fillMaxWidth().height(38.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(Icons.Filled.FileOpen, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("ABRIR ARCHIVO", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
+                        Text("Descargando archivo: $downloadProgress%", color = Color(0xFF00FF7F), fontSize = 10.sp)
                     } else {
-                        Button(
-                            onClick = {
-                                isDownloading = true
-                                NeoP2PTransferManager.startDownload(
-                                    context = context,
-                                    fileUrl = url,
-                                    fileName = name,
-                                    expectedBytes = sizeBytes,
-                                    onProgressUpdate = { pct -> downloadProgress = pct },
-                                    onComplete = { f ->
-                                        isDownloading = false
-                                        downloadedFile = f
-                                        Toast.makeText(context, "✅ Descargado: ${f.name}", Toast.LENGTH_SHORT).show()
-                                    },
-                                    onFail = { err ->
-                                        isDownloading = false
-                                        Toast.makeText(context, "Error: $err", Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
-                            modifier = Modifier.fillMaxWidth().height(38.dp),
-                            shape = RoundedCornerShape(8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Filled.Download, contentDescription = null, tint = Color(0xFF00FF7F), modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("DESCARGAR ARCHIVO", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Button(
+                                onClick = { downloadAndOpenFile(true) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF7F)),
+                                modifier = Modifier.weight(1f).height(38.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Filled.FileOpen, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (lowerName.endsWith(".pdf")) "ABRIR PDF" else "ABRIR ARCHIVO", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (downloadedFile != null && downloadedFile!!.exists()) {
+                                        try {
+                                            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                                            val dest = File(downloadsDir, name)
+                                            downloadedFile!!.copyTo(dest, overwrite = true)
+                                            Toast.makeText(context, "💾 Guardado en Descargas: ${dest.name}", Toast.LENGTH_LONG).show()
+                                        } catch (_: Exception) {
+                                            Toast.makeText(context, "Archivo disponible en NeoMessage", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        downloadAndOpenFile(false)
+                                        Toast.makeText(context, "Descargando para guardar...", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                                modifier = Modifier.height(38.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Filled.Download, contentDescription = "Guardar en Descargas", tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
