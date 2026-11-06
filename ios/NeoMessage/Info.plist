@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>es</string>
+    <key>CFBundleDisplayName</key>
+    <string>NeoMessage</string>
+    <key>CFBundleExecutable</key>
+    <string>NeoMessage</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.josuedev.neomessage</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>NeoMessage</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>3.46</string>
+    <key>CFBundleVersion</key>
+    <string>56</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>NSCameraUsageDescription</key>
+    <string>NeoMessage necesita acceso a la cámara para videollamadas, fotos y escaneo de credenciales.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>NeoMessage necesita acceso al micrófono para llamadas de voz y notas de audio cifradas.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>NeoMessage necesita acceso a tus fotos para compartir imágenes y stickers en tus conversaciones.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>NeoMessage utiliza tu ubicación GPS para el Botón SOS de Emergencia Familiar y compartir ubicación.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>NeoMessage requiere geolocalización satelital para emitir tu alerta SOS en caso de emergencia médica.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+        <string>fetch</string>
+        <string>remote-notification</string>
+        <string>voip</string>
+    </array>
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
+    </array>
+    <key>UIRequiresFullScreen</key>
+    <true/>
+    <key>UIStatusBarStyle</key>
+    <string>UIStatusBarStyleLightContent</string>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <false/>
+</dict>
+</plist>
