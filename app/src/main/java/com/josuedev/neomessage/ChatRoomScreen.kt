@@ -601,6 +601,8 @@ fun ChatRoomScreen(
         }
     }
 
+
+
     val performDocumentUpload = { uri: Uri ->
         val fileName = NeoUtils.getFileName(context, uri) ?: "Documento"
         Toast.makeText(context, "📄 Preparando $fileName...", Toast.LENGTH_SHORT).show()
@@ -731,6 +733,18 @@ fun ChatRoomScreen(
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Error al enviar: ${e.message}", Toast.LENGTH_LONG).show()
                 }
+            }
+        }
+    }
+
+        LaunchedEffect(chatId) {
+        val incoming = NeoShareManager.pendingIncomingContent.value
+        if (incoming != null) {
+            NeoShareManager.pendingIncomingContent.value = null
+            if (incoming.uris.isNotEmpty()) {
+                incoming.uris.forEach { u -> performDocumentUpload(u) }
+            } else if (!incoming.text.isNullOrBlank()) {
+                messageText = incoming.text
             }
         }
     }
@@ -1825,6 +1839,53 @@ fun ChatRoomScreen(
 
                     Spacer(Modifier.height(4.dp))
 
+                    // COMPARTIR A OTRAS APPS (WhatsApp, Gmail, etc.) 📤
+                    OutlinedButton(
+                        onClick = {
+                            val msgToShare = targetMsg
+                            selectedMessage = null
+                            if (msgToShare != null) {
+                                val text = msgToShare.text
+                                when {
+                                    text.startsWith("[Document]|") -> {
+                                        val parts = text.removePrefix("[Document]|").split("|")
+                                        val docName = parts.getOrNull(0) ?: "archivo"
+                                        val cacheFile = File(context.cacheDir, docName)
+                                        if (cacheFile.exists() && cacheFile.length() > 0) {
+                                            NeoShareManager.shareExternally(context, null, cacheFile, null)
+                                        } else {
+                                            Toast.makeText(context, "El archivo se está descargando para compartir...", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    text.startsWith("[Base64Image]") || text.startsWith("[Image]") -> {
+                                        try {
+                                            val raw = if (text.startsWith("[Base64Image]")) text.removePrefix("[Base64Image]") else text.removePrefix("[Image]")
+                                            val b64 = if (raw.contains(",")) raw.substringAfter(",") else raw
+                                            val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                                            val imgFile = File(context.cacheDir, "shared_neo_image_${System.currentTimeMillis()}.jpg")
+                                            FileOutputStream(imgFile).use { it.write(bytes) }
+                                            NeoShareManager.shareExternally(context, null, imgFile, "image/jpeg")
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "No se pudo preparar la imagen para compartir", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    else -> {
+                                        NeoShareManager.shareExternally(context, text = text)
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00E5FF)),
+                        border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(0.6f))
+                    ) {
+                        Icon(Icons.Filled.Share, null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Compartir a WhatsApp / Otras apps", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
                     // 2. DESTACAR / GUARDAR MENSAJE ⭐
                     OutlinedButton(
                         onClick = {
@@ -2768,6 +2829,23 @@ fun MessageContent(
                             ) {
                                 Icon(Icons.Filled.Download, contentDescription = "Guardar en Descargas", tint = Color.White, modifier = Modifier.size(16.dp))
                             }
+
+                            IconButton(
+                                onClick = {
+                                    if (downloadedFile != null && downloadedFile!!.exists()) {
+                                        NeoShareManager.shareExternally(context, null, downloadedFile, null)
+                                    } else {
+                                        downloadAndOpenFile(false)
+                                        Toast.makeText(context, "Descargando para compartir...", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF00E5FF).copy(0.15f))
+                            ) {
+                                Icon(Icons.Filled.Share, contentDescription = "Compartir Documento", tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                 }
@@ -3248,6 +3326,29 @@ fun FullScreenImageViewer(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = {
+                            try {
+                                val androidBmp = bitmap.asAndroidBitmap()
+                                val imgFile = File(context.cacheDir, "shared_neo_img_${System.currentTimeMillis()}.jpg")
+                                FileOutputStream(imgFile).use { out ->
+                                    androidBmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
+                                }
+                                NeoShareManager.shareExternally(context, null, imgFile, "image/jpeg")
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error al compartir imagen: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF00E5FF).copy(0.25f))
+                    ) {
+                        Icon(Icons.Filled.Share, contentDescription = "Compartir Imagen", tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))

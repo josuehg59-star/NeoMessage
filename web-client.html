@@ -1905,7 +1905,7 @@
             </div>
 
             <div style="font-size: 11px; color: var(--neon-green); font-weight: bold; margin-bottom: 16px;">
-                ⚡ Enlace permanente y directo a la versión oficial v3.47
+                ⚡ Enlace permanente y directo a la versión oficial v3.48
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -7552,7 +7552,36 @@
         }
 
         // Reenviar mensaje (texto, fotos, videos, documentos, audios) a cualquier chat, contacto o grupo
-        function triggerForwardFromContext() {
+        function triggerShareFromContext() {
+    if (!contextTargetMsg) return;
+    const m = document.getElementById('msgContextMenu');
+    if (m) m.style.display = 'none';
+    const text = contextTargetMsg.text || '';
+    let shareText = text;
+    let shareTitle = 'NeoMessage';
+    if (text.startsWith('[Document]|')) {
+        const parts = text.split('|');
+        shareTitle = parts[1] || 'Documento';
+        shareText = '📄 Archivo compartido desde NeoMessage: ' + (parts[1] || 'Documento');
+        if (parts[3] && parts[3].startsWith('http')) {
+            shareText += '\n' + parts[3];
+        }
+    } else if (text.startsWith('[Base64Image]') || text.startsWith('[Image]')) {
+        shareTitle = 'Foto NeoMessage';
+        shareText = '🖼️ Foto compartida desde NeoMessage';
+    }
+    if (navigator.share) {
+        navigator.share({
+            title: shareTitle,
+            text: shareText
+        }).catch(function() {});
+    } else {
+        const waUrl = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText);
+        window.open(waUrl, '_blank');
+    }
+}
+
+function triggerForwardFromContext() {
             if (!contextTargetMsg) return;
             const txt = contextTargetMsg.text || '';
             if (!txt || txt === '[DELETED]') {
@@ -8011,6 +8040,10 @@ function forwardMessageToChat(t, textPayload) {
         <div class="context-item" onclick="resendCurrentMsgToThisChat()" style="color:#25D366; font-weight:600;">
             <span>🔄</span>
             <span>Reenviar a este chat y celular</span>
+        </div>
+        <div class="context-item" onclick="triggerShareFromContext()" style="color:#00e5ff; font-weight:600;">
+            <span>📤</span>
+            <span>Compartir (WhatsApp, Web...)</span>
         </div>
         <div class="context-item" onclick="triggerStarFromContext()">
             <span>⭐</span>
@@ -8780,7 +8813,7 @@ function forwardMessageToChat(t, textPayload) {
         <div class="dialog-card" style="max-width: 440px; text-align: center; border: 2px solid #00FF7F; box-shadow: 0 0 35px rgba(0, 255, 127, 0.45); padding: 24px;">
             <div style="font-size: 42px; margin-bottom: 8px;">🚀</div>
             <h3 style="color: #00FF7F; margin: 0 0 6px 0; font-size: 20px; font-weight: 900;">¡Nueva Versión de NeoMessage!</h3>
-            <div id="updateVersionBadge" style="display: inline-block; background: rgba(0, 255, 127, 0.15); color: #00FF7F; font-weight: bold; font-size: 13px; padding: 4px 14px; border-radius: 20px; border: 1px solid #00FF7F; margin-bottom: 12px;">v3.47 Disponible</div>
+            <div id="updateVersionBadge" style="display: inline-block; background: rgba(0, 255, 127, 0.15); color: #00FF7F; font-weight: bold; font-size: 13px; padding: 4px 14px; border-radius: 20px; border: 1px solid #00FF7F; margin-bottom: 12px;">v3.48 Disponible</div>
             
             <div style="text-align: left; font-size: 12px; color: #94A3B8; margin-bottom: 4px; font-weight: bold;">Novedades y Mejoras:</div>
             <div id="updateChangelogText" style="background: #0F172A; border: 1px solid #334155; border-radius: 10px; padding: 12px; font-size: 13px; color: #CBD5E1; text-align: left; line-height: 1.5; margin-bottom: 16px; max-height: 140px; overflow-y: auto;">
@@ -9603,7 +9636,7 @@ function forwardMessageToChat(t, textPayload) {
         // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA PARA PC (WINDOWS) Y WEB
         // =========================================================================
         const CURRENT_APP_VERSION_CODE = 56;
-        const CURRENT_APP_VERSION_NAME = "3.47";
+        const CURRENT_APP_VERSION_NAME = "3.48";
         let updateCountdownTimer = null;
         let pendingUpdateData = null;
 

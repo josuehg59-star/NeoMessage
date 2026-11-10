@@ -127,6 +127,7 @@ class MainActivity : FragmentActivity() {
             videoUrlState.value = it
 
         }
+        NeoShareManager.handleIncomingIntent(intent)
 
     }
 
@@ -149,6 +150,7 @@ class MainActivity : FragmentActivity() {
             videoUrlState.value = it
 
         }
+        NeoShareManager.handleIncomingIntent(intent)
 
         
 
@@ -1625,6 +1627,25 @@ fun NeoMessageApp(savedPhone: String, savedName: String, needsBio: Boolean, vide
         }
 
         
+
+                // --- DIÁLOGO PARA COMPARTIR DESDE OTRAS APPS (WHATSAPP, GALERÍA, ETC.) ---
+        val incomingShare = NeoShareManager.pendingIncomingContent.value
+        if (incomingShare != null && state.currentScreen != Screen.Login) {
+            IncomingShareDialog(
+                myUserId = state.userId,
+                incomingContent = incomingShare,
+                onSelectTarget = { targetName, targetChatId ->
+                    state = state.copy(
+                        activeChatName = targetName,
+                        activeChatId = targetChatId,
+                        currentScreen = Screen.ChatRoom
+                    )
+                },
+                onDismiss = {
+                    NeoShareManager.pendingIncomingContent.value = null
+                }
+            )
+        }
 
         // --- DIÁLOGO PROFESIONAL PARA CONTESTAR / RECHAZAR LLAMADA (VOZ VS VIDEO) ---
 
