@@ -2020,14 +2020,19 @@ fun ChatRoomScreen(
                 fwdTargets.add(NeoFwdTarget(cid, p10, nameFor(p10), false))
             }
             // 1. Reenviar a este mismo chat
+            val selfCid = "private_${my10}_${my10}"
             val isCurrentGrp = chatId.startsWith("group_")
-            val currentTargetName = if (isCurrentGrp) (chatName.ifEmpty { "Este Grupo" }) else "${nameFor(otherCleanId.takeLast(10))} (Este mismo chat)"
+            val isCurrentSelf = chatId == selfCid
+            val currentTargetName = when {
+                isCurrentGrp -> chatName.ifEmpty { "Este Grupo" }
+                isCurrentSelf -> (if (myName.isNotBlank()) "$myName (Tú - Este mismo chat)" else "Mis Notas Personales (Tú)")
+                else -> "${nameFor(otherCleanId.takeLast(10))} (Este mismo chat)"
+            }
             fwdTargets.add(NeoFwdTarget(chatId, if (isCurrentGrp) chatId else otherCleanId.takeLast(10), currentTargetName, isCurrentGrp))
             seen.add(chatId)
 
-            val selfCid = "private_${my10}_${my10}"
             if (seen.add(selfCid)) {
-                val selfTitle = if (myName.isNotBlank()) "$myName (Tú)" else "Mis Notas Personales (Tú)"
+                val selfTitle = if (myName.isNotBlank()) "$myName (Tú - Notas Personales)" else "Mis Notas Personales (Tú)"
                 fwdTargets.add(NeoFwdTarget(selfCid, my10, selfTitle, false))
             }
             val ids = withContext(Dispatchers.IO) {
@@ -2085,7 +2090,15 @@ fun ChatRoomScreen(
                 try { dao?.insertMessage(fwd.toEntity(t.chatId)) } catch (_: Exception) {}
                 try {
                     dbx.getReference("chats").child(t.chatId).child("messages").child(newId).setValue(fwd)
-                    if (!t.isGroup && t.other.length >= 10) {
+                    // SINCRONIZACIÓN INMEDIATA CON PC / IPHONE PARA TODOS LOS MENSAJES REENVIADOS
+                    if (cleanMyId.takeLast(10).length == 10) {
+                        try {
+                            dbx.getReference("sync").child(cleanMyId.takeLast(10)).child(newId).setValue(
+                                mapOf("origin" to "app", "chatId" to t.chatId, "msg" to fwd)
+                            )
+                        } catch (_: Exception) {}
+                    }
+                    if (!t.isGroup && t.other.length >= 10 && t.other.takeLast(10) != cleanMyId.takeLast(10)) {
                         val preview = when {
                             fMsg.text.startsWith("[Sticker]") -> "✨ Sticker"
                             fMsg.text.startsWith("[Media]") -> "📷 Foto"
@@ -2119,6 +2132,14 @@ fun ChatRoomScreen(
                         firebaseMessages.add(fwd)
                         firebaseMessages.sortBy { it.timestamp }
                     }
+                }
+            }
+            // Si se reenvía al mismo chat en el que estoy, reflejarlo de inmediato en la pantalla
+            if (t.chatId == chatId) {
+                val idx = firebaseMessages.indexOfFirst { it.id == newId }
+                if (idx == -1) {
+                    firebaseMessages.add(fwd)
+                    firebaseMessages.sortBy { it.timestamp }
                 }
             }
             Toast.makeText(context, "↪ Reenviado a ${t.name}", Toast.LENGTH_SHORT).show()

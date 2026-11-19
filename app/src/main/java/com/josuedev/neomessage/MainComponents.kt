@@ -689,15 +689,16 @@ fun ChatsListScreen(
                             val rawOther = if (parts.size == 2) {
                                 if (NeoUtils.sanitizeId(parts[0]).takeLast(10) == myCleanId.takeLast(10)) parts[1] else parts[0]
                             } else ""
-                            val otherPhone = NeoUtils.sanitizeId(rawOther).takeLast(10)
+                                                        val otherPhone = NeoUtils.sanitizeId(rawOther).takeLast(10)
+                            val isSelfChat = cId == selfChatId || (parts.size == 2 && NeoUtils.sanitizeId(parts[0]).takeLast(10) == myCleanId.takeLast(10) && NeoUtils.sanitizeId(parts[1]).takeLast(10) == myCleanId.takeLast(10))
                             val peerMsgName = msgs.lastOrNull {
                                 NeoUtils.sanitizeId(it.senderId).takeLast(10) != myCleanId.takeLast(10) && isValidPersonName(it.senderName)
                             }?.senderName?.trim()
                             
-                            val name = spUserNames.getString(otherPhone, null)?.takeIf { isValidPersonName(it) }
+                            val name = if (isSelfChat) "Mis Notas Personales (Tú)" else (spUserNames.getString(otherPhone, null)?.takeIf { isValidPersonName(it) }
                                 ?: spContacts.getString(otherPhone, null)?.takeIf { isValidPersonName(it) }
                                 ?: peerMsgName
-                                ?: if (otherPhone.isNotEmpty()) otherPhone else "Chat"
+                                ?: if (otherPhone.isNotEmpty()) otherPhone else "Chat")
                             val cleanSender = NeoUtils.sanitizeId(lastMsg.senderId).takeLast(10)
                             val isFromOther = cleanSender.isNotEmpty() && cleanSender != myCleanId.takeLast(10)
                             val spLastRead = context.getSharedPreferences("NeoLastRead", Context.MODE_PRIVATE)

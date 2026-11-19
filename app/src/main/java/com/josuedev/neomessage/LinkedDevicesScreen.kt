@@ -46,11 +46,32 @@ fun LinkedDevicesScreen(
     val myPhone = sp.getString("user_phone", "") ?: ""
     val myName = sp.getString("user_name", "Usuario") ?: "Usuario"
 
-    // Generar un código de sesión único cada 60 segundos
+    // Generar un código de sesión único con 15 minutos de validez
     var sessionCode by remember { mutableStateOf("") }
     var sessionExpires by remember { mutableStateOf(0L) }
     var alertMsg by remember { mutableStateOf<String?>(null) }
     val linkedDevices = remember { mutableStateListOf<Map<String, String>>() }
+
+    val generateNewSessionCode: () -> Unit = {
+        val code = (100000 + Random().nextInt(900000)).toString()
+        val expiry = System.currentTimeMillis() + 15 * 60 * 1000L // 15 MINUTOS DE VALIDEZ
+        sessionCode = code
+        sessionExpires = expiry
+
+        if (myPhone.isNotEmpty()) {
+            val sessionData = mapOf(
+                "code" to code,
+                "phone" to myPhone,
+                "name" to myName,
+                "expiry" to expiry,
+                "platform" to "Android"
+            )
+            FirebaseDatabase.getInstance("https://neomessage-19ab4-default-rtdb.firebaseio.com")
+                .getReference("sessions")
+                .child(code)
+                .setValue(sessionData)
+        }
+    }
 
     val scanLauncher = rememberLauncherForActivityResult(com.journeyapps.barcodescanner.ScanContract()) { result ->
         if (result.contents != null) {
@@ -75,26 +96,7 @@ fun LinkedDevicesScreen(
     }
 
     LaunchedEffect(Unit) {
-        // Generar código de sesión y guardarlo en Firebase
-        val code = (100000 + Random().nextInt(900000)).toString()
-        val expiry = System.currentTimeMillis() + 60 * 1000L
-        sessionCode = code
-        sessionExpires = expiry
-
-        // Guardar sesión en Firebase para que la app web pueda leerla
-        if (myPhone.isNotEmpty()) {
-            val sessionData = mapOf(
-                "code" to code,
-                "phone" to myPhone,
-                "name" to myName,
-                "expiry" to expiry,
-                "platform" to "Android"
-            )
-            FirebaseDatabase.getInstance("https://neomessage-19ab4-default-rtdb.firebaseio.com")
-                .getReference("sessions")
-                .child(code)
-                .setValue(sessionData)
-        }
+        generateNewSessionCode()
 
         // Cargar dispositivos vinculados
         FirebaseDatabase.getInstance("https://neomessage-19ab4-default-rtdb.firebaseio.com")
@@ -255,7 +257,12 @@ fun LinkedDevicesScreen(
                     // VINCULACIÓN POR CÓDIGO (NUEVA SECCIÓN)
                     var showPhoneCode by remember { mutableStateOf(false) }
                     TextButton(
-                        onClick = { showPhoneCode = !showPhoneCode },
+                        onClick = {
+                            showPhoneCode = !showPhoneCode
+                            if (showPhoneCode) {
+                                generateNewSessionCode()
+                            }
+                        },
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     ) {
                         Text(if (showPhoneCode) "OCULTAR CÓDIGO" else "VINCULAR CON NÚMERO DE TELÉFONO", color = Color(0xFF00FF7F), fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -285,7 +292,15 @@ fun LinkedDevicesScreen(
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
-                                Text("Expira en: ${SimpleDateFormat("mm:ss", Locale.getDefault()).format(Date(sessionExpires - System.currentTimeMillis()))}", color = Color(0xFFE91E63), fontSize = 11.sp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("Válido por 15 min en iPhone o PC", color = Color(0xFF00FF7F), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    TextButton(onClick = { generateNewSessionCode() }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                                        Text("🔄 NUEVO CÓDIGO", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
